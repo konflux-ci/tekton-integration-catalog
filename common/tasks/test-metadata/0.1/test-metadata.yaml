@@ -20,7 +20,11 @@ spec:
     - name: git-revision
       description: The Git revision (commit SHA) from which the test pipeline is originating.
     - name: container-image
-      description: The container image built from the specified Git revision.
+      description: The container image built from the konflux build pipelines.
+    - name: container-repo
+      description: >-
+        The repository where build tags and OCI artifacts for components are stored.
+        The output typically follows: quay.io/redhat-user-workloads/<tenant>/<app>/<component>.
     - name: git-org
       description: The GitHub organization from which the test is originating.
     - name: git-repo
@@ -141,3 +145,4 @@ spec:
         echo -n "$SOURCE_REPO_URL" > $(results.source-repo-url.path)
         echo -n "$SOURCE_REPO_BRANCH" > $(results.source-repo-branch.path)
         echo -n "$KONFLUX_COMPONENT_NAME" > $(results.component-name.path)
+        echo -n "${COMPONENT_CONTAINER_IMAGE%@*}" > $(results.container-repo.path)
