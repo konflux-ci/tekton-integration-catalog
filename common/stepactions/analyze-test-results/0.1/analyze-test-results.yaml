@@ -1,0 +1,55 @@
+apiVersion: tekton.dev/v1alpha1
+kind: StepAction
+metadata:
+  name: analyze-test-results
+spec:
+  description: >-
+    This StepAction runs "analyze-test-results" command from qe-tools binary against supplied
+    OCI artifact that contains logs and test results.
+  image: quay.io/konflux-ci/qe-tools:latest
+  params:
+    - name: workspace-path
+      type: string
+      default: /workspace
+      description: Path to the workspace that is used for storing an output of analysis
+    - name: analysis-output-file
+      type: string
+      default: analysis.md
+      description: Analysis output file name
+    - name: oci-ref
+      type: string
+      description: OCI artifact reference that contains logs and JUnit files to analyse
+    - name: junit-report-name
+      type: string
+      default: junit.xml
+      description: The name of the JUnit file to be used for test results analysis
+    - name: e2e-log-name
+      type: string
+      default: e2e-tests.log
+      description: The name of the log file from E2E tests run to be used for test results analysis
+    - name: cluster-provision-log-name
+      type: string
+      default: cluster-provision.log
+      description: The name of the log file from cluster provisioning to be used for test results analysis
+  workingDir: $(params.workspace-path)
+  env:
+    - name: ANALYSIS_OUTPUT_FILE
+      value: "$(params.analysis-output-file)"
+    - name: OCI_REF
+      value: "$(params.oci-ref)"
+    - name: JUNIT_REPORT_NAME
+      value: "$(params.junit-report-name)"
+    - name: E2E_LOG_NAME
+      value: "$(params.e2e-log-name)"
+    - name: CLUSTER_PROVISION_LOG_NAME
+      value: "$(params.cluster-provision-log-name)"
+  script: |
+    #!/bin/bash
+    set -x
+
+    qe-tools analyze-test-results \
+    --oci-ref=$OCI_REF \
+    --junit-report-name=$JUNIT_REPORT_NAME \
+    --e2e-log-name=$E2E_LOG_NAME \
+    --cluster-provision-log-name=$CLUSTER_PROVISION_LOG_NAME \
+    --output-file=$ANALYSIS_OUTPUT_FILE

@@ -23,11 +23,54 @@ spec:
       type: string
       description: The aggregate status of the pipeline run (Succeeded, Failed, Completed, None).
       default: None
+    - name: junit-report-name
+      type: string
+      default: junit.xml
+      description: The name of the JUnit file to be used for test results analysis
+    - name: e2e-log-name
+      type: string
+      default: e2e-tests.log
+      description: The name of the log file from E2E tests run to be used for test results analysis
+    - name: cluster-provision-log-name
+      type: string
+      default: cluster-provision.log
+      description: The name of the log file from cluster provisioning to be used for test results analysis
+    - name: enable-test-results-analysis
+      type: string
+      default: "false"
+      description: Add "true" if you want to enable experimental test analysis step
   volumes:
     - name: konflux-test-infra-volume
       secret:
         secretName: konflux-test-infra
   steps:
+    - name: analyze-test-results
+      ref:
+        resolver: git
+        params:
+          - name: url
+            value: https://github.com/konflux-ci/tekton-integration-catalog.git
+          - name: revision
+            value: main
+          - name: pathInRepo
+            value: common/stepactions/analyze-test-results/0.1/analyze-test-results.yaml
+      params:
+        - name: workspace-path
+          value: /workspace
+        - name: analysis-output-file
+          value: analysis.md
+        - name: oci-ref
+          value: $(params.oci-container)
+        - name: junit-report-name
+          value: $(params.junit-report-name)
+        - name: e2e-log-name
+          value: $(params.e2e-log-name)
+        - name: cluster-provision-log-name
+          value: $(params.cluster-provision-log-name)
+      when:
+        - input: "$(params.enable-test-results-analysis)"
+          operator: in
+          values: [ "true" ]
     - name: pull-request-comment
       env:
         - name: JOB_SPEC
@@ -93,23 +136,38 @@ spec:
 
         export INTEGRATION_TEST_CONSOLE_URL="${BUILD_CONSOLE_URL%/*}/$(params.test-name)"
 
-        BODY_HEADER="@${PR_AUTHOR}: The following test has ${PIPELINE_RUN_AGGREGATE_STATUS}, say **/retest** to rerun failed tests.\n\n"
-        BODY_TEST_SUMMARY="| PipelineRun Name | Status | Rerun command | Build Log | Test Log |\n|------------------|--------|---------|-------------------|------------------|\n| \`$TEST_NAME\`    | **$PIPELINE_RUN_AGGREGATE_STATUS** | \`/retest\` | [View Pipeline Log]($BUILD_CONSOLE_URL) | [View Test Logs]($INTEGRATION_TEST_CONSOLE_URL) |\n\n"
-        BODY_ARTIFACTS="### Inspecting Test Artifacts\nTo inspect your test artifacts, follow these steps:\n\n1. Install **ORAS** (see the [ORAS installation guide](https://oras.land/docs/installation)).\n2. Download artifacts with the following commands:\n\n\`\`\`sh\nmkdir -p oras-artifacts\ncd oras-artifacts\noras pull $OCI_STORAGE_CONTAINER\n\`\`\`\n\n"
+        # Store the content of the test results analysis (from a previous step) in a variable
+        TEST_RESULTS_ANALYSIS=$(cat analysis.md || echo "\<not enabled\>")
 
-        # Combine body components into the final JSON body
-        COMMENT=$(cat <<EOF
-        {
-          "body": "${BODY_HEADER}${BODY_TEST_SUMMARY}${BODY_ARTIFACTS}"
-        }
+        PR_COMMENT=$(cat <<EOF
+        @${PR_AUTHOR}: The following test has ${PIPELINE_RUN_AGGREGATE_STATUS}, say **/retest** to rerun failed tests.
+
+        | PipelineRun Name | Status | Rerun command | Build Log | Test Log |
+        |------------------|--------|---------------|-----------|----------|
+        | \`$TEST_NAME\`    | **$PIPELINE_RUN_AGGREGATE_STATUS** | \`/retest\` | [View Pipeline Log]($BUILD_CONSOLE_URL) | [View Test Logs]($INTEGRATION_TEST_CONSOLE_URL) |
+
+        ### Inspecting Test Artifacts
+        To inspect your test artifacts, follow these steps:
+        1. Install **ORAS** (see the [ORAS installation guide](https://oras.land/docs/installation)).
+        2. Download artifacts with the following commands:
+
+        \`\`\`sh
+        mkdir -p oras-artifacts
+        cd oras-artifacts
+        oras pull $OCI_STORAGE_CONTAINER
+        \`\`\`
+        ### Test results analysis
+        ${TEST_RESULTS_ANALYSIS}
         EOF
         )
+        # Combine body components into the final JSON body
+        REQUEST_DATA=$(jq -n --arg body "${PR_COMMENT}" '{body: $body}')
 
         # Post the comment to GitHub
         RESPONSE=$(curl -s -H "Authorization: token $GITHUB_TOKEN" \
             -H "Content-Type: application/json" \
             -X POST \
-            -d "$COMMENT" \
+            -d "$REQUEST_DATA" \
             "https://api.github.com/repos/$GIT_ORG/$GIT_REPO/issues/$PR_NUMBER/comments")
 
         # Check if the comment was posted successfully
