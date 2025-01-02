@@ -35,6 +35,10 @@ spec:
       description: Get the branch from the fork or upstream repo where the pipeline is executed.
     - name: component-name
       description: The name of the component that is being executed from Konflux.
+    - name: source-artifact
+      description: The Trusted Artifact URI pointing to the artifact with
+        the application source code.
+      type: string
   params:
     - name: SNAPSHOT
       description: The JSON string of the Snapshot under test.
@@ -76,6 +80,10 @@ spec:
           valueFrom:
             fieldRef:
               fieldPath: metadata.annotations['pac.test.appstudio.openshift.io/source-branch']
+        - name: TARGET_BRANCH
+          valueFrom:
+            fieldRef:
+              fieldPath: metadata.annotations['build.appstudio.redhat.com/target_branch']
       script: |
         #!/bin/bash
 
@@ -84,7 +92,15 @@ spec:
         GIT_REVISION=$(jq -r --arg component_name "$KONFLUX_COMPONENT_NAME" '.components[] | select(.name == $component_name) | .source.git.revision' <<< "$SNAPSHOT")
         COMPONENT_CONTAINER_IMAGE=$(jq -r --arg component_name "$KONFLUX_COMPONENT_NAME" '.components[] | select(.name == $component_name) | .containerImage' <<< "$SNAPSHOT")
         PR_AUTHOR="$(curl -s https://api.github.com/repos/${GIT_ORGANIZATION}/${GIT_REPOSITORY}/pulls/${PULL_REQUEST_NUMBER} | jq -r .user.login)"
+        COMPONENT_IMAGE_BASE=$(echo ${COMPONENT_CONTAINER_IMAGE} | cut -d@ -f1 )
 
+        if [[ "$SOURCE_BRANCH" == "$TARGET_BRANCH" ]]; then
+          source_artifact_digest=$(oras manifest fetch --pretty "${COMPONENT_IMAGE_BASE}:${GIT_REVISION}.git" | jq -er ".layers[].digest")
+        else
+          source_artifact_digest=$(oras manifest fetch --pretty "${COMPONENT_IMAGE_BASE}:on-pr-${GIT_REVISION}.git" | jq -er ".layers[].digest")
+        fi 
+
+        echo -n "oci:$COMPONENT_IMAGE_BASE@$source_artifact_digest" > $(results.source-artifact.path)
 
         # In case is coming from /retest event then it's a pull_request
         # if event type is not push and pull_request_number is not empty then is a pull_request
