@@ -144,7 +144,7 @@ spec:
         fi
 
         slcli scan --packages-excluded "${PACKAGES_EXCLUDED_ENUM}" --bsid buildSessionId.txt --path-to-scanner /usr/local/bin/slgoagent \
-          --workspacepath ./ --scm git --scmProvider "${SCM_PROVIDER}" --scmVersion "0" --scmBaseUrl "${REPOSITORY_URL}"
+          --workspacepath ./ --scm git --scmProvider "${SCM_PROVIDER}" --scmVersion "0" --scmBaseUrl "${REPOSITORY_URL}" --disable-token-save
 
         echo -n "$(cat buildSessionId.txt)" > $(results.sealights-bsid.path)
         echo -n "$BUILD_NAME" > $(results.sealights-build-name.path)
