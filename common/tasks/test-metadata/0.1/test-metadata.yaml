@@ -33,6 +33,8 @@ spec:
       description: Will show the source from where a Pull Request was opened. Can be from a fork or upstream.
     - name: source-repo-branch
       description: Get the branch from the fork or upstream repo where the pipeline is executed.
+    - name: target-repo-branch
+      description: The target branch value from the Pull Request or the current branch value in case of push event. 
     - name: component-name
       description: The name of the component that is being executed from Konflux.
   params:
@@ -76,6 +78,12 @@ spec:
           valueFrom:
             fieldRef:
               fieldPath: metadata.annotations['pac.test.appstudio.openshift.io/source-branch']
+        # This value refers to the target branch value in 'pull-request' events and branch value in 'push' events.
+        # E.g. for push event to 'main' branch this will have the value 'main'. For PR event that targets 'main' branch, this will be also 'main'.
+        - name: TARGET_REPO_BRANCH
+          valueFrom:
+            fieldRef:
+              fieldPath: metadata.annotations['pac.test.appstudio.openshift.io/branch']
       script: |
         #!/bin/bash
 
@@ -104,7 +112,8 @@ spec:
                 "commit_sha": "$GIT_REVISION",
                 "event_type": "$EVENT_TYPE",
                 "source_repo_url": "$SOURCE_REPO_URL",
-                "source_repo_branch": "$SOURCE_REPO_BRANCH"
+                "source_repo_branch": "$SOURCE_REPO_BRANCH",
+                "target_repo_branch": "$TARGET_REPO_BRANCH"
             }
         }
         EOF
@@ -127,6 +136,7 @@ spec:
         echo "  COMPONENT_CONTAINER_IMAGE: $COMPONENT_CONTAINER_IMAGE"
         echo "  SOURCE_REPO_URL: $SOURCE_REPO_URL"
         echo "  SOURCE_REPO_BRANCH: $SOURCE_REPO_BRANCH"
+        echo "  TARGET_REPO_BRANCH: $TARGET_REPO_BRANCH"
 
         # Write each environment variable to its respective result file
         echo -n "$EVENT_TYPE" > $(results.test-event-type.path)
@@ -140,4 +150,5 @@ spec:
         echo -n "$JOB_SPEC" > $(results.job-spec.path)
         echo -n "$SOURCE_REPO_URL" > $(results.source-repo-url.path)
         echo -n "$SOURCE_REPO_BRANCH" > $(results.source-repo-branch.path)
+        echo -n "$TARGET_REPO_BRANCH" > $(results.target-repo-branch.path)
         echo -n "$KONFLUX_COMPONENT_NAME" > $(results.component-name.path)

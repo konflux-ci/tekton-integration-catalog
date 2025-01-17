@@ -48,6 +48,12 @@ spec:
           valueFrom:
             fieldRef:
               fieldPath: metadata.annotations['pac.test.appstudio.openshift.io/source-branch']
+        # This value refers to the target branch value in 'pull-request' events and branch value in 'push' events.
+        # E.g. for push event to 'main' branch this will have the value 'main'. For PR event that targets 'main' branch, this will be also 'main'.
+        - name: TARGET_REPO_BRANCH
+          valueFrom:
+            fieldRef:
+              fieldPath: metadata.annotations['pac.test.appstudio.openshift.io/branch']
       script: |
         #!/bin/bash
 
@@ -82,6 +88,7 @@ spec:
                 "source_repo_url": "$SOURCE_REPO_URL",
                 "source_repo_org": "$SOURCE_REPO_ORG",
                 "source_repo_branch": "$SOURCE_REPO_BRANCH",
+                "target_repo_branch": "$TARGET_REPO_BRANCH",
                 "url": "$GIT_URL",
                 "revision": "$GIT_REVISION"
             }
