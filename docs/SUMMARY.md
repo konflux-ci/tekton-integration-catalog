@@ -20,3 +20,4 @@
     - [yamllint](./qe-available-tasks/linters/yamllint.md)
 - Sealights
     - [Sealights Golang Instrumentation](./qe-available-tasks/sealights/go-instrumentation/go-instrumentation.md)
+    - [Sealights Python Instrumentation](./qe-available-tasks/sealights/python-instrumentation/python-instrumentation.md)
