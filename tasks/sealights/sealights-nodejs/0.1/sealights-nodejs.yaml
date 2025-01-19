@@ -146,7 +146,7 @@ spec:
           npx slnodejs config --appname "${COMPONENT}" --branch "${BRANCH}" --build "${BUILD_NAME}" --token "${SEALIGHTS_TOKEN}"
         fi
         # Scans all .js files that are not in the --excludedpaths step above and reports scan to sealights.
-        cd backend && npx slnodejs scan --buildsessionidfile buildSessionId --scm git --excludedpaths "${PATHS_EXCLUDED_ENUM}" --build "${BUILD_NAME}" --es6Modules --workspacepath . --token "${SEALIGHTS_TOKEN}"
+        cd backend && npx slnodejs scan --buildsessionidfile buildSessionId --scm git --excludedpaths "${PATHS_EXCLUDED_ENUM}" --build "${BUILD_NAME}" --es6Modules --workspacepath . --token "${SEALIGHTS_TOKEN}" && cd ..
         # Stores results to be used in future tasks for testing.
         echo -n "$(cat buildSessionId)" > $(results.sealights-bsid.path)
         echo -n "$BUILD_NAME" > $(results.sealights-build-name.path)
