@@ -1,0 +1,53 @@
+apiVersion: tekton.dev/v1
+kind: Pipeline
+metadata:
+ name: deloy-fbc
+spec:
+ params:
+   - description: Snapshot of the application
+     name: SNAPSHOT
+     type: string
+   - description: Name of the package from a FBC fragment to detemine a channel name (Optional)
+     name: PACKAGE_NAME
+     default: ""
+     type: string
+   - description: Name of the channel that is used to derive an unreleased bundle (Optional)
+     name: CHANNEL_NAME
+     default: ""
+     type: string
+ tasks:
+   - name: parse-metadata
+     taskRef:
+       resolver: git
+       params:
+         - name: url
+           value: https://github.com/konflux-ci/integration-examples
+         - name: revision
+           value: main
+         - name: pathInRepo
+           value: tasks/test_metadata.yaml
+     params:
+       - name: SNAPSHOT
+         value: $(params.SNAPSHOT)
+   - name: provision-cluster-and-deploy-fbc
+     runAfter:
+       - parse-metadata
+     taskSpec:
+       steps:
+         - name: get-unreleased-bundle
+           ref:
+             resolver: git
+             params:
+               - name: url
+                 value: https://github.com/asergienk/tekton-integration-catalog
+               - name: revision
+                 value: CVP-4397
+               - name: pathInRepo
+                 value: stepactions/bundles/get-unreleased-bundle/0.1/get-unreleased-bundle.yaml
+           params:
+             - name: fbcFragment
+               value: "$(tasks.parse-metadata.results.component-container-image)"
+             - name: packageName
+               value: $(params.PACKAGE_NAME)
+             - name: channelName
+               value: $(params.CHANNEL_NAME)
