@@ -1,0 +1,59 @@
+---
+kind: CronJob
+apiVersion: batch/v1
+metadata:
+  name: periodic-integration-test
+  namespace: rhtap-build-tenant
+spec:
+  schedule: '0 0 */2 * *'
+  jobTemplate:
+    spec:
+      template:
+        spec:
+          containers:
+            - name: trigger-e2e-scenario
+              image: 'quay.io/konflux-ci/appstudio-utils:latest'
+              imagePullPolicy: Always
+              command:
+                - /bin/bash
+                - '-c'
+              args:
+                - |
+                  #!/bin/bash
+                  set -euo pipefail
+
+                  export KONFLUX_SCENARIO_NAME="<replace-with-scenario-name>"
+                  export KONFLUX_TENANT_NAME="<replace-with-tenant-name>"
+                  export KONFLUX_APPLICATION_NAME="<replace-with-konflux-application-name>"
+                  export KONFLUX_COMPONENT_NAME="<replace-with-konflux-component-name>"
+
+                  echo -e "[INFO] Fetching latest snapshot from ${KONFLUX_TENANT_NAME} related to push events."
+
+                  LATEST_SNAPSHOT=$(kubectl get snapshots -n "${KONFLUX_TENANT_NAME}" -o json | \
+                      jq --arg application "$KONFLUX_APPLICATION_NAME" --arg component "$KONFLUX_COMPONENT_NAME" -r '
+                          .items
+                          | map(select(
+                              .metadata.labels."appstudio.openshift.io/application" == $application and
+                              .metadata.labels."appstudio.openshift.io/component" == $component and
+                              .metadata.labels."pac.test.appstudio.openshift.io/event-type" == "push" and
+                              (.status.conditions // [] | map(select(
+                                  .type == "AutoReleased" and
+                                  .reason == "AutoReleased" and
+                                  .status == "True"
+                                  ))
+                              | length > 0)
+                              ))
+                          | sort_by(.metadata.creationTimestamp) | last | .metadata.name')
+
+                  if [[ -z "${LATEST_SNAPSHOT}" || "${LATEST_SNAPSHOT}" == "null" ]]; then
+                    echo -e "[ERROR] No valid snapshot found. The job will not be triggered."
+                    exit 1
+                  fi
+
+                  echo -e "[INFO] Triggering test scenario ${KONFLUX_SCENARIO_NAME} from snapshot ${LATEST_SNAPSHOT}."
+
+                  kubectl -n "${KONFLUX_TENANT_NAME}" label snapshot "${LATEST_SNAPSHOT}" test.appstudio.openshift.io/run="${KONFLUX_SCENARIO_NAME}"
+
+                  echo "[INFO] Integration Service E2E tests successfully triggered!"
+          serviceAccountName: appstudio-pipeline
+          serviceAccount: appstudio-pipeline

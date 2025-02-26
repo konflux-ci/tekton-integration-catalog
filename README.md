@@ -41,6 +41,13 @@ The [`scripts`](./scripts/) directory contains reusable scripts that assist with
 - **📌 Adding a New Script**:
   To add a new script, create a `.sh` file in the appropriate subdirectory (e.g., `pre-pipeline-scripts`, `post-pipeline-scripts`). Ensure the script is well-documented and easy to use, with a clear purpose and example usage.
 
+### 📖 Samples
+
+The [`samples`](./samples/) directory contains Konflux CI samples that can be reused and assist to define Integration tests.
+
+- **📌 Adding a Sample**:
+  To add a new sample, create a `.md` file in the appropriate subdirectory (e.g., `eaas`, `periodic-integration-tests`) and the samples you wish. Ensure the sample is well-documented with a clear purpose.
+
 ## 🔢 Versioning
 
 We follow a **versioning strategy** to ensure updates don’t break existing workflows.
