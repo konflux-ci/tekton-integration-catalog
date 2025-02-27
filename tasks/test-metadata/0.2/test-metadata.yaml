@@ -12,12 +12,18 @@ spec:
   results:
     - name: job-spec
       description: The konflux ci job spec metadata generated.
+    - name: prefetch-artifact
+      description: The OCI artifact that contains the prefetch dependencies generated during the build phase.
   params:
     - name: SNAPSHOT
       description: The JSON string of the Snapshot under test.
     - name: test-name
       type: string
       description: The name of the test being executed.
+    - name: enable-prefetch
+      type: string
+      description: Flag to indicate whether to retrieve the OCI artifact associated with the prefetching operation from the build phase. If set to "true", the artifact's digest will be fetched.
+      default: "false"
   steps:
     - name: test-metadata
       image: quay.io/konflux-qe-incubator/konflux-qe-tools:latest
@@ -25,6 +31,8 @@ spec:
       env:
         - name: SNAPSHOT
           value: $(params.SNAPSHOT)
+        - name: ENABLE_PREFETCH
+          value: $(params.enable-prefetch)
         - name: EVENT_TYPE
           valueFrom:
             fieldRef:
@@ -106,3 +114,18 @@ spec:
 
         # Write job-spec to result file
         echo -n "$JOB_SPEC" > $(results.job-spec.path)
+
+        if [ "$ENABLE_PREFETCH" == "true" ]; then
+
+          cosign download attestation "$COMPONENT_CONTAINER_IMAGE" > cosign_metadata.json
+
+          CACHI2_SOURCE_ARTIFACT="$(jq -r \
+            '.payload | @base64d | fromjson | .predicate.buildConfig.tasks[] |
+            select(.name == "prefetch-dependencies") | .results[] | select(.name == "CACHI2_ARTIFACT") | .value' \
+            cosign_metadata.json)"
+          
+          echo "[INFO] Cachi2 source artifact: $CACHI2_SOURCE_ARTIFACT"
+
+          echo -n "$CACHI2_SOURCE_ARTIFACT" > $(results.prefetch-artifact.path)
+          
+        fi

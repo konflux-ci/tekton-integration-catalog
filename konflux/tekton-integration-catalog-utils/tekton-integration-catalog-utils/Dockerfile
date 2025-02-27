@@ -1,12 +1,14 @@
 # Builder
-FROM registry.redhat.io/ubi9/go-toolset@sha256:c9c0129bff8e94b9e23e9e4a1ebb5b932cccc24e064940a792bdc002da512d2a AS builder
+FROM registry.redhat.io/ubi9/go-toolset@sha256:703937e152d049e62f5aa8ab274a4253468ab70f7b790d92714b37cf0a140555 AS builder
 
 USER root
 
 # renovate: datasource=repology depName=homebrew/openshift-cli
 ARG OC_VERSION=4.15.9
 # renovate: datasource=github-releases depName=openshift/rosa
-ARG ROSA_VERSION=v1.2.47
+ARG ROSA_VERSION=v1.2.50
+# renovate: datasource=github-releases depName=openshift-online/ocm-cli
+ARG OCM_VERSION=v1.0.3
 # renovate: datasource=github-releases depName=stedolan/jq
 ARG JQ_VERSION=1.6
 # renovate: datasource=github-releases depName=mikefarah/yq
@@ -21,7 +23,7 @@ ARG SHELLCHECK_VERSION=stable
 # renovate: datasource=github-releases depName=golangci/golangci-lint
 ARG GOLANGCI_LINT_VERSION="v1.59.0"
 
-ARG LEAKTK_TAG="v0.0.13"
+ARG LEAKTK_VERSION="0.0.16"
 
 RUN curl -L "https://github.com/sigstore/cosign/releases/download/${COSIGN_VERSION}/cosign-linux-amd64" -o /usr/local/bin/cosign && \
     chmod +x /usr/local/bin/cosign && \
@@ -46,6 +48,11 @@ RUN curl -L "https://mirror.openshift.com/pub/openshift-v4/x86_64/clients/rosa/$
     mv rosa /usr/local/bin && \
     rosa version
 
+RUN curl -Lso ocm https://github.com/openshift-online/ocm-cli/releases/download/${OCM_VERSION}/ocm-linux-amd64 && \
+    chmod +x ocm && \
+    mv ocm /usr/local/bin && \
+    ocm version
+
 RUN curl -L "https://github.com/stedolan/jq/releases/download/jq-${JQ_VERSION}/jq-linux64" -o /usr/local/bin/jq  && \
     chmod +x /usr/local/bin/jq && \
     jq --version
@@ -53,6 +60,7 @@ RUN curl -L "https://github.com/stedolan/jq/releases/download/jq-${JQ_VERSION}/j
 RUN curl -L "https://github.com/mikefarah/yq/releases/download/v${YQ_VERSION}/yq_linux_amd64" -o /usr/local/bin/yq && \
     chmod +x /usr/local/bin/yq && \
     yq --version
+
 RUN curl -LO "https://github.com/oras-project/oras/releases/download/v${ORAS_VERSION}/oras_${ORAS_VERSION}_linux_amd64.tar.gz" && \
     mkdir -p oras-install/ && \
     tar -zxf oras_${ORAS_VERSION}_*.tar.gz -C oras-install/ && \
@@ -63,15 +71,18 @@ RUN curl -LO "https://github.com/oras-project/oras/releases/download/v${ORAS_VER
 RUN curl -L https://github.com/tektoncd/cli/releases/download/v0.32.2/tkn_0.32.2_Linux_x86_64.tar.gz | tar -xz --no-same-owner -C /usr/local/bin/ tkn && \
     tkn version
 
-ENV GOBIN=/usr/local/bin/
-RUN git clone --depth 1 --branch "${LEAKTK_TAG}" https://github.com/leaktk/scanner && cd scanner && make build && mv leaktk-scanner /usr/local/bin/
+RUN curl -L "https://github.com/leaktk/scanner/releases/download/v${LEAKTK_VERSION}/leaktk-scanner-${LEAKTK_VERSION}-linux-x86_64.tar.xz" | tar -xJf - && \
+    mv leaktk-scanner /usr/local/bin && \
+    leaktk-scanner version
 
 # Removes files found in leaktk-scanner --kind Files scans
 # https://github.com/leaktk/hack/commit/b41569b3bbed867eabd15649f6650ae506c8cfc5
 RUN curl -LO https://raw.githubusercontent.com/leaktk/hack/b41569b3bbed867eabd15649f6650ae506c8cfc5/leaktk-remove-files && chmod +x leaktk-remove-files && mv leaktk-remove-files /usr/local/bin/
 
 # Runnable
-FROM registry.access.redhat.com/ubi9/ubi:9.3-1610@sha256:66233eebd72bb5baa25190d4f55e1dc3fff3a9b77186c1f91a0abdb274452072
+FROM registry.redhat.io/ubi9/ubi@sha256:d342aa80781bf41c4c73485c41d8f1e2dbc40ee491633d9cafe787c361dd44ff
+
+LABEL konflux.additional-tags="latest"
 
 ENV HOME=/home/tool-box
 
@@ -84,6 +95,7 @@ RUN dnf -y update && \
 COPY --from=builder /usr/local/bin/oc /usr/local/bin/oc
 COPY --from=builder /usr/local/bin/kubectl /usr/local/bin/kubectl
 COPY --from=builder /usr/local/bin/rosa /usr/local/bin/rosa
+COPY --from=builder /usr/local/bin/ocm /usr/local/bin/ocm
 COPY --from=builder /usr/local/bin/jq /usr/local/bin/jq
 COPY --from=builder /usr/local/bin/yq /usr/local/bin/yq
 COPY --from=builder /usr/local/bin/oras /usr/local/bin/oras

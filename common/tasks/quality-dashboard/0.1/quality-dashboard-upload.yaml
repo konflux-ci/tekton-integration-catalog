@@ -30,6 +30,10 @@ spec:
     - name: test-event-type
       type: string
       description: Indicates if the job is triggered by a Pull Request or a Push event.
+    - name: e2e-report-file
+      type: string
+      description: Indicates the file name that contain the Junit contain from ginkgo tests.
+      default: "e2e-report.xml"
   steps:
     - name: quality-dashboard-metadata
       image: quay.io/konflux-qe-incubator/konflux-qe-tools:latest
@@ -47,6 +51,8 @@ spec:
           valueFrom:
             fieldRef:
               fieldPath: metadata.labels['test.appstudio.openshift.io/scenario']
+        - name: E2E_REPORT_FILE
+          value: $(params.e2e-report-file)
       script: |
         #!/bin/bash
 
@@ -80,25 +86,26 @@ spec:
         }
         EOF
         )
-        
+
         # Write the metadata JSON to a file
         echo "$METADATA_JSON" > metadata.json
 
         # Debug output: display the content of metadata.json
         echo "[INFO] metadata.json content:"
         cat metadata.json
-        
+
         # Pull test artifacts from the ORAS container
         oras pull "$(params.oci-container)"
-        
-        # Look for report files (either "qd-report" or "e2e-report")
-        QD_REPORT_FILENAME=$(find ./ -name "qd-report*" | head -1)
+
+        QD_REPORT_FILENAME=$(find ./ -name "${E2E_REPORT_FILE}" | head -1)
+
         if [ -z "$QD_REPORT_FILENAME" ]; then
-            QD_REPORT_FILENAME=$(find ./ -name "e2e-report*" | head -1)
+            echo "[INFO] No reports found with the specified name. Quality dashboard supports only to upload with reports"
+            exit 0
         fi
 
         echo "[INFO] Report filename: $QD_REPORT_FILENAME"
-        
+
         # Upload the metadata and report to the quality dashboard
         curl -F "metadata=@./metadata.json" \
           -F "xunit=@$QD_REPORT_FILENAME" \
