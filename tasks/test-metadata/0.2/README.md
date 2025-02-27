@@ -10,6 +10,7 @@ The task accepts the following parameters:
 
 - **SNAPSHOT**: A JSON string representing the Snapshot under test. This JSON contains detailed information about the components and their sources.
 - **test-name**: A string representing the name of the test being executed.
+- **enable-prefetch**: Flag to indicate whether to retrieve the OCI artifact associated with the prefetching operation from the build phase. If set to true, the artifact's digest will be fetched.
 
 ### Example of SNAPSHOT
 
@@ -82,7 +83,8 @@ The task produces the following results:
 
   - **git.revision**: The Git branch from which the test pipeline is originating. This can be from a fork or the original repository.
     - **Description**: This result identifies the source repository branch, helping to trace back the origin of the code being tested. It is useful for verifying the source of the changes and ensuring they come from a trusted repository.
-
+- **prefetch-artifact**: The OCI artifact containing the prefetch dependencies generated during the build phase, if the 'enable-prefetch' parameter is enabled
+  
 ## Usage
 
 To effectively utilize the `test-metadata` task in a Tekton Pipeline, you can follow the example provided below. This example demonstrates how to define a Tekton pipeline that includes the `test-metadata` task, ensuring that all necessary parameters are specified correctly.

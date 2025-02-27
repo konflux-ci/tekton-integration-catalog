@@ -91,8 +91,7 @@ spec:
         GIT_URL=$(jq -r --arg component_name "$KONFLUX_COMPONENT_NAME" '.components[] | select(.name == $component_name) | .source.git.url' <<< "$SNAPSHOT")
         GIT_REVISION=$(jq -r --arg component_name "$KONFLUX_COMPONENT_NAME" '.components[] | select(.name == $component_name) | .source.git.revision' <<< "$SNAPSHOT")
         COMPONENT_CONTAINER_IMAGE=$(jq -r --arg component_name "$KONFLUX_COMPONENT_NAME" '.components[] | select(.name == $component_name) | .containerImage' <<< "$SNAPSHOT")
-        PR_AUTHOR="$(curl -s https://api.github.com/repos/${GIT_ORGANIZATION}/${GIT_REPOSITORY}/pulls/${PULL_REQUEST_NUMBER} | jq -r .user.login)"
-
+        PR_AUTHOR="$(curl -s https://api.github.com/repos/${GIT_ORGANIZATION}/${GIT_REPOSITORY}/pulls/${PULL_REQUEST_NUMBER} | jq -r '.user.login // ""')"
 
         # In case is coming from /retest event then it's a pull_request
         # if event type is not push and pull_request_number is not empty then is a pull_request
@@ -105,7 +104,7 @@ spec:
             "container_image": "$COMPONENT_CONTAINER_IMAGE",
             "konflux_component": "$KONFLUX_COMPONENT_NAME",
             "git": {
-                "pull_request_number": $PULL_REQUEST_NUMBER,
+                "pull_request_number": ${PULL_REQUEST_NUMBER:-0},
                 "pull_request_author": "$PR_AUTHOR",
                 "git_org": "$GIT_ORGANIZATION",
                 "git_repo": "$GIT_REPOSITORY",

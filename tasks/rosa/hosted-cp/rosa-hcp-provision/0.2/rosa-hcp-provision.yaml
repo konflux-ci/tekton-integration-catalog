@@ -46,7 +46,7 @@ spec:
         secretName: "$(params.konflux-test-infra-secret)"
   steps:
     - name: provision
-      image: quay.io/konflux-qe-incubator/konflux-qe-tools:latest
+      image: quay.io/konflux-ci/tekton-integration-catalog/utils:latest
       onError: continue
       volumeMounts:
         - name: konflux-test-infra-volume
@@ -90,31 +90,27 @@ spec:
               rosa --region "$REGION" describe cluster --cluster="$CLUSTER_NAME"
           }
 
+          wait_for() {
+              local command="${1}"
+              local description="${2}"
+              local timeout="${3}"
+              local interval="${4}"
+
+              printf "Waiting for %s for %s...\n" "${description}" "${timeout}"
+              timeout --foreground "${timeout}" bash -c "
+              until ${command}
+              do
+                  printf \"Waiting for %s... Trying again in ${interval}s\n\" \"${description}\"
+                  sleep ${interval}
+              done
+              " || return 1
+              printf "%s finished!\n" "${description}"
+          }
+
           # Even the cluster is shown ready on ocm side, and the cluster operators are available, some of the cluster operators are still progressing.
           check_clusteroperators() {
-              local STATUS_LOG="co_status.log"
-              local max_attempts=10
-              local attempt
-              echo "[INFO] Checking cluster operators' status..."
-              # retrying to get clusteroperator. Makes sense in case master nodes are not ready
-              for attempt in $(seq 1 $max_attempts); do
-                  echo "[INFO] Attempt $attempt/$max_attempts"
-                  if kubectl get clusteroperators -A > "$STATUS_LOG" 2>&1; then
-                      cat "$STATUS_LOG"
-                      echo "[INFO] Cluster operators are accessible."
-                      break
-                  fi
-                  echo "[INFO] Attempt $attempt failed, retrying in 10 seconds..."
-                  sleep 10
-              done
-              if [ $attempt -eq $max_attempts ]; then
-                  echo "[ERROR] All attempts to access cluster operators failed. Check $STATUS_LOG for details."
-                  cat "$STATUS_LOG"
-                  return 1
-              fi
-              echo "[INFO] Waiting for cluster operators to be in 'Progressing=false' state..."
-              kubectl wait clusteroperators --all --for=condition=Progressing=false --timeout=60m > "$STATUS_LOG" 2>&1
-              cat "$STATUS_LOG"
+              wait_for "kubectl get clusteroperators -A" "cluster operators to be accessible" "2m" "10"
+              echo "[INFO] Cluster operators are accessible."
           }
 
           get_hcp_full_version() {
@@ -125,6 +121,14 @@ spec:
                   echo "Failed to get the HCP full version of $OCP_VERSION" >&2
                   exit 1
               fi
+          }
+
+          check_cluster_health_endpoint() {
+              cluster_id=$(ocm get clusters --parameter search="name like '$CLUSTER_NAME'" | jq -r '.items[].id')
+              # 1. Wait for cluster to be reported as healthy
+              # 2. If the attempt fails, print out the list of cluster operators, which should provide a better overview about the current status of the cluster 
+              wait_for "ocm get subs --parameter search=\"cluster_id = '$cluster_id'\" | jq -r '.items[0].metrics[0].health_state' | grep -E ^healthy || (kubectl get clusteroperators -A && false)" \
+                  "cluster to be reported as healthy" "60m" "60"
           }
 
           deploy_cluster() {
@@ -184,6 +188,7 @@ spec:
                   exit 1
               fi
               check_clusteroperators
+              check_cluster_health_endpoint
           }
 
           deploy_cluster
