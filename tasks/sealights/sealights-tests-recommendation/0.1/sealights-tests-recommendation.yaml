@@ -1,0 +1,73 @@
+apiVersion: tekton.dev/v1
+kind: Task
+metadata:
+  name: sealights-tests-recommendation
+  labels:
+    konflux-ci/sealights: "true"
+    app.kubernetes.io/version: "0.1"
+  annotations:
+    tekton.dev/pipelines.minVersion: 0.12.1
+    tekton.dev/tags: konflux
+spec:
+  description: >-
+    This Tekton task retrieves test recommendations from Sealights to optimize test execution.
+  results:
+    - name: tests-recomendation-list
+      type: string
+      description: "A JSON array containing the list of tests recommended by Sealights."
+    - name: run-test-stage
+      type: string
+      description: "Indicates whether the test stage should be executed ('true') or skipped ('false') based on Sealights recommendations."
+  params:
+    - name: sealights-domain
+      default: "redhat.sealights.co"
+      type: string
+      description: "The Sealights API server domain used for fetching test recommendations."
+    - name: sealights-bsid
+      type: string
+      description: "The Build Session ID (BSID) assigned to a specific build in Sealights. This is required for fetching test recommendations."
+      default: ""
+    - name: test-stage
+      type: string
+      description: >-
+        Specifies the testing phase (e.g., 'e2e-tests') during which the test recommendations are retrieved. 
+        This helps in identifying and executing relevant tests based on Sealights analytics.
+  volumes:
+    - name: sealights-credentials
+      secret:
+        secretName: sealights-credentials
+  stepTemplate:
+    volumeMounts:
+      - name: sealights-credentials
+        mountPath: /usr/local/sealights-credentials
+  steps:
+    - name: sealights-go-instrumentation
+      image: quay.io/konflux-ci/tekton-integration-catalog/utils:latest
+      env:
+        - name: SEALIGHTS_DOMAIN
+          value: $(params.sealights-domain)
+        - name: SEALIGHTS_BUILD_SESSION_ID
+          value: $(params.sealights-bsid)
+        - name: TEST_STAGE
+          value: $(params.test-stage)
+      script: |
+        #!/bin/bash
+        set -euo pipefail
+
+        export SEALIGHTS_AGENT_TOKEN="$(cat /usr/local/sealights-credentials/token)"
+
+        TEST_RECOMMENDATION_REQUEST=$(curl -X GET "https://$SEALIGHTS_DOMAIN/sl-api/v1/tia/builds/$SEALIGHTS_BUILD_SESSION_ID/test-stages/$TEST_STAGE/recommendations" \
+          -H "Authorization: Bearer $SEALIGHTS_AGENT_TOKEN" \
+          -H "Content-Type: application/json")
+
+        if [ "$(echo "$TEST_RECOMMENDATION_REQUEST" | jq '.data.list | length')" -gt 0 ]; then
+          echo "[INFO] Based on $SEALIGHTS_BUILD_SESSION_ID BSID, Sealights recommends running the following tests:"
+          echo "$TEST_RECOMMENDATION_REQUEST" | jq '.data.list'
+
+          echo "true" > $(results.run-test-stage.path)
+        else
+          echo "[INFO] Based on $SEALIGHTS_BUILD_SESSION_ID BSID, Sealights recommends skipping tests."
+          echo "false" > $(results.run-test-stage.path)
+        fi
+
+        echo "$TEST_RECOMMENDATION_REQUEST" | jq '.data.list' > $(results.tests-recomendation-list.path)
