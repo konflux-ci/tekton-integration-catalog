@@ -1,0 +1,34 @@
+apiVersion: tekton.dev/v1
+kind: Pipeline
+metadata:
+ name: deloy-fbc
+spec:
+ params:
+   - description: Snapshot of the application
+     name: SNAPSHOT
+     type: string
+   - description: Name of the package from a FBC fragment to detemine a channel name (Optional)
+     name: PACKAGE_NAME
+     default: ""
+     type: string
+   - description: Name of the channel that is used to derive an unreleased bundle (Optional)
+     name: CHANNEL_NAME
+     default: ""
+     type: string
+ tasks:
+   - name: provision-cluster-and-deploy-fbc
+     taskSpec:
+       steps:
+         - name: pick-cluster-arch
+           ref:
+             resolver: git
+             params:
+               - name: url
+                 value: https://github.com/asergienk/tekton-integration-catalog
+               - name: revision
+                 value: CVP-4399
+               - name: pathInRepo
+                 value: stepactions/bundles/pick-cluster-arch/0.1/pick-cluster-arch.yaml
+           params:             
+             - name: bundleImage
+               value: "registry.redhat.io/container-native-virtualization/hco-bundle-registry-rhel9@sha256:5a75810bdebb97c63cad1d25fe0399ed189b558b50ee6dc1cb61f75f9116aa89"
