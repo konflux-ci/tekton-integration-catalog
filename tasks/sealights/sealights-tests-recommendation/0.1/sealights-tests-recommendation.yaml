@@ -41,7 +41,7 @@ spec:
       - name: sealights-credentials
         mountPath: /usr/local/sealights-credentials
   steps:
-    - name: sealights-go-instrumentation
+    - name: sealights-whitelist
       image: quay.io/konflux-ci/tekton-integration-catalog/utils:latest
       env:
         - name: SEALIGHTS_DOMAIN
