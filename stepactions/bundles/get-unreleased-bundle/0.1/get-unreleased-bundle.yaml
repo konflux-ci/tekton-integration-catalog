@@ -1,0 +1,105 @@
+apiVersion: tekton.dev/v1beta1
+kind: StepAction
+metadata:
+  name: get-unreleased-bundle
+spec:
+  description: >-
+    This StepAction retrieves the highest bundle version from a specified package and channel in the provided FBC fragment.
+    If package name and/or channel name are not specified, the step will determine the default package and/or channel name.
+    Default package name determination:
+      * If there is only one 'olm.package', it's name is returned
+      * If multiple 'olm.package' entries contain unreleased bundles, user input is required; the PACKAGE_NAME parameter must be set by the user
+    Default Channel Name Determination:
+      * The default channel name corresponds to the 'defaultChannel' entry of the selected package
+    The StepAction checks whether the highest bundle version is unreleased, specifically, not present in the Red Hat production Index Image (registry.redhat.io/redhat/redhat-operator-index).
+    If the bundle is unreleased, the StepAction returns it.
+  image: quay.io/konflux-ci/konflux-test:v1.4.17@sha256:36d3a2a6f4f96df41fc56c7c1c5a11c5d1c621f0f767607fda3f83cc21f638cc
+  params:
+    - name: fbcFragment
+      type: string
+      description: A FBC fragment image.
+    - name: packageName
+      type: string
+      description: Optional. An OLM package name present in the fragment or leave it empty so the step will determine the default package name as described above.
+      default: ""
+    - name: channelName
+      type: string
+      description: Optional. An OLM channel name or leave it empty so the step will determine the default channel name as described above.
+      default: ""
+  results:
+    - name: unreleasedBundle
+      description: The name of the bundle that is not in registry.redhat.io/redhat/redhat-operator-index.
+  env:
+    - name: FBC_FRAGMENT
+      value: $(params.fbcFragment)
+    - name: PACKAGE_NAME
+      value: $(params.packageName)
+    - name: CHANNEL_NAME
+      value: $(params.channelName)
+  script: |
+    #!/usr/bin/env bash
+    set -euo pipefail
+    . /utils.sh
+
+    if [ -z "$FBC_FRAGMENT" ]; then
+      echo "Error: FBC_FRAGMENT parameter is required." >&2
+      exit 1
+    fi
+
+    echo "Retrieving unreleased bundles..."
+    if ! unreleased_bundles=$(get_unreleased_bundles -i "$FBC_FRAGMENT"); then
+      echo "Could not get unreleased bundle images from the fragment. Make sure you have ImagePullCredentials for registry.redhat.io" >&2
+      exit 1
+    fi
+
+    if [ -z "${unreleased_bundles}" ]; then
+      echo "No unreleased bundles found. Exiting."
+      exit 0
+    fi
+
+    echo "Unreleased bundles found: $unreleased_bundles"
+
+    # Render the FBC fragment
+    if ! RENDER_OUT_FBC=$(render_opm -t "$FBC_FRAGMENT"); then
+      echo "Failed to render the FBC fragment" >&2
+      exit 1
+    fi
+
+    # Determine PACKAGE_NAME if not provided
+    if [ -z "$PACKAGE_NAME" ]; then
+      echo "Checking package association of unreleased bundles..."
+      package_image_map=$(group_bundle_images_by_package "$RENDER_OUT_FBC" "$unreleased_bundles")
+      echo "Package-image map: $package_image_map"
+      package_count=$(echo "$package_image_map" | jq 'keys | length')
+
+      if [[ "$package_count" -gt 1 ]]; then
+        echo "Error: Multiple packages detected. User must specify PACKAGE_NAME."
+        exit 1
+      fi
+
+      PACKAGE_NAME=$(echo "$package_image_map" | jq -r 'keys[0]')
+    fi
+    echo "Using package: $PACKAGE_NAME"
+
+    # Determine CHANNEL_NAME if not provided
+    if [ -z "$CHANNEL_NAME" ]; then
+      CHANNEL_NAME=$(get_channel_from_catalog "$RENDER_OUT_FBC" "$PACKAGE_NAME")
+      if [ -z "$CHANNEL_NAME" ]; then
+        echo "Failed to determine a default channel for package '$PACKAGE_NAME'" >&2
+        exit 1
+      fi
+    fi
+    echo "Using channel: $CHANNEL_NAME"
+
+    if ! highest_bundle=$(get_highest_bundle_version "$RENDER_OUT_FBC" "$PACKAGE_NAME" "$CHANNEL_NAME"); then
+      echo "Failed to determine a highest bundle version for package '$PACKAGE_NAME' and channel '$CHANNEL_NAME'" >&2
+      exit 1
+    fi
+    echo "Highest bundle: $highest_bundle"
+
+    if echo "$unreleased_bundles" | grep -qFx "$highest_bundle"; then
+      echo "The highest bundle ($highest_bundle) is in the unreleased bundles list."
+      echo "$highest_bundle" > $(step.results.unreleasedBundle.path)
+    else
+      echo "Warning: The highest bundle ($highest_bundle) is NOT in the unreleased bundles list. Skipping check."
+    fi
