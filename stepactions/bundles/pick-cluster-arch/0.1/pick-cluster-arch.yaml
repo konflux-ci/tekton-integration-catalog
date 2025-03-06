@@ -1,0 +1,53 @@
+apiVersion: tekton.dev/v1beta1
+kind: StepAction
+metadata:
+  name: pick-cluster-arch
+spec:
+  description: |
+    This StepAction retrieves the supported architectures for a bundle by checking the "operatorframework.io/arch" labels on the bundle CSV.
+    If arm64 is supported, the StepAction returns it; otherwise, it returns amd64.
+    If neither arm64 nor amd64 are supported, the step exits with an error.
+  image: quay.io/konflux-ci/konflux-test:v1.4.19@sha256:6cecc96de443a5c6b3906091656cef504833797dfd2aa132d1eeabc5483b2fb9
+  params:
+    - name: bundleImage
+      type: string
+      description: A bundle image.
+  results:
+    - name: bundleArch
+      description: A bundle-supported architecture, arm64 or amd64.
+  env:
+    - name: BUNDLE_IMAGE
+      value: "$(params.bundleImage)"
+  script: |
+    #!/usr/bin/env bash
+    set -euo pipefail
+    . /utils.sh
+
+    if [ -z "$BUNDLE_IMAGE" ]; then
+      echo "Error: BUNDLE_IMAGE parameter is required." >&2
+      exit 1
+    fi
+
+    # Run opm render on a bundle image
+    if ! bundle_render_out=$(opm render "$BUNDLE_IMAGE"); then
+      echo "Failed to render the bundle image" >&2
+      exit 1
+    fi
+
+    echo "Retrieving bundle-supported architectures..."
+    if ! arches=$(get_bundle_arches "$bundle_render_out"); then
+      echo "Could not get bundle-supported architectures" >&2
+      exit 1
+    fi
+    
+    # If arm64 is supported, return it; otherwise, return amd64
+    if echo "$arches" | grep -q "^arm64$"; then
+      echo "arm64 architecture is supported"
+      echo "arm64" > $(step.results.bundleArch.path)
+    elif echo "$arches" | grep -q "^amd64$"; then
+      echo "amd64 architecture is supported"
+      echo "amd64" > $(step.results.bundleArch.path)
+    else
+      echo "Neither arm64 nor amd64 is supported."
+      exit 1
+    fi
