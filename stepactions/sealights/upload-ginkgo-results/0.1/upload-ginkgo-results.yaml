@@ -4,15 +4,14 @@ metadata:
   name: upload-ginkgo-results
 spec:
   description: |
-    "This Tekton StepAction uploads Ginkgo test results to Sealights. It creates a Sealights test session,
-     processes the Ginkgo JSON report, sends the test results to Sealights, and then deletes the test session
-     to clean up resources."
-  image: quay.io/konflux-qe-incubator/konflux-qe-tools:latest
+    "This Tekton StepAction uploads Ginkgo test results to Sealights. It creates a Sealights test session
+     (if not provided), processes the Ginkgo JSON report, sends the test results to Sealights, and then deletes the test session."
+  image: quay.io/konflux-ci/tekton-integration-catalog/utils:latest
   params:
     - name: sealights-domain
       default: "redhat.sealights.co"
       type: string
-      description: "The domain name of the Sealights server"
+      description: "The domain name of the Sealights server."
     - name: sealights-bsid
       type: string
       description: "The Sealights Build Session ID (BSID) associated with a build."
@@ -21,15 +20,21 @@ spec:
       type: string
       description: >-
         "The name or identifier of the testing phase (e.g., "integration", "e2e") during which the results
-          are being captured. This helps distinguish the test results within Sealights for better reporting and traceability"
+          are being captured. This helps distinguish the test results within Sealights for better reporting and traceability."
     - name: ginkgo-json-report-path
       type: string
       description: "The file path to the Ginkgo JSON report that contains test results."
+    - name: test-session-id
+      type: string
+      description: "An ID of a test session that was already initialized previously for the Ginkgo tests."
+      default: ""
   env:
     - name: SEALIGHTS_DOMAIN
       value: $(params.sealights-domain)
     - name: SEALIGHTS_BSID
       value: $(params.sealights-bsid)
+    - name: TEST_SESSION_ID
+      value: $(params.test-session-id)
     - name: GINKGO_JSON_REPORT_PATH
       value: $(params.ginkgo-json-report-path)
     - name: TEST_STAGE
@@ -43,18 +48,32 @@ spec:
     #!/bin/bash
     set -euo pipefail
 
-    echo "INFO: Creating Sealights test session..."
-    export TEST_SESSION_ID=$(curl -X POST "https://$SEALIGHTS_DOMAIN/sl-api/v1/test-sessions" \
-      -H "Authorization: Bearer $SEALIGHTS_AGENT_TOKEN" \
-      -H "Content-Type: application/json" \
-      -d '{"labId":"","testStage":"'${TEST_STAGE}'","bsid":"'${SEALIGHTS_BSID}'","sessionTimeout":10000}' | jq -r '.data.testSessionId')
+    cleanup() {
+      if [[ -n "$TEST_SESSION_ID" ]]; then
+        echo "[INFO] Deleting the test session..."
+        curl -s -X DELETE "https://$SEALIGHTS_DOMAIN/sl-api/v1/test-sessions/$TEST_SESSION_ID" \
+          -H "Authorization: Bearer $SEALIGHTS_AGENT_TOKEN" \
+          -H "Content-Type: application/json"
+        echo "[INFO] Test session deleted successfully"
+      fi
+    }
 
-    if [[ -z "$TEST_SESSION_ID" || "$TEST_SESSION_ID" == "null" ]]; then
-      echo -e "[ERROR] Failed to retrieve test session ID"
-      exit 1
+    trap cleanup EXIT
+
+    if [[ -z "$TEST_SESSION_ID" ]]; then
+      echo "INFO: Creating Sealights test session..."
+      TEST_SESSION_ID=$(curl -s -X POST "https://$SEALIGHTS_DOMAIN/sl-api/v1/test-sessions" \
+        -H "Authorization: Bearer $SEALIGHTS_AGENT_TOKEN" \
+        -H "Content-Type: application/json" \
+        -d "{\"labId\":\"\",\"testStage\":\"$TEST_STAGE\",\"bsid\":\"$SEALIGHTS_BSID\",\"sessionTimeout\":10000}" | jq -r '.data.testSessionId')
+
+      if [[ -z "$TEST_SESSION_ID" || "$TEST_SESSION_ID" == "null" ]]; then
+        echo "[ERROR] Failed to retrieve test session ID"
+        exit 1
+      fi
     fi
 
-    echo -e "[INFO] Test session ID: $TEST_SESSION_ID"
+    echo "[INFO] Using test session ID: $TEST_SESSION_ID"
 
     process_test_report() {
       jq -c '.[] | .SpecReports[]' "$GINKGO_JSON_REPORT_PATH" | while IFS= read -r line; do
@@ -72,21 +91,14 @@ spec:
       done | jq -s '.'
     }
 
-    echo -e "[INFO] Processing test report..."
+    echo "[INFO] Processing test report..."
     PROCESSED_JSON=$(process_test_report)
-    echo -e "[INFO] Test report processed successfully"
+    echo "[INFO] Test report processed successfully"
 
     echo "$PROCESSED_JSON" | jq .
 
-    echo -e "[INFO] Sending test results to Sealights..."
+    echo "[INFO] Sending test results to Sealights..."
     curl -s -X POST "https://$SEALIGHTS_DOMAIN/sl-api/v2/test-sessions/$TEST_SESSION_ID" \
       -H "Authorization: Bearer $SEALIGHTS_AGENT_TOKEN" \
       -H "Content-Type: application/json" \
       -d "$PROCESSED_JSON"
-
-    echo -e "[INFO] Deleting the test session..."
-    curl -s -X DELETE "https://$SEALIGHTS_DOMAIN/sl-api/v1/test-sessions/$TEST_SESSION_ID" \
-      -H "Authorization: Bearer $SEALIGHTS_AGENT_TOKEN" \
-      -H "Content-Type: application/json"
-
-    echo -e "[INFO] Test session deleted successfully"
