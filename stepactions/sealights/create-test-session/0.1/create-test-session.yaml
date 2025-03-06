@@ -1,0 +1,62 @@
+apiVersion: tekton.dev/v1beta1
+kind: StepAction
+metadata:
+  name: initialize-sealights-session
+  labels:
+    konflux-ci/sealights: "true"
+    app.kubernetes.io/version: "0.1"
+  annotations:
+    tekton.dev/pipelines.minVersion: 0.12.1
+    tekton.dev/tags: konflux
+spec:
+  description: |
+    This StepAction initializes a Sealights test session by creating a new session ID
+    using the Sealights API and storing it for later use.
+  params:
+    - name: sealights-bsid
+      type: string
+      description: "The Sealights Build Session ID (BSID) associated with the build."
+    - name: test-stage
+      type: string
+      description: "The name or identifier of the testing phase (e.g., `integration`, `e2e`)."
+  results:
+    - name: test-session-id
+      description: "The Sealights test session ID generated in this step."
+  steps:
+    - name: initialize-sealights-session
+      image: quay.io/konflux-qe-incubator/konflux-qe-tools:latest
+      env:
+        - name: SEALIGHTS_DOMAIN
+          value: "redhat.sealights.co"
+        - name: SEALIGHTS_BSID
+          value: $(params.sealights-bsid)
+        - name: TEST_STAGE
+          value: $(params.test-stage)
+        - name: SEALIGHTS_AGENT_TOKEN
+          valueFrom:
+            secretKeyRef:
+              name: sealights-credentials
+              key: token
+      script: |
+        #!/bin/bash
+        set -euo pipefail
+
+        if [[ -z "$SEALIGHTS_BSID" ]]; then
+          echo "[ERROR] Sealights Build Session ID (BSID) is required."
+          exit 1
+        fi
+
+        echo "[INFO] Creating Sealights test session..."
+        TEST_SESSION_ID=$(curl -X POST "https://$SEALIGHTS_DOMAIN/sl-api/v1/test-sessions" \
+          -H "Authorization: Bearer $SEALIGHTS_AGENT_TOKEN" \
+          -H "Content-Type: application/json" \
+          -d '{"labId":"","testStage":"'${TEST_STAGE}'","bsid":"'${SEALIGHTS_BSID}'","sessionTimeout":10000}' | jq -r '.data.testSessionId')
+
+        if [[ -z "$TEST_SESSION_ID" || "$TEST_SESSION_ID" == "null" ]]; then
+          echo "[ERROR] Failed to retrieve test session ID"
+          exit 1
+        fi
+
+        echo "[INFO] Test session ID: $TEST_SESSION_ID"
+
+        echo -n "$TEST_SESSION_ID" > $(step.results.test-session-id.path)
