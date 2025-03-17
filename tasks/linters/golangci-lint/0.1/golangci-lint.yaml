@@ -21,7 +21,7 @@ spec:
       default: "1.22.9"
   steps:
     - name: golint
-      image: quay.io/konflux-qe-incubator/konflux-qe-tools:latest
+      image: quay.io/konflux-ci/tekton-integration-catalog/utils@sha256:33ce09ce71fed22cae1fcc601868c8545717720a146551857764e0d340b0e1d7
       workingDir: $(workspaces.source.path)/$(params.context)
       script: |
         #!/bin/sh
