@@ -1,0 +1,35 @@
+---
+apiVersion: tekton.dev/v1beta1
+kind: Task
+metadata:
+  name: golangci-lint
+spec:
+  description: |
+    This task performs a GolangCI-Lint analysis on shell scripts in a specified folder. It uses the versions of Go and GolangCI-Lint provided through parameters, downloading and configuring them accordingly. Finally, it runs golangci-lint run with the arguments specified in the args parameter.
+  params:
+    - name: context
+      description: path to the directory to use as context
+      default: "."
+    - name: args
+      description: arguments to use for the test command
+      default: -v
+    - name: golint-version
+      description: golangci-lint version to use
+      default: "v1.64.6"
+    - name: go-version
+      description: golangci-lint version to use
+      default: "1.22.9"
+  steps:
+    - name: golint
+      image: quay.io/konflux-qe-incubator/konflux-qe-tools:latest
+      workingDir: $(workspaces.source.path)/$(params.context)
+      script: |
+        #!/bin/sh
+        curl -LO https://go.dev/dl/go$(params.go-version).linux-amd64.tar.gz
+        tar -C /usr/local -xzf go$(go-version).linux-amd64.tar.gz
+        echo "export PATH=\$PATH:/usr/local/go/bin" >> ~/.bashrc
+        echo "export GOPATH=\$HOME/go" >> ~/.bashrc
+        echo "export PATH=\$PATH:\$GOPATH/bin" >> ~/.bashrc
+        source ~/.bashrc
+        curl -sSfL https://raw.githubusercontent.com/golangci/golangci-lint/HEAD/install.sh | sh -s $(params.golangci-lint)
+        ./bin/golangci-lint run $(params.args)
