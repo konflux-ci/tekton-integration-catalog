@@ -29,7 +29,7 @@ spec:
     fi
 
     # Run opm render on a bundle image
-    if ! bundle_render_out=$(opm render "$BUNDLE_IMAGE"); then
+    if ! bundle_render_out=$(render_opm -t "$BUNDLE_IMAGE"); then
       echo "Failed to render the bundle image" >&2
       exit 1
     fi
