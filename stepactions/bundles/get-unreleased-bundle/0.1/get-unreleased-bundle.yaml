@@ -57,8 +57,8 @@ spec:
     fi
 
     if [ -z "${unreleased_bundles}" ]; then
-      echo "No unreleased bundles found. Exiting."
-      exit 1
+      echo "No unreleased bundles found. Exiting as a no-op."
+      exit 0
     fi
     echo "Unreleased bundles found: $unreleased_bundles"
 
@@ -76,7 +76,7 @@ spec:
       package_count=$(echo "$package_image_map" | jq 'keys | length')
 
       if [[ "$package_count" -gt 1 ]]; then
-        echo "Error: Multiple packages detected. User must specify PACKAGE_NAME."
+        echo "Error: Multiple packages detected. User must specify PACKAGE_NAME." >&2
         exit 1
       fi
 
@@ -95,10 +95,11 @@ spec:
     echo "Using channel: $CHANNEL_NAME"
 
     if ! highest_version_from_bundles_list=$(get_highest_version_from_bundles_list "$RENDER_OUT_FBC" "$PACKAGE_NAME" "$CHANNEL_NAME" "$unreleased_bundles"); then
-      echo "Failed to determine the highest bundle version" >&2
-      exit 1
+      echo "No unreleased bundle(s) found matching the specified package and/or channel. Exiting as a no-op."
+      exit 0
     fi
+
     echo "Highest bundle: $highest_version_from_bundles_list"
-    echo "$highest_version_from_bundles_list" > "$(step.results.unreleasedBundle.path)"
+    echo -n -e "$highest_version_from_bundles_list" > "$(step.results.unreleasedBundle.path)"
     echo "$PACKAGE_NAME" > "$(step.results.packageName.path)"
     echo "$CHANNEL_NAME" > "$(step.results.channelName.path)"
