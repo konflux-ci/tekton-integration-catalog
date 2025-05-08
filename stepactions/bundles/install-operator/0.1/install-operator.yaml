@@ -21,7 +21,7 @@ spec:
     5. Create the Subscription
     6. Approve the InstallPlan
     7. Wait for the ClusterServiceVersion to become Ready
-  image: quay.io/konflux-ci/konflux-test:v1.4.24@sha256:47473fad67b5a5f4c3a701846ebcb0f732344b72aa12ad693d2313319b18930a
+  image: quay.io/konflux-ci/konflux-test:v1.4.25@sha256:78f5fd149f6fcd1e8ab8c7227cfb82c1be2eba0bbda49f033b5d82e9154414b2
   params:
     - name: fbcFragment
       type: string
@@ -61,6 +61,12 @@ spec:
       echo "Failed to render the bundle image" >&2
       exit 1
     fi
+
+    # Set the artifact directory path relative to current working directory
+    ARTIFACT_DIR="workspace/konflux-artifacts"
+
+    # Ensure the directory exists
+    mkdir -p "$ARTIFACT_DIR"
 
     echo "[$(date --utc +%FT%T.%3NZ)] Retrieving 'operatorframework.io/suggested-namespace' metadata annotation if exists..."
     INSTALL_NAMESPACE=$(get_bundle_suggested_namespace "$bundle_render_out")
@@ -118,6 +124,7 @@ spec:
 
     if [[ $(echo "$OPERATORGROUP" | wc -w) -gt 1 ]]; then
         echo "[$(date --utc +%FT%T.%3NZ)] Error: multiple OperatorGroups in namespace \"$INSTALL_NAMESPACE\": $OPERATORGROUP" 1>&2
+        oc -n "$INSTALL_NAMESPACE" get operatorgroup -o yaml >"$ARTIFACT_DIR/operatorgroups-$INSTALL_NAMESPACE.yaml"
         echo "[$(date --utc +%FT%T.%3NZ)] Script Completed Execution With Failures!"
         exit 1
     elif [[ -n "$OPERATORGROUP" ]]; then
@@ -143,6 +150,15 @@ spec:
     )
 
     echo "[$(date --utc +%FT%T.%3NZ)] OperatorGroup name is \"$OPERATORGROUP\""
+
+    # Update the image digest with the 0th manifest digest
+    if updated_fbc_image=$(resolve_to_0th_manifest_digest "$FBC_FRAGMENT"); then
+        echo "Updating FBC fragment image from $FBC_FRAGMENT to $updated_fbc_image"
+        FBC_FRAGMENT="$updated_fbc_image"
+    else
+        echo "Failed to resolve 0th manifest digest" >&2
+        exit 1
+    fi
 
     CS_NAMESTANZA="generateName: oo-"
 
@@ -185,6 +201,9 @@ spec:
     if [ $IS_CATSRC_CREATED = false ]; then
       echo "[$(date --utc +%FT%T.%3NZ)] Timed out waiting for the catalog source $CATSRC to become ready after 10 minutes."
       echo "[$(date --utc +%FT%T.%3NZ)] Catalogsource state at timeout is \"$CATSRC_STATE\""
+      CS_ART="$ARTIFACT_DIR/catalogsource-$CATSRC.yaml"
+      echo "[$(date --utc +%FT%T.%3NZ)] Dumping CatalogSource $CATSRC as $CS_ART"
+      oc get -n "$INSTALL_NAMESPACE" catalogsource "$CATSRC" -o yaml >"$CS_ART"
       echo "[$(date --utc +%FT%T.%3NZ)] Script Completed Execution With Failures!"
       exit 1
     fi
@@ -252,8 +271,59 @@ spec:
       done
 
       echo "[$(date --utc +%FT%T.%3NZ)] Timed out waiting for CSV to become ready"
-      exit 1
     else
       echo "[$(date --utc +%FT%T.%3NZ)] Failed to find installPlan for subscription"
-      exit 1
     fi
+
+    NS_ART="$ARTIFACT_DIR/namespace-$INSTALL_NAMESPACE.yaml"
+    echo "[$(date --utc +%FT%T.%3NZ)] Dumping Namespace $INSTALL_NAMESPACE as $NS_ART"
+    oc get namespace "$INSTALL_NAMESPACE" -o yaml >"$NS_ART"
+
+    OG_ART="$ARTIFACT_DIR/operatorgroup-$OPERATORGROUP.yaml"
+    echo "[$(date --utc +%FT%T.%3NZ)] Dumping OperatorGroup $OPERATORGROUP as $OG_ART"
+    oc get -n "$INSTALL_NAMESPACE" operatorgroup "$OPERATORGROUP" -o yaml >"$OG_ART"
+
+    CS_ART="$ARTIFACT_DIR/catalogsource-$CATSRC.yaml"
+    echo "[$(date --utc +%FT%T.%3NZ)] Dumping CatalogSource $CATSRC as $CS_ART"
+    oc get -n "$INSTALL_NAMESPACE" catalogsource "$CATSRC" -o yaml >"$CS_ART"
+    for field in message reason; do
+        VALUE="$(oc get -n "$INSTALL_NAMESPACE" catalogsource "$CATSRC" -o jsonpath="{.status.$field}" || true)"
+        if [[ -n "$VALUE" ]]; then
+            echo "[$(date --utc +%FT%T.%3NZ)] CatalogSource $CATSRC status $field: $VALUE"
+        fi
+    done
+
+    SUB_ART="$ARTIFACT_DIR/subscription-$SUB.yaml"
+    echo "[$(date --utc +%FT%T.%3NZ)] Dumping Subscription $SUB as $SUB_ART"
+    oc get -n "$INSTALL_NAMESPACE" subscription "$SUB" -o yaml >"$SUB_ART"
+    for field in state reason; do
+        VALUE="$(oc get -n "$INSTALL_NAMESPACE" subscription "$SUB" -o jsonpath="{.status.$field}" || true)"
+        if [[ -n "$VALUE" ]]; then
+            echo "[$(date --utc +%FT%T.%3NZ)] Subscription $SUB status $field: $VALUE"
+        fi
+    done
+
+    if [[ -n "${CSV:-}" ]]; then
+        CSV_ART="$ARTIFACT_DIR/csv-$CSV.yaml"
+        echo "[$(date --utc +%FT%T.%3NZ)] ClusterServiceVersion $CSV was created but never became ready"
+        echo "[$(date --utc +%FT%T.%3NZ)] Dumping ClusterServiceVersion $CSV as $CSV_ART"
+        oc get -n "$INSTALL_NAMESPACE" csv "$CSV" -o yaml >"$CSV_ART"
+        for field in phase message reason; do
+            VALUE="$(oc get -n "$INSTALL_NAMESPACE" csv "$CSV" -o jsonpath="{.status.$field}" || true)"
+            if [[ -n "$VALUE" ]]; then
+                echo "[$(date --utc +%FT%T.%3NZ)] ClusterServiceVersion $CSV status $field: $VALUE"
+            fi
+        done
+    else
+        CSV_ART="$ARTIFACT_DIR/all-csvs-$INSTALL_NAMESPACE.yaml"
+        echo "[$(date --utc +%FT%T.%3NZ)] ClusterServiceVersion was never created"
+        echo "[$(date --utc +%FT%T.%3NZ)] Dumping all ClusterServiceVersions in namespace $INSTALL_NAMESPACE to $CSV_ART"
+        oc get -n "$INSTALL_NAMESPACE" csv -o yaml >"$CSV_ART"
+    fi
+
+    INSTALLPLANS_ART="$ARTIFACT_DIR/installPlans-$INSTALL_NAMESPACE.yaml"
+    echo "[$(date --utc +%FT%T.%3NZ)] Dumping all installPlans in namespace $INSTALL_NAMESPACE as $INSTALLPLANS_ART"
+    oc get -n "$INSTALL_NAMESPACE" installplans -o yaml >"$INSTALLPLANS_ART"
+
+    echo "[$(date --utc +%FT%T.%3NZ)] Script Completed Execution With Failures!"
+    exit 1
