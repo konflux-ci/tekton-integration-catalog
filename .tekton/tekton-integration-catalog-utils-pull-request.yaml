@@ -10,7 +10,8 @@ metadata:
     pipelinesascode.tekton.dev/max-keep-runs: "3"
     pipelinesascode.tekton.dev/on-cel-expression: event == "pull_request" && target_branch
       == "main" && ( "konflux/tekton-integration-catalog-utils/tekton-integration-catalog-utils/***".pathChanged()
-      || ".tekton/tekton-integration-catalog-utils-pull-request.yaml".pathChanged() )
+      || ".tekton/tekton-integration-catalog-utils-pull-request.yaml".pathChanged()
+      )
   creationTimestamp: null
   labels:
     appstudio.openshift.io/application: tekton-integration-catalog-utils
@@ -584,7 +585,8 @@ spec:
       optional: true
     - name: netrc
       optional: true
-  taskRunTemplate: {}
+  taskRunTemplate:
+    serviceAccountName: build-pipeline-tekton-integration-catalog-utils
   workspaces:
   - name: git-auth
     secret:

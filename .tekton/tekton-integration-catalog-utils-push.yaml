@@ -8,7 +8,7 @@ metadata:
     pipelinesascode.tekton.dev/cancel-in-progress: "false"
     pipelinesascode.tekton.dev/max-keep-runs: "3"
     pipelinesascode.tekton.dev/on-cel-expression: event == "push" && target_branch
-      == "main" && ( "konflux/tekton-integration-catalog-utils/tekton-integration-catalog-utils/***".pathChanged() 
+      == "main" && ( "konflux/tekton-integration-catalog-utils/tekton-integration-catalog-utils/***".pathChanged()
       || ".tekton/tekton-integration-catalog-utils-push.yaml".pathChanged() )
   creationTimestamp: null
   labels:
@@ -581,7 +581,8 @@ spec:
       optional: true
     - name: netrc
       optional: true
-  taskRunTemplate: {}
+  taskRunTemplate:
+    serviceAccountName: build-pipeline-tekton-integration-catalog-utils
   workspaces:
   - name: git-auth
     secret:
