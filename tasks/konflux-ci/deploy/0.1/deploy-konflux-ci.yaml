@@ -1,0 +1,109 @@
+---
+apiVersion: tekton.dev/v1
+kind: Task
+metadata:
+  name: deploy-konflux-ci
+  labels:
+    konflux-ci/kind: "true"
+    app.kubernetes.io/version: "0.1"
+  annotations:
+    tekton.dev/pipelines.minVersion: "0.44.x"
+    tekton.dev/tags: konflux
+spec:
+  description: |
+    This task performs a full Konflux CI deployment. It clones the specified Git repository,
+    checks out the desired branch, and runs deployment scripts using a kubeconfig retrieved from
+    a Kubernetes secret. It is intended for use in OpenShift Pipelines or other Tekton environments.
+
+  params:
+    - name: cluster-access-secret
+      description: Name of the Kubernetes Secret that contains the kubeconfig (base64 encoded) used to access the target cluster.
+    - name: namespace
+      description: Namespace where the above Secret is located.
+    - name: repo-url
+      description: URL of the Git repository containing the Konflux CI deployment scripts.
+      default: https://github.com/konflux-ci/konflux-ci.git
+    - name: repo-branch
+      description: Git branch to check out when cloning the repository.
+      default: main
+    - name: create-test-resources
+      description: 'Indicates if a set of test resources should be installed'
+      default: 'true'
+
+  volumes:
+    - name: workdir
+      emptyDir: {}
+
+  stepTemplate:
+    env:
+      - name: KUBECONFIG
+        value: /var/workdir/.kube/config
+    volumeMounts:
+      - mountPath: /var/workdir
+        name: workdir
+
+  steps:
+    - name: clone-konflux-ci
+      image: registry.redhat.io/openshift-pipelines/pipelines-git-init-rhel8@sha256:245e5f77eef067b48f7262de04485b4ab5f195736dc128d2c574f32bb05d3b2d
+      workingDir: /var/workdir
+      securityContext:
+        runAsUser: 0
+      args:
+        - -url=$(params.repo-url)
+        - -revision=$(params.repo-branch)
+        - -path=.
+
+    - name: get-kubeconfig
+      image: quay.io/konflux-ci/tekton-integration-catalog/utils:latest
+      workingDir: /var/workdir
+      script: |
+        #!/bin/bash
+        set -euo pipefail
+
+        echo "[INFO] Retrieving kubeconfig from secret: $(params.cluster-access-secret) in namespace: $(params.namespace)"
+        KUBECONFIG_B64=$(kubectl get secret "$(params.cluster-access-secret)" -n "$(params.namespace)" -o jsonpath='{.data.kubeconfig}' || true)
+
+        if [[ -z "$KUBECONFIG_B64" ]]; then
+          echo "[ERROR] Kubeconfig not found in secret $(params.cluster-access-secret) in namespace $(params.namespace)."
+          exit 1
+        fi
+
+        mkdir -p /var/workdir/.kube
+        echo "$KUBECONFIG_B64" | base64 -d > /var/workdir/.kube/config
+        chmod 400 /var/workdir/.kube/config
+
+        echo "[INFO] Verifying access to the target cluster..."
+        kubectl cluster-info
+
+    - name: deploy
+      image: quay.io/konflux-ci/tekton-integration-catalog/utils:latest
+      workingDir: /var/workdir
+      script: |
+        #!/bin/bash
+        set -euo pipefail
+
+        echo "[INFO] Installing Konflux CI dependencies"
+        ./deploy-deps.sh
+        ./wait-for-all.sh
+
+        echo "[INFO] Installing Konflux CI..."
+        ./deploy-konflux.sh
+
+        kubectl get po -A
+
+    - name: create-test-resources
+      image: quay.io/konflux-ci/tekton-integration-catalog/utils:latest
+      workingDir: /var/workdir
+      script: |
+        #!/bin/bash
+        set -euo pipefail
+
+        echo "[INFO] Applying Kyverno to reduce resources for testing"
+        kubectl apply -f ./dependencies/kyverno/policy/e2e-reduce-resources.yaml
+
+        echo "[INFO] Creating Test Resources..."
+        ./deploy-test-resources.sh
+      when:
+        - input: "$(params.create-test-resources)"
+          operator: in
+          values: ["true"]
