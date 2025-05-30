@@ -98,13 +98,87 @@ spec:
           value: $(context.pipelineRun.name)
         - name: ownerUid
           value: $(context.pipelineRun.uid)
-    - name: get-unreleased-bundle
+    - name: fetch-image-mirror-set
       runAfter:
         - provision-eaas-space
       when:
         - input: $(tasks.parse-metadata.results.test-event-type)
           operator: in
           values: [ "push", "Push" ]
+      taskSpec:
+        results:
+          - name: mirrorSetYaml
+            description: "Contents of the image mirror set yaml file"
+          - name: serializedMirrorSetYaml
+            description: "A serialized string of an ImageDigestMirrorSet YAML, where each mirror entry is formatted with escaped newlines to preserve structure in a single-line format"
+        steps:
+          - name: retrieve-mirror-yaml
+            image: quay.io/konflux-ci/konflux-test:v1.4.26@sha256:124643eeaa77684dea6270eada4553ebd7d63fcc06ff0c57f4a7d43695507bb5
+            computeResources:
+              limits:
+                memory: 512Mi
+              requests:
+                memory: 512Mi
+                cpu: 100m
+            env:
+              - name: SOURCE_GIT_URL
+                value: "$(tasks.parse-metadata.results.source-git-url)"
+              - name: SOURCE_GIT_REVISION
+                value: "$(tasks.parse-metadata.results.source-git-revision)"
+              - name: REPO_TOKEN
+                value: $(params.REPO_TOKEN)
+              - name: REPO_KEY
+                value: $(params.REPO_KEY)
+            script: |
+              #!/usr/bin/env bash
+              set -euo pipefail
+              . /utils.sh
+              
+              mirror_set_url="${SOURCE_GIT_URL}/raw/${SOURCE_GIT_REVISION}/.tekton/images-mirror-set.yaml"
+              
+              # If REPO_TOKEN and REPO_KEY are defined, assume the source code repo is private and requires a token
+              if [[ -n "${REPO_TOKEN}" && -n "${REPO_KEY}" ]]; then
+                echo "Source code repository is private and requires a token to access it"
+
+                # Decode the token from the Kubernetes secret
+                TOKEN=$(kubectl get secret "$REPO_TOKEN" -o jsonpath="{.data.$REPO_KEY}" | base64 -d)
+                if [[ -z "$TOKEN" ]]; then
+                  echo "Failed to retrieve or decode token from secret '$REPO_TOKEN' key '$REPO_KEY'"
+                  exit 1
+                fi
+                
+                # Determine token header type
+                if [[ "$SOURCE_GIT_URL" == *"github.com"* ]]; then
+                  AUTH_HEADER="Authorization: token $TOKEN"
+                elif [[ "$SOURCE_GIT_URL" == *"gitlab."* ]]; then
+                  AUTH_HEADER="PRIVATE-TOKEN: $TOKEN"
+                else
+                  echo "Unknown Git provider. Cannot determine proper authorization header."
+                  exit 1
+                fi
+
+                # Fetch the file
+                mirror_set_yaml=$(curl -kfL -H "$AUTH_HEADER" "$mirror_set_url")
+              else
+                mirror_set_yaml=$(curl -kfL "$mirror_set_url")
+              fi
+
+              echo "Image mirror set yaml is: $mirror_set_yaml"
+
+              if [[ $? -ne 0 || -z "$mirror_set_yaml" ]]; then
+                echo "Could not fetch image mirror set at ${mirror_set_url}."
+                exit 1
+              fi
+              
+              echo -n "$mirror_set_yaml" > "$(results.mirrorSetYaml.path)"
+
+              serialized_mirror_set=$(serialize_image_mirrors_yaml "${mirror_set_yaml}")
+              echo "Serialized image mirror set: $serialized_mirror_set"
+
+              echo -e "$serialized_mirror_set" > "$(results.serializedMirrorSetYaml.path)"
+    - name: get-unreleased-bundle
+      runAfter:
+        - fetch-image-mirror-set
       taskSpec:
         results:
           - name: unreleasedBundle
@@ -148,14 +222,8 @@ spec:
             env:
               - name: BUNDLE_IMAGE
                 value: "$(steps.get-unreleased-bundle.results.unreleasedBundle)"
-              - name: SOURCE_GIT_URL
-                value: "$(tasks.parse-metadata.results.source-git-url)"
-              - name: SOURCE_GIT_REVISION
-                value: "$(tasks.parse-metadata.results.source-git-revision)"
-              - name: REPO_TOKEN
-                value: $(params.REPO_TOKEN)
-              - name: REPO_KEY
-                value: $(params.REPO_KEY)
+              - name: MIRROR_SET_YAML
+                value: "$(tasks.fetch-image-mirror-set.results.mirrorSetYaml)"
             script: |
               #!/usr/bin/env bash
               set -euo pipefail
@@ -176,43 +244,8 @@ spec:
                 exit 0
               fi
               echo "Could not inspect original pullspec $BUNDLE_IMAGE. Checking if there's a mirror present"
-              
-              # Fetch and process mirror set
-              mirror_set_url="${SOURCE_GIT_URL}/raw/${SOURCE_GIT_REVISION}/.tekton/images-mirror-set.yaml"
-              
-              # If REPO_TOKEN and REPO_KEY are defined, assume the source code repo is private and requires a token
-              if [[ -n "${REPO_TOKEN}" && -n "${REPO_KEY}" ]]; then
-                echo "Source code repository is private and requires a token to access it"
 
-                # Decode the token from the Kubernetes secret
-                TOKEN=$(kubectl get secret "$REPO_TOKEN" -o jsonpath="{.data.$REPO_KEY}" | base64 -d)
-                if [[ -z "$TOKEN" ]]; then
-                  echo "Failed to retrieve or decode token from secret '$REPO_TOKEN' key '$REPO_KEY'"
-                  exit 1
-                fi
-                
-                # Determine token header type
-                if [[ "$SOURCE_GIT_URL" == *"github.com"* ]]; then
-                  AUTH_HEADER="Authorization: token $TOKEN"
-                elif [[ "$SOURCE_GIT_URL" == *"gitlab."* ]]; then
-                  AUTH_HEADER="PRIVATE-TOKEN: $TOKEN"
-                else
-                  echo "Unknown Git provider. Cannot determine proper authorization header."
-                  exit 1
-                fi
-
-                # Fetch the file
-                mirror_set_yaml=$(curl -kfL -H "$AUTH_HEADER" "$mirror_set_url")
-              else
-                mirror_set_yaml=$(curl -kfL "$mirror_set_url")
-              fi
-
-              if [[ $? -eq 0 && -n "$mirror_set_yaml" ]]; then
-                process_image_digest_mirror_set "$mirror_set_yaml" > /tekton/home/mirror-map.txt
-              else
-                echo "Could not fetch image mirror set at ${mirror_set_url}. Unreleased bundles will fail opm render."
-                exit 1
-              fi
+              process_image_digest_mirror_set "$MIRROR_SET_YAML" > /tekton/home/mirror-map.txt
 
               # Check and apply mirror mapping
               if [ -s /tekton/home/mirror-map.txt ]; then
@@ -371,6 +404,8 @@ spec:
                 value: "$(steps.get-latest-version-tag.results.version)"
               - name: instanceType
                 value: "$(tasks.pick-cluster-params.results.bundleArch)"
+              - name: imageContentSources
+                value: "$(tasks.fetch-image-mirror-set.results.serializedMirrorSetYaml)"
     - name: deploy-operator
       runAfter:
         - provision-cluster
@@ -782,7 +817,7 @@ spec:
               - name: workdir-path
                 value: /workspace
               - name: oci-ref
-                value: $(params.OCI_REF):$(tasks.parse-metadata.results.source-git-revision)
+                value: $(params.OCI_REF):$(tasks.parse-metadata.results.source-git-revision)-$(context.taskRun.uid)
               - name: credentials-volume-name
                 value: oci-auth
           - name: fail-if-any-step-failed

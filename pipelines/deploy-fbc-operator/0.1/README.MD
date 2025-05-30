@@ -1,5 +1,5 @@
 # "deploy-fbc-operator pipeline"
-The deploy-fbc-operator pipeline automates the provisioning of a EaaS Hypershift cluster and the deployment of an operator from a given FBC (File-Based Catalog) fragment. It automates the process of retrieving an unreleased bundle from the FBC, selecting an appropriate OpenShift version and architecture for cluster provisioning, installing the operator, and gathering cluster artifacts.
+The deploy-fbc-operator pipeline automates the provisioning of a EaaS Hypershift cluster and the deployment of an operator from a given FBC (File-Based Catalog) fragment. It automates the process of fetching an image digest mirror set, retrieving an unreleased bundle from the FBC, selecting an appropriate OpenShift version and architecture for cluster provisioning, installing the operator, and gathering cluster artifacts.
 
 ## Pipeline Flow
 The pipeline consists of the following tasks:
@@ -12,6 +12,10 @@ The pipeline consists of the following tasks:
 
 2. **Provision EAAS Space (`provision-eaas-space`)**  
    Allocates an **Environment-as-a-Service (EaaS) space** for cluster provisioning.
+
+3. **Fetch Image Mirror Set (`fetch-image-mirror-set`)**
+   - Fetches a `.tekton/images-mirror-set.yaml` file from a source Git repository, handling both public and private repositories.
+   - Stores the raw YAML and its serialized string as Tekton results for use by other tasks.
 
 3. **Get Unreleased Bundle (`get-unreleased-bundle`)**
    - Retrieves the **unreleased bundle** from the FBC fragment.
@@ -28,7 +32,7 @@ The pipeline consists of the following tasks:
    - Selects the **target OpenShift version** for deployment.
    - Identifies the **supported cluster architecture** (`arm64`, `amd64`).
    - Retrieves the latest OpenShift **version tag**.
-   - Provisions a **Hypershift AWS cluster** using the selected parameters.
+   - Provisions a **Hypershift AWS cluster** using the parameters selected above, along with the `imageContentSources` parameter, which contains the serialized image mirror set YAML used to apply IDMS to the running cluster.
 
 5. **Deploy Operator (`deploy-operator`)**  
    - Retrieves **Kubeconfig credentials** for cluster access.
