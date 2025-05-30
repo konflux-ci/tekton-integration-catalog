@@ -1,0 +1,157 @@
+---
+apiVersion: tekton.dev/v1
+kind: Task
+metadata:
+  name: deploy-konflux-ci
+  labels:
+    konflux-ci/kind: "true"
+    app.kubernetes.io/version: "0.1"
+  annotations:
+    tekton.dev/pipelines.minVersion: "0.44.x"
+    tekton.dev/tags: konflux
+spec:
+  description: |
+    This task performs a full Konflux CI deployment. It clones the specified Git repository,
+    checks out the desired branch, and runs deployment scripts using a kubeconfig retrieved from
+    a Kubernetes secret. It is intended for use in OpenShift Pipelines or other Tekton environments.
+
+  params:
+    - name: cluster-access-secret
+      description: Name of the Kubernetes Secret that contains the kubeconfig (base64 encoded) used to access the target cluster.
+    - name: repo-url
+      description: URL of the Git repository containing the Konflux CI deployment scripts.
+      default: https://github.com/konflux-ci/konflux-ci.git
+    - name: repo-branch
+      description: Git branch to check out when cloning the repository.
+      default: main
+    - name: create-test-resources
+      description: 'Indicates if a set of test resources should be installed'
+      default: 'true'
+    - name: component-name
+      description: |
+        The GitHub repository name of the Konflux CI component to customize (e.g., `build-service`, `release-service`).
+        Used for applying image or Kubernetes manifest overrides.
+      default: ''
+    - name: component-image-repository
+      description: |
+        Overrides the container image repository for the `component-name` (e.g., `quay.io/my-org/my-custom-image`).
+      default: ''
+    - name: component-image-tag
+      description: |
+        Overrides the container image tag for the `component-name` (e.g., `latest`, `my-feature-branch`).
+      default: ''
+    - name: component-pr-owner
+      description: |
+        GitHub owner (user|org) of the fork/PR providing custom Kubernetes manifests for the `component-name`.
+      default: ''
+    - name: component-pr-sha
+      description: |
+        Commit SHA of the PR (from `component-pr-owner`) supplying custom Kubernetes manifests for the `component-name`.
+      default: ''
+
+  volumes:
+    - name: credentials
+      secret:
+        secretName: $(params.cluster-access-secret)
+    - name: workdir
+      emptyDir: {}
+
+  stepTemplate:
+    env:
+      - name: KUBECONFIG
+        value: '/credentials/kubeconfig'
+    volumeMounts:
+      - name: credentials
+        mountPath: /credentials
+      - name: workdir
+        mountPath: /var/workdir
+
+  steps:
+    - name: clone-konflux-ci
+      image: quay.io/openshift-pipeline/pipelines-git-init-rhel9@sha256:7eee14366c516d92cf7480c9bc256cf0e544bf06da5d46ffb5e8bfe3e448326c
+      workingDir: /var/workdir
+      securityContext:
+        runAsUser: 0
+      args:
+        - -url=$(params.repo-url)
+        - -revision=$(params.repo-branch)
+        - -path=.
+
+    - name: update-kustomization
+      image: quay.io/konflux-ci/tekton-integration-catalog/utils:latest
+      workingDir: /var/workdir
+      when:
+        - input: "$(params.component-name)"
+          operator: notin
+          values: [ "" ]
+      script: |
+        #!/bin/bash
+        set -euo pipefail
+
+        COMPONENT_NAME="$(params.component-name)"
+        IMAGE_REPO="$(params.component-image-repository)"
+        IMAGE_TAG="$(params.component-image-tag)"
+        PR_OWNER="$(params.component-pr-owner)"
+        PR_SHA="$(params.component-pr-sha)"
+
+        # Repo names do not match the ones of the component. Try to find the right kustomization.yaml based on the component name.
+        KUSTOMIZATION_PATH=$(find konflux-ci/ -type f -name "kustomization.yaml" -path "*${COMPONENT_NAME%-service}*/core/*" | head -n 1)
+
+        # Check if the file exists
+        if [[ ! -f "${KUSTOMIZATION_PATH}" ]]; then
+          echo "[WARNING] No substitutions will be applied as the kustomization file for $(params.component-name) has not been found."
+          exit 0
+        fi
+
+        # Apply substitutions
+        if [[ -n "$IMAGE_REPO" ]]; then
+          echo "[INFO] Updating image repository to $IMAGE_REPO"
+          yq -i e "(.images.[] | select(.name==\"quay.io/konflux-ci/${COMPONENT_NAME}\")) |= .newName=\"${IMAGE_REPO}\"" "$KUSTOMIZATION_PATH"
+        fi
+
+        if [[ -n "$IMAGE_TAG" ]]; then
+          echo "[INFO] Updating image tag to $IMAGE_TAG"
+          yq -i e "(.images.[] | select(.name==\"quay.io/konflux-ci/${COMPONENT_NAME}\")) |= .newTag=\"${IMAGE_TAG}\"" "$KUSTOMIZATION_PATH"
+        fi
+
+        if [[ -n "$PR_OWNER" && -n "$PR_SHA" ]]; then
+          echo "[INFO] Updating GitHub reference to $PR_OWNER@$PR_SHA"
+          yq -i e "(.resources[] | select(. ==\"*github.com/konflux-ci/${COMPONENT_NAME}/config/default*\")) |= \"https://github.com/${PR_OWNER}/${COMPONENT_NAME}/config/default?ref=${PR_SHA}\"" "$KUSTOMIZATION_PATH"
+          yq -i e "(.resources[] | select(. ==\"*github.com/konflux-ci/${COMPONENT_NAME}/config/snapshotgc*\")) |= \"https://github.com/${PR_OWNER}/${COMPONENT_NAME}/config/snapshotgc?ref=${PR_SHA}\"" "$KUSTOMIZATION_PATH"
+        fi
+
+    - name: deploy
+      image: quay.io/konflux-ci/tekton-integration-catalog/utils:latest
+      workingDir: /var/workdir
+      script: |
+        #!/bin/bash
+        set -euo pipefail
+
+        kubectl cluster-info
+
+        echo "[INFO] Installing Konflux CI dependencies"
+        ./deploy-deps.sh
+        ./wait-for-all.sh
+
+        echo "[INFO] Installing Konflux CI..."
+        ./deploy-konflux.sh
+
+        kubectl get po -A
+
+    - name: create-test-resources
+      image: quay.io/konflux-ci/tekton-integration-catalog/utils:latest
+      workingDir: /var/workdir
+      when:
+        - input: "$(params.create-test-resources)"
+          operator: in
+          values: ["true"]
+      script: |
+        #!/bin/bash
+        set -euo pipefail
+
+        echo "[INFO] Applying Kyverno to reduce resources for testing"
+        kubectl apply -f ./dependencies/kyverno/policy/e2e-reduce-resources.yaml
+
+        echo "[INFO] Creating Test Resources..."
+        ./deploy-test-resources.sh
+
