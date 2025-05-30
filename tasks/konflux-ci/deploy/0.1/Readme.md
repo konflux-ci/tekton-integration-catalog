@@ -33,6 +33,7 @@ The task performs the following operations:
 | `component-image-tag`     | Overrides the container image tag for the `component-name` (e.g., `latest`, `my-feature-branch`).                                         | `''`                                           | ❌       |
 | `component-pr-owner`      | GitHub owner (user/org) of the fork/PR providing custom Kubernetes manifests for the `component-name`.                                    | `''`                                           | ❌       |
 | `component-pr-sha`        | Commit SHA of the PR (from `component-pr-owner`) supplying custom Kubernetes manifests for the `component-name`.                            | `''`                                           | ❌       |
+| `component-pr-source-branch`        | GitHub source branch of the pull request.     | `''`    | ❌       |
 
 ---
 
