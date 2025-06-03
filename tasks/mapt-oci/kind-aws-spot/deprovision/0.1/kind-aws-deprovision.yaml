@@ -1,0 +1,167 @@
+---
+apiVersion: tekton.dev/v1
+kind: Task
+metadata:
+  name: kind-aws-deprovision
+  labels:
+    app.kubernetes.io/version: "0.1"
+  annotations:
+    tekton.dev/pipelines.minVersion: "0.44.x"
+    tekton.dev/categories: infrastructure
+    tekton.dev/tags: infrastructure, aws, kind
+    tekton.dev/displayName: "Kind Cloud Single Node - Destroy"
+    tekton.dev/platforms: "linux/amd64, linux/arm64"
+    mapt/version: "v0.9.1"
+spec:
+  description: |
+    Tears down a Kind cluster that was previously provisioned on AWS using the Mapt CLI.
+
+    This task is designed to safely and efficiently clean up cloud infrastructure created for ephemeral Kubernetes environments,
+    typically used in CI/CD pipelines or short-lived testing environments.
+
+    It ensures the following:
+    - Proper AWS credentials are used to authenticate the delete operation
+    - Cleanup is scoped to a specific environment ID to avoid accidental deletions
+    - Works seamlessly with previous `kind-aws-provision` task executions
+    - Supports a `debug` mode to enable verbose output for troubleshooting. !!WARNING!! Using debug mode can expose credentials.
+
+    Use this task in any workflow where you want to ensure that your test environments don't linger and incur unnecessary cloud costs.
+
+  volumes:
+    - name: aws-credentials
+      secret:
+        secretName: $(params.secret-aws-credentials)
+    - name: workdir
+      emptyDir: {}
+    - name: konflux-test-infra-volume
+      secret:
+        secretName: $(params.oci-credentials)
+    - name: credentials-volume
+      secret:
+        secretName: $(params.cluster-access-secret)
+
+  stepTemplate:
+    env:
+      - name: KUBECONFIG
+        value: '/credentials/kubeconfig'
+    volumeMounts:
+      - mountPath: /var/workdir
+        name: workdir
+      - name: credentials-volume
+        mountPath: /credentials
+
+  params:
+    - name: secret-aws-credentials
+      description: |
+        K8S secret holding the aws credentials. Secret should be accessible to this task.
+
+        ---
+        apiVersion: v1
+        kind: Secret
+        metadata:
+          name: aws-${name}
+        type: Opaque
+        data:
+          access-key: ${access_key}
+          secret-key: ${secret_key}
+          region: ${region}
+          bucket: ${bucket}
+    - name: id
+      description: |
+        A unique identifier for the Kind environment you want to destroy. This must match the ID used during creation.
+    - name: debug
+      description: |
+        If set to `true`, enables verbose output and displays command execution details.
+        Use only in secure environments as it may expose sensitive credentials.
+      default: 'false'
+    - name: pipeline-aggregate-status
+      type: string
+      description: |
+        The status of the pipeline (e.g., Succeeded, Failed, Completed, None).
+      default: None
+    - name: cluster-access-secret
+      type: string
+      description: |
+        The name of the secret containing the kubeconfig to access the target cluster.
+    - name: oci-container
+      type: string
+      description: |
+        The ORAS container registry URI where artifacts will be stored.
+    - name: oci-credentials
+      type: string
+      description: |
+        The registry secrets where artifacts will be stored.
+
+  steps:
+    - name: gather-cluster-resources
+      onError: continue
+      ref:
+        resolver: git
+        params:
+          - name: url
+            value: https://github.com/konflux-ci/tekton-integration-catalog
+          - name: revision
+            value: main
+          - name: pathInRepo
+            value: stepactions/gather-cluster-resources/0.1/gather-cluster-resources.yaml
+      params:
+        - name: credentials
+          value: 'credentials-volume'
+        - name: kubeconfig
+          value: 'kubeconfig'
+        - name: artifact-dir
+          value: '/workspace/konflux-artifacts'
+      when:
+        - input: $(params.pipeline-aggregate-status)
+          operator: notin
+          values: ["Succeeded"]
+
+    - name: secure-push-oci
+      onError: continue
+      ref:
+        resolver: git
+        params:
+          - name: url
+            value: https://github.com/konflux-ci/tekton-integration-catalog.git
+          - name: revision
+            value: main
+          - name: pathInRepo
+            value: stepactions/secure-push-oci/0.1/secure-push-oci.yaml
+      params:
+        - name: workdir-path
+          value: /workspace
+        - name: oci-ref
+          value: $(params.oci-container)
+        - name: credentials-volume-name
+          value: konflux-test-infra-volume
+      when:
+        - input: $(params.pipeline-aggregate-status)
+          operator: notin
+          values: ["Succeeded"]
+
+    - name: destroy
+      image: quay.io/redhat-developer/mapt:v0.9.1
+      volumeMounts:
+        - name: aws-credentials
+          mountPath: /opt/aws-credentials
+      script: |
+        #!/bin/sh
+        set -euo pipefail
+        if [[ $(params.debug) == "true" ]]; then set -xeuo pipefail; fi
+
+        export AWS_ACCESS_KEY_ID=$(cat /opt/aws-credentials/access-key)
+        export AWS_SECRET_ACCESS_KEY=$(cat /opt/aws-credentials/secret-key)
+        export AWS_DEFAULT_REGION=$(cat /opt/aws-credentials/region)
+        BUCKET=$(cat /opt/aws-credentials/bucket)
+
+        cmd="mapt aws kind destroy "
+        cmd+="--project-name kind-$(params.id) "
+        cmd+="--backed-url s3://${BUCKET}/mapt/kind/$(params.id) "
+        eval "${cmd}"
+      computeResources:
+        requests:
+          memory: "200Mi"
+          cpu: "100m"
+        limits:
+          memory: "600Mi"
+          cpu: "300m"

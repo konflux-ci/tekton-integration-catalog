@@ -103,5 +103,5 @@ spec:
 
     echo "Highest bundle: $highest_version_from_bundles_list"
     echo -n -e "$highest_version_from_bundles_list" > "$(step.results.unreleasedBundle.path)"
-    echo "$PACKAGE_NAME" > "$(step.results.packageName.path)"
-    echo "$CHANNEL_NAME" > "$(step.results.channelName.path)"
+    echo -n "$PACKAGE_NAME" > "$(step.results.packageName.path)"
+    echo -n "$CHANNEL_NAME" > "$(step.results.channelName.path)"

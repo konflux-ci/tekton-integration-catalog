@@ -8,7 +8,8 @@ metadata:
     pipelinesascode.tekton.dev/cancel-in-progress: "false"
     pipelinesascode.tekton.dev/max-keep-runs: "3"
     pipelinesascode.tekton.dev/on-cel-expression: event == "push" && target_branch
-      == "main" && ( "konflux/sealights-agents/python/***".pathChanged() || ".tekton/sealights-python-push.yaml".pathChanged() )
+      == "main" && ( "konflux/sealights-agents/python/***".pathChanged() || ".tekton/sealights-python-push.yaml".pathChanged()
+      )
   creationTimestamp: null
   labels:
     appstudio.openshift.io/application: sealights-containers
@@ -580,7 +581,8 @@ spec:
       optional: true
     - name: netrc
       optional: true
-  taskRunTemplate: {}
+  taskRunTemplate:
+    serviceAccountName: build-pipeline-sealights-python
   workspaces:
   - name: git-auth
     secret:

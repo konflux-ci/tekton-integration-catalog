@@ -51,23 +51,35 @@ spec:
           valueFrom:
             fieldRef:
               fieldPath: metadata.labels['test.appstudio.openshift.io/scenario']
+        - name: IS_CANCELLED
+          valueFrom:
+            fieldRef:
+              fieldPath: metadata.labels['pac.test.appstudio.openshift.io/cancelled']
         - name: E2E_REPORT_FILE
           value: $(params.e2e-report-file)
       script: |
         #!/bin/bash
+        set -e
+
+        PIPELINE_STATUS=$(kubectl get pipelinerun $(params.test-name) -o jsonpath='{.status.conditions[0].reason}')
+
+        # Determine the pipeline status based on the pipeline-aggregate-status param and $PIPELINE_STATUS
+        if [ "$(params.pipeline-aggregate-status)" == "Succeeded" ] || [ "$(params.pipeline-aggregate-status)" == "Completed" ]; then
+          echo "[INFO] PipelineRun succeeded."
+          STATUS="success"
+        elif [ "${PIPELINE_STATUS}" = "CancelledRunningFinally" ]; then
+          echo "[INFO] PipelineRun was cancelled."
+          STATUS="aborted"
+        else
+          echo "[INFO] PipelineRun failed."
+          STATUS="failure"
+        fi
+
+        echo "[INFO] Setting STATUS to '$STATUS'"
 
         # Set the event type to "pull_request" if it's not a push and has a PR number
         if [ "$EVENT_TYPE" != "push" ] && [ -n "$PULL_REQUEST_NUMBER" ]; then
           EVENT_TYPE="pull_request"
-        fi
-
-        # Determine the pipeline status based on the pipeline-aggregate-status param
-        if [ "$(params.pipeline-aggregate-status)" == "Succeeded" ] || [ "$(params.pipeline-aggregate-status)" == "Completed" ]; then
-          STATUS="success"
-        elif [ "$(params.pipeline-aggregate-status)" == "Failed" ]; then
-          STATUS="failure"
-        elif [ "$(params.pipeline-aggregate-status)" == "None" ]; then
-          STATUS="aborted"
         fi
 
         # Create a metadata JSON file with test details
@@ -90,7 +102,6 @@ spec:
         # Write the metadata JSON to a file
         echo "$METADATA_JSON" > metadata.json
 
-        # Debug output: display the content of metadata.json
         echo "[INFO] metadata.json content:"
         cat metadata.json
 
@@ -99,15 +110,16 @@ spec:
 
         QD_REPORT_FILENAME=$(find ./ -name "${E2E_REPORT_FILE}" | head -1)
 
-        if [ -z "$QD_REPORT_FILENAME" ]; then
-            echo "[INFO] No reports found with the specified name. Quality dashboard supports only to upload with reports"
-            exit 0
+        # Conditional upload: if the report is found, send it; else send only metadata
+        if [ -n "$QD_REPORT_FILENAME" ]; then
+          echo "[INFO] Report found: $QD_REPORT_FILENAME"
+          curl -F "metadata=@./metadata.json" \
+              -F "xunit=@$QD_REPORT_FILENAME" \
+              -X POST \
+              "$(params.quality-dashboard-api)/api/quality/konflux/metadata/post"
+        else
+          echo "[INFO] Report not found, sending only metadata."
+          curl -F "metadata=@./metadata.json" \
+              -X POST \
+              "$(params.quality-dashboard-api)/api/quality/konflux/metadata/post"
         fi
-
-        echo "[INFO] Report filename: $QD_REPORT_FILENAME"
-
-        # Upload the metadata and report to the quality dashboard
-        curl -F "metadata=@./metadata.json" \
-          -F "xunit=@$QD_REPORT_FILENAME" \
-          -X POST \
-          "$(params.quality-dashboard-api)/api/quality/konflux/metadata/post"

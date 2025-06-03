@@ -4,6 +4,7 @@ LABEL konflux.additional-tags="latest"
 
 ENV AGENT_VERSION=1.1.192
 ENV CLI_VERSION=1.0.46
+ENV GOTOOLCHAIN=auto
 
 USER root
 

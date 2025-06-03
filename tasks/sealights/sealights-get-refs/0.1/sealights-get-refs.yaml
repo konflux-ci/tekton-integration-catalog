@@ -67,12 +67,27 @@ spec:
             | .results[] | select(.name == "SOURCE_ARTIFACT") | .value' \
             cosign_metadata.json)"
 
-        SL_CONTAINER_IMAGE="$(jq -r --arg sl_source_artifact "$SL_SOURCE_ARTIFACT" '
+        SL_CONTAINER_IMAGE=""
+        # If $SL_SOURCE_ARTIFACT value exists, determine the Sealights image from
+        # the SOURCE_ARTIFACT invocation parameter.
+        # Otherwise look for invocation parameter's IMAGE value to contain the string "sealights"
+        if [[ -n "$SL_SOURCE_ARTIFACT" ]]; then
+          SL_CONTAINER_IMAGE="$(jq -r --arg sl_source_artifact "$SL_SOURCE_ARTIFACT" '
             .payload | @base64d | fromjson | .predicate.buildConfig.tasks[] |
             select(.invocation.parameters.SOURCE_ARTIFACT == $sl_source_artifact) |
             select(.ref.params[].value == "buildah-oci-ta") | .results[] | select(.name == "IMAGE_REF") |
             .value' \
             cosign_metadata.json)"
+        else
+          SL_CONTAINER_IMAGE="$(jq -r '
+            .payload
+            | @base64d
+            | fromjson
+            | .predicate.buildConfig.tasks[]
+            | select(.invocation.parameters.IMAGE? // "" | test("sealights"))
+            | .invocation.parameters.IMAGE
+          ' cosign_metadata.json)"
+        fi
 
         SL_BUILD_NAME="$(jq -r \
             '.payload | @base64d | fromjson | .predicate.buildConfig.tasks[] |

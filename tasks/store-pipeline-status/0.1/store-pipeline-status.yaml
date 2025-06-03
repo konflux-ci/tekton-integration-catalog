@@ -1,0 +1,148 @@
+---
+apiVersion: tekton.dev/v1
+kind: Task
+metadata:
+  name: store-pipeline-status
+  labels:
+    app.kubernetes.io/version: "0.1"
+  annotations:
+    tekton.dev/pipelines.minVersion: 0.12.1
+    tekton.dev/tags: konflux
+spec:
+  description: |
+    The `store-pipeline-status` Task is responsible for gathering metadata about the current PipelineRun and storing it as a JSON artifact. It waits for all other TaskRuns in the PipelineRun to complete, excluding itself, and then collects information such as the PipelineRun name, duration, overall status, and details about each completed TaskRun (name, status, and duration). This information is then outputted as a JSON object and stored in OCI artifact.
+    It is meant to be used in the `finally` section of the PipelineRun.
+  params:
+    - name: oci-ref
+      type: string
+      description: Full OCI artifact reference in the format `quay.io/org/repo:tag`. This parameter is used by the `secure-push-oci` step (imported Task) to specify where the pipeline status artifact should be pushed.
+    - name: credentials-secret-name
+      type: string
+      description: Name of the secret containing registry credentials. The Secret should have a key named `oci-storage-dockerconfigjson` with the registry credentials in `.dockerconfigjson` format. This is used by the `secure-push-oci` StepAction for authenticating with the OCI registry.
+    - name: pipeline-aggregate-status
+      type: string
+      description: The aggregate status of the pipeline.
+    - name: pipelinerun-name
+      type: string
+      description: The name of the PipelineRun this Task is currently running within.
+  volumes:
+    - name: credentials-volume
+      secret:
+        secretName: $(params.credentials-secret-name)
+  steps:
+    - name: get-pipeline-status
+      image: quay.io/konflux-ci/tekton-integration-catalog/utils:latest
+      workingDir: /workspace/pipeline-status
+      script: |
+        #!/bin/bash
+
+        PLR_NAME="$(params.pipelinerun-name)"
+        CURRENT_TR_NAME="$(context.taskRun.name)"
+
+        echo "Waiting for all TaskRuns in PipelineRun '$PLR_NAME' to complete (excluding the TaskRun: $CURRENT_TR_NAME)..."
+
+        while true; do
+          incomplete=$(kubectl get taskruns -l tekton.dev/pipelineRun=$PLR_NAME -o json | jq --arg current "$CURRENT_TR_NAME" '
+            [.items[]
+              | select(.metadata.name != $current)
+              | select(.status.conditions[0].status != "True" and .status.conditions[0].status != "False")
+            ] | length')
+
+          if [ "$incomplete" -eq 0 ]; then
+            echo "✅ All other TaskRuns are complete."
+            break
+          fi
+
+          echo "⏳ Still waiting for $incomplete TaskRuns to complete..."
+          sleep 1
+        done
+
+        PLR_STATUS=$(kubectl get pipelinerun "$PLR_NAME" -o jsonpath='{.status.conditions[0].reason}')
+
+        # Determine the pipeline status based on the pipeline-aggregate-status param and $PLR_STATUS
+        if [ "$(params.pipeline-aggregate-status)" == "Succeeded" ] || [ "$(params.pipeline-aggregate-status)" == "Completed" ]; then
+          echo "[INFO] PipelineRun succeeded."
+          PLR_STATUS="Succeeded"
+        elif [ "${PLR_STATUS}" = "CancelledRunningFinally" ]; then
+          echo "[INFO] PipelineRun was cancelled."
+          PLR_STATUS="Cancelled"
+        else
+          echo "[INFO] PipelineRun failed."
+          PLR_STATUS="Failed"
+        fi
+
+        OUTPUT_FILE="./pipeline-status.json"
+        NOW_SECS=$(date +%s)
+
+        echo "Summarizing PipelineRun: $PLR_NAME (excluding the TaskRun: $CURRENT_TR_NAME)"
+        echo "Output file: $OUTPUT_FILE"
+
+        {
+          echo '{'
+          echo "  \"pipelineRunName\": \"$PLR_NAME\","
+
+          PR_START=$(kubectl get pipelinerun "$PLR_NAME" -o jsonpath="{.status.startTime}")
+          PR_START_SECS=$(date -d "$PR_START" +%s 2>/dev/null || date -j -f "%Y-%m-%dT%H:%M:%S%z" "$PR_START" +%s)
+          DURATION=$((NOW_SECS - PR_START_SECS))
+          echo "  \"duration\": \"${DURATION}s\","
+
+          echo "  \"status\": \"${PLR_STATUS}\","
+          echo "  \"taskRuns\": ["
+
+          TR_NAMES=$(kubectl get taskruns -l tekton.dev/pipelineRun=$PLR_NAME -o jsonpath="{.items[*].metadata.name}")
+
+          FIRST=true
+          for TR in $TR_NAMES; do
+            if [ "$TR" = "$CURRENT_TR_NAME" ]; then
+              continue
+            fi
+
+            TR_JSON=$(kubectl get taskrun "$TR" -o json)
+            TASK_NAME=$(echo "$TR_JSON" | jq -r '.metadata.labels["tekton.dev/pipelineTask"]')
+            STATUS=$(echo "$TR_JSON" | jq -r '.status.conditions[0].reason')
+            START_TIME=$(echo "$TR_JSON" | jq -r '.status.startTime')
+            COMPLETION_TIME=$(echo "$TR_JSON" | jq -r '.status.completionTime // empty')
+
+            START_SECS=$(date -d "$START_TIME" +%s 2>/dev/null || date -j -f "%Y-%m-%dT%H:%M:%S%z" "$START_TIME" +%s)
+            if [ -z "$COMPLETION_TIME" ]; then
+              END_SECS=$NOW_SECS
+            else
+              END_SECS=$(date -d "$COMPLETION_TIME" +%s 2>/dev/null || date -j -f "%Y-%m-%dT%H:%M:%S%z" "$COMPLETION_TIME" +%s)
+            fi
+            TASK_DURATION=$((END_SECS - START_SECS))
+
+            if [ "$FIRST" = false ]; then
+              echo ","
+            fi
+            FIRST=false
+
+            echo "    {"
+            echo "      \"name\": \"$TASK_NAME\","
+            echo "      \"status\": \"$STATUS\","
+            echo "      \"duration\": \"${TASK_DURATION}s\""
+            echo -n "    }"
+          done
+
+          echo
+          echo "  ]"
+          echo '}'
+        } > "$OUTPUT_FILE"
+        jq -r < $OUTPUT_FILE
+
+    - name: secure-push-oci
+      ref:
+        resolver: git
+        params:
+          - name: url
+            value: https://github.com/konflux-ci/tekton-integration-catalog.git
+          - name: revision
+            value: main
+          - name: pathInRepo
+            value: stepactions/secure-push-oci/0.1/secure-push-oci.yaml
+      params:
+        - name: workdir-path
+          value: /workspace/pipeline-status
+        - name: oci-ref
+          value: $(params.oci-ref)
+        - name: credentials-volume-name
+          value: credentials-volume

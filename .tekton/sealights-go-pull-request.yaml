@@ -9,7 +9,8 @@ metadata:
     pipelinesascode.tekton.dev/cancel-in-progress: "true"
     pipelinesascode.tekton.dev/max-keep-runs: "3"
     pipelinesascode.tekton.dev/on-cel-expression: event == "pull_request" && target_branch
-      == "main" && ( "konflux/sealights-agents/go/***".pathChanged() || ".tekton/sealights-go-pull-request.yaml".pathChanged() )
+      == "main" && ( "konflux/sealights-agents/go/***".pathChanged() || ".tekton/sealights-go-pull-request.yaml".pathChanged()
+      )
   creationTimestamp: null
   labels:
     appstudio.openshift.io/application: sealights-containers
@@ -581,7 +582,8 @@ spec:
       optional: true
     - name: netrc
       optional: true
-  taskRunTemplate: {}
+  taskRunTemplate:
+    serviceAccountName: build-pipeline-sealights-go
   workspaces:
   - name: git-auth
     secret:

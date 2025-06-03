@@ -9,7 +9,7 @@ If the tag exists, it will update the existing content with the content of the w
 |name|description|default value|required|
 |---|---|---|---|
 |workdir-path|Path to the workdir that is about to be uploaded to OCI artifact||true|
-|credentials-volume-name|Name of the volume that mounts the secret with "oci-storage-dockerconfigjson" key containing registry credentials in .dockerconfigjson format||true|
+|credentials-volume-name|Name of the volume that mounts the secret with "oci-storage-dockerconfigjson" key containing registry credentials in .dockerconfigjson format, i.e. the secret should contain `data.oci-storage-dockerconfigjson: <dockerconfigjson-content>`||true|
 |oci-ref|Full OCI artifact reference in a format "quay.io/org/repo:tag"||true|
 |oci-tag-expiration|OCI artifact tag expiration|1y|false|
 |always-pass|Even if execution of the stepaction's script fails, do not fail the step|"true"|false|

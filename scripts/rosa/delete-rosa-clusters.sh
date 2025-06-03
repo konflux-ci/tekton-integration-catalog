@@ -93,7 +93,7 @@ delete_load_balancers() {
         local tags
         tags=$(aws --region "$AWS_DEFAULT_REGION" elbv2 describe-tags --resource-arns "$lb_arn" --query "TagDescriptions[*].Tags[?Key=='$LB_TAG_KEY'&&Value=='$lb_tag_value'].Value" --output text)
         # Check for any forgotten load balancers (with tag "konflux-ci=true" and older than 1 day)
-        has_konflux_ci_tag_and_is_old=$(aws --region "$AWS_DEFAULT_REGION" elbv2 describe-tags --resource-arns "$lb_arn" --query "TagDescriptions[*].[Tags[?Key=='konflux-ci'&&Value=='true'] && Tags[?Key=='creation-date'&&Value<='$(gdate -d "1 day ago" +%Y-%m-%d)']]" --output text)
+        has_konflux_ci_tag_and_is_old=$(aws --region "$AWS_DEFAULT_REGION" elbv2 describe-tags --resource-arns "$lb_arn" --query "TagDescriptions[*].[Tags[?Key=='konflux-ci'&&Value=='true'] && Tags[?Key=='creation-date'&&Value<='$(date -d "1 day ago" +%Y-%m-%d)']]" --output text)
         
         if [[ "$tags" == "$lb_tag_value" || "$has_konflux_ci_tag_and_is_old" != "" ]]; then
             echo "[INFO] Deleting ELBv2 Load Balancer with ARN: $lb_arn"
