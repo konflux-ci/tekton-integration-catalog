@@ -48,6 +48,10 @@ spec:
       description: |
         Commit SHA of the PR (from `component-pr-owner`) supplying custom Kubernetes manifests for the `component-name`.
       default: ''
+    - name: component-pr-source-branch
+      description: |
+        GitHub source branch of the pull request.
+      default: ''
 
   volumes:
     - name: credentials
@@ -76,6 +80,35 @@ spec:
         - -url=$(params.repo-url)
         - -revision=$(params.repo-branch)
         - -path=.
+    - name: solve-pr-pairing
+      image: quay.io/konflux-ci/tekton-integration-catalog/utils:latest
+      workingDir: /var/workdir
+      when:
+        - input: "$(params.component-name)"
+          operator: notin
+          values: [ "" ]
+      script: |
+        #!/bin/bash
+        set -euo pipefail
+
+        PR_SOURCE_BRANCH=$(params.component-pr-source-branch)
+        COMPONENT_NAME="$(params.component-name)"
+        PR_AUTHOR=$(params.component-pr-owner)
+
+        if [ $COMPONENT_NAME == "release-service-catalog" ]; then
+          PR_TO_PAIR=$(curl -s https://api.github.com/repos/konflux-ci/release-service/pulls\?per_page\=100 | jq -r ".[] | select(.user.login == \"$PR_AUTHOR\" and .head.ref == \"$PR_SOURCE_BRANCH\")")
+
+          if [ -n "$PR_TO_PAIR" ]; then
+            PAIRED_PR_SHA=$(jq -r '.head.sha' <<< $PR_TO_PAIR)
+
+            mkdir -p /var/workdir/
+            echo "COMPONENT_NAME=release-service" >> /var/workdir/.env
+            echo "IMAGE_REPO=quay.io/redhat-user-workloads/rhtap-release-2-tenant/release-service/release-service" >> /var/workdir/.env
+            echo "IMAGE_TAG=on-pr-$PAIRED_PR_SHA" >> /var/workdir/.env
+            echo "PR_OWNER=$PR_AUTHOR" >> /var/workdir/.env
+            echo "PR_SHA=$PAIRED_PR_SHA" >> /var/workdir/.env
+          fi
+        fi
 
     - name: update-kustomization
       image: quay.io/konflux-ci/tekton-integration-catalog/utils:latest
@@ -88,11 +121,18 @@ spec:
         #!/bin/bash
         set -euo pipefail
 
-        COMPONENT_NAME="$(params.component-name)"
-        IMAGE_REPO="$(params.component-image-repository)"
-        IMAGE_TAG="$(params.component-image-tag)"
-        PR_OWNER="$(params.component-pr-owner)"
-        PR_SHA="$(params.component-pr-sha)"
+        if [ -f /var/workdir/.env ]; then
+          echo "[INFO] Loading env vars from /var/workdir/.env: $(cat /var/workdir/.env)"
+          source /var/workdir/.env
+        else
+          echo "[INFO] Loading env vars from parameters"
+
+          COMPONENT_NAME="$(params.component-name)"
+          IMAGE_REPO="$(params.component-image-repository)"
+          IMAGE_TAG="$(params.component-image-tag)"
+          PR_OWNER="$(params.component-pr-owner)"
+          PR_SHA="$(params.component-pr-sha)"
+        fi
 
         # Repo names do not match the ones of the component. Try to find the right kustomization.yaml based on the component name.
         KUSTOMIZATION_PATH=$(find konflux-ci/ -type f -name "kustomization.yaml" -path "*${COMPONENT_NAME%-service}*/core/*" | head -n 1)

@@ -51,16 +51,6 @@ spec:
         USERNAME = os.getenv("USERNAME")
         APITOKEN = os.getenv("API_TOKEN")
 
-        def get_crumb(headers, cookiejar):
-            url = f"{JENKINS_URL}/crumbIssuer/api/xml?xpath=concat(//crumbRequestField,%22:%22,//crumb)"
-            opener = urllib.request.build_opener(
-                urllib.request.HTTPSHandler(context=ssl_context),
-                urllib.request.HTTPCookieProcessor(cookiejar)
-            )
-            opener.addheaders = headers
-            response = opener.open(url)
-            return response.read().decode()
-
         def construct_job_url(base_url, job_name, action):
             parts = [p for p in job_name.split('/') if p]
             url = base_url
@@ -96,13 +86,10 @@ spec:
                 job_url = construct_job_url(JENKINS_URL, JOB_NAME, action)
                 print(f"Triggering Jenkins job at: {job_url}")
 
-                # Set up authentication and get crumb
+                # Set up authentication
                 jarhead = http.cookiejar.CookieJar()
                 base64string = base64.b64encode(f"{USERNAME}:{APITOKEN}".encode("utf-8"))
                 auth_header = f"Basic {base64string.decode('utf-8')}"
-
-                crumb_response = get_crumb([("Authorization", auth_header)], jarhead)
-                crumb_field, crumb_value = crumb_response.split(':')
 
                 # Create form data for POST request
                 if data:
@@ -123,7 +110,6 @@ spec:
 
                 # Add headers
                 request.add_header("Authorization", auth_header)
-                request.add_header(crumb_field, crumb_value)
                 request.add_header("Content-Type", "application/x-www-form-urlencoded")
 
                 if filename:
