@@ -1,0 +1,250 @@
+---
+apiVersion: tekton.dev/v1
+kind: Task
+metadata:
+  name: kind-aws-provision
+  labels:
+    app.kubernetes.io/version: "0.2"
+  annotations:
+    tekton.dev/pipelines.minVersion: "0.44.x"
+    tekton.dev/categories: infrastructure
+    tekton.dev/tags: infrastructure, aws, kind
+    tekton.dev/displayName: "Kind Cloud Single Node - Create"
+    tekton.dev/platforms: "linux/amd64, linux/arm64"
+    mapt/version: "v0.9.1"
+spec:
+  description: |
+    Creates a single-node Kubernetes cluster using Kind on AWS, powered by the Mapt CLI.
+    This task is ideal for setting up ephemeral clusters for testing or CI/CD workflows.
+
+    It supports:
+      - Spot instance provisioning and nested virtualization
+      - Custom CPU, memory, and architecture configurations
+      - Automatic cluster cleanup via timeout
+      - Securely exposes the generated kubeconfig as a Kubernetes Secret
+
+  volumes:
+    - name: aws-credentials
+      secret:
+        secretName: $(params.secret-aws-credentials)
+    - name: cluster-info
+      emptyDir: {}
+    - name: logs
+      emptyDir: {}
+    - name: konflux-test-infra-volume
+      secret:
+        secretName: $(params.oci-credentials)
+
+  params:
+    - name: secret-aws-credentials
+      description: |
+        K8S secret holding the aws credentials. Secret should be accessible to this task.
+
+        ---
+        apiVersion: v1
+        kind: Secret
+        metadata:
+          name: aws-${name}
+        type: Opaque
+        data:
+          access-key: ${access_key}
+          secret-key: ${secret_key}
+          region: ${region}
+          bucket: ${bucket}
+    - name: id
+      description: A unique identifier for this Kind environment
+    - name: cluster-access-secret-name
+      type: string
+      default: "''"
+      description: |
+        (Optional) The name to assign to the Kubernetes Secret that will store
+        the kubeconfig for the created cluster. If not specified, a name will be auto-generated.
+    - name: ownerKind
+      type: string
+      default: PipelineRun
+      description: |
+        The type of Tekton resource (e.g., PipelineRun or TaskRun) that should own the kubeconfig Secret.
+        Deleting this owner will also delete the Secret automatically.
+    - name: ownerName
+      type: string
+      description: |
+        The name of the PipelineRun or TaskRun that owns the resources.
+    - name: ownerUid
+      type: string
+      description: |
+        The UID of the PipelineRun or TaskRun that owns the resources. This ensures proper cleanup.
+    - name: arch
+      description: |
+        The architecture of the instance to launch. Choose between `x86_64` or `arm64`.
+      default: 'x86_64'
+    - name: cpus
+      description: |
+        The number of vCPUs to allocate to the virtual machine.
+      default: '16'
+    - name: memory
+      description: |
+        The amount of memory (in GiB) to allocate to the virtual machine.
+      default: '64'
+    - name: nested-virt
+      description: |
+        Enables nested virtualization if set to `true`. Useful for running Kind inside a VM.
+      default: 'false'
+    - name: spot
+      description: |
+        Use spot instances to potentially reduce costs. Set to `true` to enable.
+      default: 'true'
+    - name: spot-increase-rate
+      description: |
+        Adds a percentage to the base spot price to improve chances of getting the instance.
+      default: '20'
+    - name: version
+      description: |
+        The desired Kubernetes version for the Kind cluster. If left blank, the latest stable version will be used.
+      default: 'v1.32'
+    - name: tags
+      description: AWS resource tags
+      default: "''"
+    - name: debug
+      description: |
+        Enables verbose logging and prints sensitive data like credentials.
+        Only use this for debugging in secure environments.
+      default: 'false'
+    - name: timeout
+      description: The Timeout value is a duration conforming to Go ParseDuration format. This will set a serverless destroy operation based on this.
+      default: "2h"
+    - name: oci-ref
+      type: string
+      description: Full OCI artifact reference in a format "quay.io/org/repo:tag. It's used for storing logs from the Task's Steps
+    - name: oci-credentials
+      type: string
+      description: |
+        The secret name containing credentials for container registry where the artifacts will be stored.
+      default: "konflux-test-infra"
+
+  results:
+    - name: cluster-access-secret
+      description: Secret with kubeconfig
+
+  stepTemplate:
+    env:
+      - name: LOG_FILENAME
+        value: '/var/log-dir/kind-aws-provision.log'
+    volumeMounts:
+      - name: logs
+        mountPath: /var/log-dir
+
+  steps:
+    - name: provisioner
+      onError: continue
+      image: quay.io/redhat-developer/mapt:v0.9.1
+      volumeMounts:
+        - name: aws-credentials
+          mountPath: /opt/aws-credentials
+        - name: cluster-info
+          mountPath: /opt/cluster-info
+      script: |
+        #!/bin/sh
+        set -euo pipefail
+        if [[ $(params.debug) == "true" ]]; then set -xeuo pipefail; fi
+
+        export AWS_ACCESS_KEY_ID=$(cat /opt/aws-credentials/access-key)
+        export AWS_SECRET_ACCESS_KEY=$(cat /opt/aws-credentials/secret-key)
+        export AWS_DEFAULT_REGION=$(cat /opt/aws-credentials/region)
+        BUCKET=$(cat /opt/aws-credentials/bucket)
+
+        cmd="mapt aws kind create "
+        cmd+="--project-name kind-$(params.id) "
+        cmd+="--backed-url s3://${BUCKET}/mapt/kind/$(params.id) "
+        cmd+="--conn-details-output /opt/cluster-info "
+        cmd+="--arch $(params.arch) "
+        cmd+="--cpus $(params.cpus) "
+        cmd+="--memory $(params.memory) "
+        if [[ $(params.nested-virt) == "true" ]]; then cmd+="--nested-virt "; fi
+        if [[ $(params.version) != "" ]]; then cmd+="--version $(params.version) "; fi
+        if [[ $(params.spot) == "true" ]]; then
+          cmd+="--spot --spot-increase-rate $(params.spot-increase-rate) "
+        fi
+        if [[ $(params.timeout) != "" ]]; then cmd+="--timeout $(params.timeout) "; fi
+        cmd+="--tags $(params.tags) "
+
+        eval "${cmd}" 2>&1 | tee $LOG_FILENAME
+
+      computeResources:
+        requests:
+          memory: "200Mi"
+          cpu: "100m"
+        limits:
+          memory: "600Mi"
+          cpu: "300m"
+
+    - name: host-info-secret
+      onError: continue
+      image: registry.redhat.io/openshift4/ose-cli:4.13@sha256:e70eb2be867f1236b19f5cbfeb8e0625737ce0ec1369e32a4f9f146aaaf68d49
+      env:
+        - name: NAMESPACE
+          value: $(context.taskRun.namespace)
+        - name: OWNER_KIND
+          value: $(params.ownerKind)
+        - name: OWNER_NAME
+          value: $(params.ownerName)
+        - name: OWNER_UID
+          value: $(params.ownerUid)
+      volumeMounts:
+        - name: cluster-info
+          mountPath: /opt/cluster-info
+      script: |
+        #!/bin/bash
+        set -eo pipefail
+        export SECRETNAME="generateName: mapt-aws-kind-"
+        if [[ $(params.cluster-access-secret-name) != "" ]]; then
+          export SECRETNAME="name: $(params.cluster-access-secret-name)"
+        fi
+        cat <<EOF > cluster-info.yaml
+        apiVersion: v1
+        kind: Secret
+        metadata:
+          $SECRETNAME
+          namespace: $NAMESPACE
+          ownerReferences:
+          - apiVersion: tekton.dev/v1
+            kind: $OWNER_KIND
+            name: $OWNER_NAME
+            uid: $OWNER_UID
+        type: Opaque
+        data:
+          kubeconfig: $(cat /opt/cluster-info/kubeconfig | base64 -w0)
+        EOF
+
+        if [[ $(params.debug) == "true" ]]; then
+          cat /opt/cluster-info/*
+        fi
+
+        NAME=$(oc create -f cluster-info.yaml -o=jsonpath='{.metadata.name}')
+        echo -n "${NAME}" | tee $(results.cluster-access-secret.path)
+    - name: secure-push-oci
+      ref:
+        resolver: git
+        params:
+          - name: url
+            value: https://github.com/konflux-ci/tekton-integration-catalog.git
+          - name: revision
+            value: main
+          - name: pathInRepo
+            value: stepactions/secure-push-oci/0.1/secure-push-oci.yaml
+      params:
+        - name: workdir-path
+          value: /var/log-dir
+        - name: oci-ref
+          value: $(params.oci-ref)
+        - name: credentials-volume-name
+          value: konflux-test-infra-volume
+    - name: fail-if-any-step-failed
+      ref:
+        resolver: git
+        params:
+          - name: url
+            value: https://github.com/konflux-ci/tekton-integration-catalog.git
+          - name: revision
+            value: main
+          - name: pathInRepo
+            value: stepactions/fail-if-any-step-failed/0.1/fail-if-any-step-failed.yaml
