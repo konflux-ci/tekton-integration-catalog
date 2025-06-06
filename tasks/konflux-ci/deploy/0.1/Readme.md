@@ -12,11 +12,12 @@ It is tailored for use within OpenShift Pipelines (Tekton) and supports full set
 The task performs the following operations:
 
 1. Clones the Konflux CI Git repository.
-2. Checks out the specified branch.
-3. Retrieves a `kubeconfig` from a Kubernetes Secret to access a target cluster.
-4. Optionally modifies kustomization files if specific component overrides are provided.
-5. Executes the deployment sequence using `deploy-deps.sh`, `wait-for-all.sh`, and `deploy-konflux.sh`.
-6. Optionally deploys test resources using `deploy-test-resources.sh`.
+1. Solves PR pairing between Konflux CI components (if required)
+1. Checks out the specified branch.
+1. Retrieves a `kubeconfig` from a Kubernetes Secret to access a target cluster.
+1. Optionally modifies kustomization files if specific component overrides are provided.
+1. Executes the deployment sequence using `deploy-deps.sh`, `wait-for-all.sh`, and `deploy-konflux.sh`.
+1. Optionally deploys test resources using `deploy-test-resources.sh`.
 
 ---
 
@@ -61,13 +62,15 @@ These parameters are particularly useful for development and testing of individu
 
 1. **`clone-konflux-ci`**
     Clones the Konflux CI repository and checks out the specified branch.
-2. **`update-kustomization`** *(conditional)*
+1. **`solve-pr-pairing`**
+    Performs PR pairing between Konflux components if required
+1. **`update-kustomization`** *(conditional)*
     If `component-name` is provided, this step modifies the kustomization files to use custom images or manifest sources for the specified component.
-3. **`get-kubeconfig`**
+1. **`get-kubeconfig`**
     Fetches and decodes the kubeconfig from the provided secret and sets up the Kubernetes context.
-4. **`deploy`**
+1. **`deploy`**
     Runs main deployment scripts (`deploy-deps.sh`, `wait-for-all.sh`, `deploy-konflux.sh`).
-5. **`create-test-resources`** *(conditional)*
+1. **`create-test-resources`** *(conditional)*
     Deploys additional test resources if `create-test-resources` is set to `true`.
 
 ---

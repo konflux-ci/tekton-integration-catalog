@@ -95,20 +95,65 @@ spec:
         COMPONENT_NAME="$(params.component-name)"
         PR_AUTHOR=$(params.component-pr-owner)
 
-        if [ $COMPONENT_NAME == "release-service-catalog" ]; then
-          PR_TO_PAIR=$(curl -s https://api.github.com/repos/konflux-ci/release-service/pulls\?per_page\=100 | jq -r ".[] | select(.user.login == \"$PR_AUTHOR\" and .head.ref == \"$PR_SOURCE_BRANCH\")")
+        RELEASE_SERVICE_REPO="konflux-ci/release-service"
+        INFRA_DEPLOYMENTS_REPO="redhat-appstudio/infra-deployments"
 
-          if [ -n "$PR_TO_PAIR" ]; then
-            PAIRED_PR_SHA=$(jq -r '.head.sha' <<< $PR_TO_PAIR)
+        if [[ $COMPONENT_NAME == "release-service-catalog" || $COMPONENT_NAME == "release-service" ]]; then
+          IMAGE_REPO=quay.io/redhat-user-workloads/rhtap-release-2-tenant/release-service/release-service
 
+          if [[ $COMPONENT_NAME == "release-service-catalog" ]]; then
+            echo "[INFO] Component is 'release-service-catalog'. Checking for paired PR in '$RELEASE_SERVICE_REPO'..."
+            PR_TO_PAIR=$(curl -s https://api.github.com/repos/konflux-ci/release-service/pulls\?per_page\=100 | jq -r ".[] | select(.user.login == \"$PR_AUTHOR\" and .head.ref == \"$PR_SOURCE_BRANCH\")")
+
+            if [ -n "$PR_TO_PAIR" ]; then
+              PAIRED_PR_SHA=$(jq -r '.head.sha' <<< $PR_TO_PAIR)
+              echo "[INFO] Found paired PR for $RELEASE_SERVICE_REPO. SHA: $PAIRED_PR_SHA"
+
+              mkdir -p /var/workdir/
+              echo "COMPONENT_NAME=release-service" >> /var/workdir/.env
+              echo "IMAGE_REPO=$IMAGE_REPO" >> /var/workdir/.env
+              echo "IMAGE_TAG=on-pr-$PAIRED_PR_SHA" >> /var/workdir/.env
+              echo "PR_OWNER=$PR_AUTHOR" >> /var/workdir/.env
+              echo "PR_SHA=$PAIRED_PR_SHA" >> /var/workdir/.env
+            else
+              echo "No paired PR found for $RELEASE_SERVICE_REPO by $PR_AUTHOR on branch $PR_SOURCE_BRANCH. No .env variables will be created."
+            fi
+          elif [[ $COMPONENT_NAME == "release-service" ]]; then
+            echo "[INFO] Component is 'release-service'. Setting up required env vars..."
             mkdir -p /var/workdir/
             echo "COMPONENT_NAME=release-service" >> /var/workdir/.env
-            echo "IMAGE_REPO=quay.io/redhat-user-workloads/rhtap-release-2-tenant/release-service/release-service" >> /var/workdir/.env
-            echo "IMAGE_TAG=on-pr-$PAIRED_PR_SHA" >> /var/workdir/.env
+            echo "IMAGE_REPO=$IMAGE_REPO" >> /var/workdir/.env
+            echo "IMAGE_TAG=on-pr-$(params.component-pr-sha)" >> /var/workdir/.env
             echo "PR_OWNER=$PR_AUTHOR" >> /var/workdir/.env
-            echo "PR_SHA=$PAIRED_PR_SHA" >> /var/workdir/.env
+            echo "PR_SHA=$(params.component-pr-sha)" >> /var/workdir/.env
+
+            echo "[INFO] Env vars for 'release-service' are set:"
+            cat /var/workdir/.env
           fi
+
+          echo "[INFO] Checking for paired PR in '$INFRA_DEPLOYMENTS_REPO'..."
+          PR_TO_PAIR=$(curl -s https://api.github.com/repos/redhat-appstudio/infra-deployments/pulls\?per_page\=100 | jq -r ".[] | select(.user.login == \"$PR_AUTHOR\" and .head.ref == \"$PR_SOURCE_BRANCH\")")
+          REMOTE_NAME=redhat-appstudio
+          GIT_REF=main
+
+          if [ -n "$PR_TO_PAIR" ]; then
+            REMOTE_NAME=$PR_AUTHOR
+            GIT_REF=$(jq -r '.head.sha' <<< $PR_TO_PAIR)
+            echo "[INFO] Found paired PR for $INFRA_DEPLOYMENTS_REPO. Configuration files will be fetched from SHA: $GIT_REF (from user: $REMOTE_NAME)."
+          else
+            echo "[INFO] No paired PR found for $INFRA_DEPLOYMENTS_REPO by $PR_AUTHOR on branch $PR_SOURCE_BRANCH. Configuration files will be fetched from '$GIT_REF' branch."
+          fi
+          
+          # Update 'release-service-config' and 'release-pipeline-resources-clusterrole' with content from infra-deployments manifests
+          echo "[INFO] Downloading release_service_config.yaml..."
+          curl https://raw.githubusercontent.com/$REMOTE_NAME/infra-deployments/$GIT_REF/components/release/development/release_service_config.yaml > konflux-ci/release/core/release-service-config.yaml
+          echo "[INFO] Downloading release-pipeline-resources-clusterrole.yaml..."
+          curl https://raw.githubusercontent.com/$REMOTE_NAME/infra-deployments/$GIT_REF/components/release/base/release-pipeline-resources-clusterrole.yaml > konflux-ci/release/core/release-pipeline-resources-clusterrole.yaml
+
+          echo "[INFO] Configuration files updated successfully."
         fi
+
+        
 
     - name: update-kustomization
       image: quay.io/konflux-ci/tekton-integration-catalog/utils:latest
@@ -122,7 +167,9 @@ spec:
         set -euo pipefail
 
         if [ -f /var/workdir/.env ]; then
-          echo "[INFO] Loading env vars from /var/workdir/.env: $(cat /var/workdir/.env)"
+          echo "[INFO] Loading env vars from /var/workdir/.env:"
+          cat /var/workdir/.env
+
           source /var/workdir/.env
         else
           echo "[INFO] Loading env vars from parameters"
