@@ -13,15 +13,16 @@ The pipeline consists of the following tasks:
 2. **Provision EAAS Space (`provision-eaas-space`)**  
    Allocates an **Environment-as-a-Service (EaaS) space** for cluster provisioning.
 
-3. **Fetch Image Mirror Set (`fetch-image-mirror-set`)**
-   - Fetches a `.tekton/images-mirror-set.yaml` file from a source Git repository, handling both public and private repositories.
-   - Stores the raw YAML and its serialized string as Tekton results for use by other tasks.
+3. **Fetch Config Files (`fetch-config-files`)**
+   - Retrieves the authorization token if the source Git repository is private.
+   - Downloads `.tekton/images-mirror-set.yaml` and `bundle/tests/scorecard/config.yaml` from the source Git repository.
+   - Stores the raw YAML and the serialized versions of the ImageDigestMirrorSet and scorecard config images as Tekton results for use by downstream tasks.
 
-3. **Get Unreleased Bundle (`get-unreleased-bundle`)**
+4. **Get Unreleased Bundle (`get-unreleased-bundle`)**
    - Retrieves the **unreleased bundle** from the FBC fragment.
    - Processes **.tekton/images-mirror-set.yaml** to resolve mirrored image references, if available.
 
-4. **Provision Cluster (`provision-cluster`)**  
+5. **Pick Cluster Params (`pick-cluster-params`)**
    - Fetches a list of supported **OpenShift versions** for Hypershift.
       
       The version of Multi-Cluster Engine (MCE) that is deployed for Hypershift dictates what cluster versions can be provisioned. For example, MCE 2.7 supports provisioning OCP 4.14–4.17.
@@ -31,10 +32,12 @@ The pipeline consists of the following tasks:
       A new MCE version is generally released shortly after the corresponding OCP GA release.
    - Selects the **target OpenShift version** for deployment.
    - Identifies the **supported cluster architecture** (`arm64`, `amd64`).
+
+6. **Provision Cluster (`provision-cluster`)**
    - Retrieves the latest OpenShift **version tag**.
    - Provisions a **Hypershift AWS cluster** using the parameters selected above, along with the `imageContentSources` parameter, which contains the serialized image mirror set YAML used to apply IDMS to the running cluster.
 
-5. **Deploy Operator (`deploy-operator`)**  
+7. **Deploy Operator (`deploy-operator`)**  
    - Retrieves **Kubeconfig credentials** for cluster access.
    - Installs the **operator** on the newly provisioned cluster.
    - Gathers **cluster artifacts** for analysis and validation.
@@ -42,6 +45,13 @@ The pipeline consists of the following tasks:
    - Pushes gathered artifacts to an **OCI artifact repository** (e.g. Quay).
    - Fails the pipeline if operator installation fails.
 
+8. **Verify Image Sources (`verify-image-sources`)**  
+   - Validates that each pulled image comes from an approved registry:
+      * `registry.redhat.io`
+      * `registry.access.redhat.com`
+   - Ensures images are referenced by digest.
+   - Ignores images that are in an allow list.
+   - Fails if any image does not meet the criteria.
 
 ## Parameters
 |name|description|default value|required|
