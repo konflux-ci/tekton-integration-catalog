@@ -53,6 +53,7 @@ The pipeline consists of the following tasks:
 |OCI_REF| Full OCI artifact reference in a format "quay.io/org/repo:tag"|| true|
 |REPO_TOKEN| Name of the Kubernetes Secret that contains the access token for a private GitHub or GitLab repository| ""| false|
 |REPO_KEY| Key within the Secret's "data" field that holds the GitHub/GitLab access token| ""| false|
+|PATH_TO_MIRROR_SET| Path to where the image digest mirror set is saved in the repository| ".tekton/images-mirror-set.yaml"| false|
 
 ## Pipeline Usage Guide
 
@@ -71,6 +72,7 @@ Open a merge request (MR) to your [tenants-config](https://gitlab.cee.redhat.com
 - `spec.params[3].value`  -> OCI_REF
 - `spec.params[4].value`  -> REPO_TOKEN (Optional)
 - `spec.params[5].value`  -> REPO_KEY (Optional)
+- `spec.params[6].value`  -> PATH_TO_MIRROR_SET (Optional)
 
 ```yaml
 apiVersion: appstudio.redhat.com/v1beta2
@@ -98,6 +100,8 @@ spec:
       value: "git-auth"
     - name: REPO_KEY
       value: "git-auth-key"
+    - name: PATH_TO_MIRROR_SET
+      value: "config/imageDigestMirrorSet.yaml"
   resolverRef:
     params:
       - name: url
@@ -156,6 +160,10 @@ Name of the Kubernetes Secret that contains the access token for a private GitHu
 #### REPO_KEY (Optional)
 
 Key within the Secret's `data` field that holds the GitHub/GitLab access token.
+
+#### PATH_TO_MIRROR_SET (Optional)
+
+Path to where the image digest mirror set is saved in the repository.
 
 Example:
 

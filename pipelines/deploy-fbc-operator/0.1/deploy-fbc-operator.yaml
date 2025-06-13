@@ -63,6 +63,10 @@ spec:
       name: REPO_KEY
       default: ""
       type: string
+    - description: Path to where the image digest mirror set is saved in the repository
+      name: PATH_TO_MIRROR_SET
+      default: ".tekton/images-mirror-set.yaml"
+      type: string
   tasks:
     - name: parse-metadata
       taskRef:
@@ -129,12 +133,14 @@ spec:
                 value: $(params.REPO_TOKEN)
               - name: REPO_KEY
                 value: $(params.REPO_KEY)
+              - name: PATH_TO_MIRROR_SET
+                value: $(params.PATH_TO_MIRROR_SET)
             script: |
               #!/usr/bin/env bash
               set -euo pipefail
               . /utils.sh
               
-              mirror_set_url="${SOURCE_GIT_URL}/raw/${SOURCE_GIT_REVISION}/.tekton/images-mirror-set.yaml"
+              mirror_set_url="${SOURCE_GIT_URL}/raw/${SOURCE_GIT_REVISION}/${PATH_TO_MIRROR_SET}"
               
               # If REPO_TOKEN and REPO_KEY are defined, assume the source code repo is private and requires a token
               if [[ -n "${REPO_TOKEN}" && -n "${REPO_KEY}" ]]; then
