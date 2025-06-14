@@ -75,11 +75,11 @@ spec:
     - name: cpus
       description: |
         The number of vCPUs to allocate to the virtual machine.
-      default: '16'
+      default: '8'
     - name: memory
       description: |
         The amount of memory (in GiB) to allocate to the virtual machine.
-      default: '64'
+      default: '32'
     - name: nested-virt
       description: |
         Enables nested virtualization if set to `true`. Useful for running Kind inside a VM.
