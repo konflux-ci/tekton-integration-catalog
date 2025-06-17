@@ -8,13 +8,12 @@ metadata:
   annotations:
     tekton.dev/pipelines.minVersion: 0.12.1
     tekton.dev/tags: konflux
+    ai.konflux.dev/intent: "Extract and log CI/CD metadata from a JSON snapshot or PipelineRun for traceability and automation."
+    ai.konflux.dev/usage-scenarios: "Use in Tekton pipelines to capture event type, Git info, container image, and more for downstream automation."
+    ai.konflux.dev/keywords: "metadata, git, snapshot, ci, cd, traceability, automation"
 spec:
   description: |
-    The `test-metadata` Task is responsible for gathering and processing metadata during the execution of a pipeline test.
-    It collects various Git and repository details, such as the type of event that triggered the pipeline (Push or Pull Request),
-    the Git URL and revision, and details about the container image built during the test.
-    The task processes metadata labels and annotations, constructs a job specification for the Konflux CI system,
-    and writes this information to specified results.
+    The `test-metadata` Task extracts and logs metadata from a JSON snapshot or PipelineRun object during Tekton pipeline execution, producing results for event type, Git info, container image, and more. Use this task to capture and document CI/CD metadata for traceability, reporting, or downstream automation.
   results:
     - name: test-event-type
       description: Indicates if the job is triggered by a Pull Request or a Push event.
@@ -44,10 +43,13 @@ spec:
       description: The name of the component that is being executed from Konflux.
   params:
     - name: SNAPSHOT
-      description: The JSON string of the Snapshot under test.
+      description: The JSON string of the Snapshot under test. (Required)
     - name: test-name
       type: string
-      description: The name of the test being executed.
+      description: The name of the test being executed. (Required)
+    - name: oras-container
+      type: string
+      description: ORAS container for storing test artifacts. (Required)
   steps:
     - name: test-metadata
       image: quay.io/konflux-qe-incubator/konflux-qe-tools:latest
@@ -91,6 +93,11 @@ spec:
               fieldPath: metadata.annotations['pac.test.appstudio.openshift.io/branch']
       script: |
         #!/bin/bash
+        set -euo pipefail
+        # Parameter validation
+        if [[ -z "$SNAPSHOT" ]]; then echo "Missing required parameter: SNAPSHOT"; exit 1; fi
+        if [[ -z "$(params.test-name)" ]]; then echo "Missing required parameter: test-name"; exit 1; fi
+        if [[ -z "$(params.oras-container)" ]]; then echo "Missing required parameter: oras-container"; exit 1; fi
 
         # Extract additional environment variables from SNAPSHOT
         GIT_URL=$(jq -r --arg component_name "$KONFLUX_COMPONENT_NAME" '.components[] | select(.name == $component_name) | .source.git.url' <<< "$SNAPSHOT")

@@ -143,3 +143,35 @@ Add the following snippet after `prefetch-dependencies`:
       values:
         - "true"
 ```
+
+## 🤖 For AI Agents
+
+**Purpose:** Retrieve Sealights instrumentation metadata from a container image attestation in Konflux CI integration tests.
+
+**When to Use:**
+- When you need to extract Sealights Build Session ID, source artifact, instrumented container image, or build name from a component's container image in a Tekton pipeline.
+
+**Required Parameters:**
+- `SNAPSHOT` (string): The JSON string representing the Snapshot under test.
+
+**Results:**
+- `sealights-source-artifact`: OCI artifact instrumented with Sealights
+- `sealights-bsid`: Sealights Build Session ID
+- `sealights-container-image`: Instrumented container image
+- `sealights-build-name`: Build name from Sealights
+- `container-image`: Original container image
+
+**YAML Invocation Example:**
+```yaml
+- name: get-sealights-refs
+  taskRef:
+    name: sealights-get-refs
+  params:
+    - name: SNAPSHOT
+      value: "$(params.snapshot)"
+```
+
+**AI Guidance:**
+- Ensure the `SNAPSHOT` parameter is a valid JSON string for the target component.
+- Use the results for downstream tasks that require Sealights metadata.
+- For more context, parse the parameter/result tables and usage examples above.

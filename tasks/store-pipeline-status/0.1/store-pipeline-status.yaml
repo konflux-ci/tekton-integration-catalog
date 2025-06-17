@@ -8,23 +8,25 @@ metadata:
   annotations:
     tekton.dev/pipelines.minVersion: 0.12.1
     tekton.dev/tags: konflux
+    ai.konflux.dev/intent: "Store pipeline execution metadata as a JSON artifact in OCI registry for auditing and automation."
+    ai.konflux.dev/usage-scenarios: "Use in the 'finally' section of a PipelineRun to persist status and metadata."
+    ai.konflux.dev/keywords: "pipeline, status, metadata, oci, artifact, audit, automation"
 spec:
   description: |
-    The `store-pipeline-status` Task is responsible for gathering metadata about the current PipelineRun and storing it as a JSON artifact. It waits for all other TaskRuns in the PipelineRun to complete, excluding itself, and then collects information such as the PipelineRun name, duration, overall status, and details about each completed TaskRun (name, status, and duration). This information is then outputted as a JSON object and stored in OCI artifact.
-    It is meant to be used in the `finally` section of the PipelineRun.
+    The `store-pipeline-status` Task gathers metadata about the current PipelineRun and stores it as a JSON artifact in an OCI registry. It waits for all other TaskRuns in the PipelineRun to complete (excluding itself), collects information such as the PipelineRun name, duration, overall status, and details about each completed TaskRun (name, status, and duration), and outputs this as a JSON object. Intended for use in the `finally` section of the PipelineRun for auditing, reporting, or downstream automation.
   params:
     - name: oci-ref
       type: string
-      description: Full OCI artifact reference in the format `quay.io/org/repo:tag`. This parameter is used by the `secure-push-oci` step (imported Task) to specify where the pipeline status artifact should be pushed.
+      description: Full OCI artifact reference in the format `quay.io/org/repo:tag`. (Required)
     - name: credentials-secret-name
       type: string
-      description: Name of the secret containing registry credentials. The Secret should have a key named `oci-storage-dockerconfigjson` with the registry credentials in `.dockerconfigjson` format. This is used by the `secure-push-oci` StepAction for authenticating with the OCI registry.
+      description: Name of the secret containing registry credentials. (Required)
     - name: pipeline-aggregate-status
       type: string
-      description: The aggregate status of the pipeline.
+      description: The aggregate status of the pipeline. (Required)
     - name: pipelinerun-name
       type: string
-      description: The name of the PipelineRun this Task is currently running within.
+      description: The name of the PipelineRun this Task is currently running within. (Required)
   volumes:
     - name: credentials-volume
       secret:
@@ -57,6 +59,12 @@ spec:
       workingDir: /workspace/pipeline-status
       script: |
         #!/bin/bash
+        set -euo pipefail
+        # Parameter validation
+        if [[ -z "$(params.oci-ref)" ]]; then echo "Missing required parameter: oci-ref"; exit 1; fi
+        if [[ -z "$(params.credentials-secret-name)" ]]; then echo "Missing required parameter: credentials-secret-name"; exit 1; fi
+        if [[ -z "$(params.pipeline-aggregate-status)" ]]; then echo "Missing required parameter: pipeline-aggregate-status"; exit 1; fi
+        if [[ -z "$(params.pipelinerun-name)" ]]; then echo "Missing required parameter: pipelinerun-name"; exit 1; fi
 
         PLR_NAME="$(params.pipelinerun-name)"
         CURRENT_TR_NAME="$(context.taskRun.name)"

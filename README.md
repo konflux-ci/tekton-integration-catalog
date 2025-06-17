@@ -50,18 +50,30 @@ The [`scripts`](./scripts/) directory contains reusable scripts that assist with
 
 ## 🔢 Versioning
 
-We follow a **versioning strategy** to ensure updates don’t break existing workflows.
+We follow a **versioning strategy** to ensure updates don't break existing workflows.
 
 ### 📌 When to Create a New Version
 
 A **new version** of a task/stepaction should be created **if**:
 
-- ✅ The task’s **interface changes** (e.g., parameters, workspaces, or result names are modified).
-- ✅ New functionality is introduced that **isn’t backward compatible**.
+- ✅ The task's **interface changes** (e.g., parameters, workspaces, or result names are modified).
+- ✅ New functionality is introduced that **isn't backward compatible**.
 - ✅ A critical bug fix **requires an updated implementation**.
 
 Each version should be **clearly labeled** to avoid breaking existing pipelines.
 
 ## 🤝 Contributing
 
-We welcome contributions! If you’d like to **add a new task**, **improve existing ones**, or **enhance documentation**, check out our [Contributing Guide](./CONTRIBUTING.md).
+We welcome contributions! If you'd like to **add a new task**, **improve existing ones**, or **enhance documentation**, check out our [Contributing Guide](./CONTRIBUTING.md).
+
+## 🤖 For AI Agents
+
+This catalog is designed for both human and AI consumption. AI agents can use the following guidance to reason about and compose Tekton resources:
+
+- **Resource Discovery:** Each task, stepaction, and pipeline is documented with a README and versioned YAML. Look for parameter and result tables, usage examples, and versioning information.
+- **Selection Criteria:** Use the resource's description, parameters, and results to determine suitability for a given integration or pipeline step. Prefer the latest compatible version unless otherwise specified.
+- **Invocation:** Follow the YAML usage examples for correct parameterization. All parameters and results are explicitly documented in each resource's README.
+- **Metadata:** Where available, use YAML annotations and labels for additional context (e.g., tags, version, compatibility, intent). Future updates will include more structured metadata for easier machine parsing.
+- **Contribution:** When adding new resources, ensure documentation is clear, tables are complete, and usage examples are provided. AI agents rely on this structure for automated reasoning and action.
+
+For advanced automation, monitor this repo for upcoming structured metadata files and a machine-readable catalog index.
