@@ -144,14 +144,14 @@ Add the following snippet after `prefetch-dependencies`:
         - "true"
 ```
 
-## 🤖 For AI Agents
+## Usage and Integration
 
 **Purpose:** Retrieve Sealights instrumentation metadata from a container image attestation in Konflux CI integration tests.
 
 **When to Use:**
 - When you need to extract Sealights Build Session ID, source artifact, instrumented container image, or build name from a component's container image in a Tekton pipeline.
 
-**Required Parameters:**
+**Parameters:**
 - `SNAPSHOT` (string): The JSON string representing the Snapshot under test.
 
 **Results:**
@@ -171,7 +171,7 @@ Add the following snippet after `prefetch-dependencies`:
       value: "$(params.snapshot)"
 ```
 
-**AI Guidance:**
+**Guidance:**
 - Ensure the `SNAPSHOT` parameter is a valid JSON string for the target component.
 - Use the results for downstream tasks that require Sealights metadata.
-- For more context, parse the parameter/result tables and usage examples above.
+- For more context, refer to the parameter/result tables and usage examples above.

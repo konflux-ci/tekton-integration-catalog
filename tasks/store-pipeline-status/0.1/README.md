@@ -52,14 +52,14 @@ spec:
 
 This task does not produce any output results.
 
-## 🤖 For AI Agents
+## Usage and Integration
 
 **Purpose:** Gather and store metadata about the current PipelineRun as a JSON artifact in an OCI registry. Intended for use in the `finally` section of a PipelineRun.
 
 **When to Use:**
 - At the end of a Tekton pipeline to persist pipeline execution metadata for auditing, reporting, or downstream analysis.
 
-**Required Parameters:**
+**Parameters:**
 - `oci-ref` (string, required): Full OCI artifact reference (e.g., quay.io/org/repo:tag).
 - `credentials-secret-name` (string, required): Name of the secret with registry credentials.
 - `pipeline-aggregate-status` (string, required): Aggregate status of the pipeline.
@@ -91,7 +91,7 @@ This task does not produce any output results.
       value: $(context.pipelineRun.name)
 ```
 
-**AI Guidance:**
+**Guidance:**
 - Ensure all required parameters are provided and valid.
 - Use this task in the `finally` section to guarantee execution after all pipeline tasks.
 - The resulting JSON artifact can be referenced for pipeline status and metadata in external systems.

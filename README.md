@@ -66,14 +66,14 @@ Each version should be **clearly labeled** to avoid breaking existing pipelines.
 
 We welcome contributions! If you'd like to **add a new task**, **improve existing ones**, or **enhance documentation**, check out our [Contributing Guide](./CONTRIBUTING.md).
 
-## 🤖 For AI Agents
+## Usage and Integration
 
-This catalog is designed for both human and AI consumption. AI agents can use the following guidance to reason about and compose Tekton resources:
+This catalog is designed for both human and automated consumption. Use the following guidance to reason about and compose Tekton resources:
 
 - **Resource Discovery:** Each task, stepaction, and pipeline is documented with a README and versioned YAML. Look for parameter and result tables, usage examples, and versioning information.
 - **Selection Criteria:** Use the resource's description, parameters, and results to determine suitability for a given integration or pipeline step. Prefer the latest compatible version unless otherwise specified.
 - **Invocation:** Follow the YAML usage examples for correct parameterization. All parameters and results are explicitly documented in each resource's README.
 - **Metadata:** Where available, use YAML annotations and labels for additional context (e.g., tags, version, compatibility, intent). Future updates will include more structured metadata for easier machine parsing.
-- **Contribution:** When adding new resources, ensure documentation is clear, tables are complete, and usage examples are provided. AI agents rely on this structure for automated reasoning and action.
+- **Contribution:** When adding new resources, ensure documentation is clear, tables are complete, and usage examples are provided. This structure supports both human understanding and automated reasoning.
 
 For advanced automation, monitor this repo for upcoming structured metadata files and a machine-readable catalog index.
