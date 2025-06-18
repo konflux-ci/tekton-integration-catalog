@@ -63,7 +63,7 @@ spec:
             data = {}
             filename = ""
             for params in args:
-                if "@" in params:
+                if "=@" in params:
                     filename += params.split("=")[1][1:]
                 elif "=" in params:
                     key_value = params.split("=")
