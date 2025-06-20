@@ -276,6 +276,8 @@ spec:
         ./deploy-test-resources.sh
         } 2>&1 | tee -a $LOG_FILENAME
 
+        sleep 3600
+
     - name: secure-push-oci
       ref:
         resolver: git
