@@ -91,7 +91,11 @@ spec:
       type: string
       description: |
         The registry secrets where artifacts will be stored.
-
+    - name: force-destroy
+      type: string
+      description: |
+        If force-destroy is set the command will destroy even if there is a lock when is still provisioning a stack.
+      default: "true"
   steps:
     - name: gather-cluster-resources
       onError: continue
@@ -157,6 +161,11 @@ spec:
         cmd="mapt aws kind destroy "
         cmd+="--project-name kind-$(params.id) "
         cmd+="--backed-url s3://${BUCKET}/mapt/kind/$(params.id) "
+
+        if [ "$(params.force-destroy)" = "true" ]; then
+          cmd+="--force-destroy "
+        fi
+
         eval "${cmd}"
       computeResources:
         requests:

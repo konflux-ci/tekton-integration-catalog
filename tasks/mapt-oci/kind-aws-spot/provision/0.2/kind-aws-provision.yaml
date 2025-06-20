@@ -11,7 +11,7 @@ metadata:
     tekton.dev/tags: infrastructure, aws, kind
     tekton.dev/displayName: "Kind Cloud Single Node - Create"
     tekton.dev/platforms: "linux/amd64, linux/arm64"
-    mapt/version: "v0.9.1"
+    mapt/version: "v0.9.2"
 spec:
   description: |
     Creates a single-node Kubernetes cluster using Kind on AWS, powered by the Mapt CLI.
@@ -55,7 +55,7 @@ spec:
       description: A unique identifier for this Kind environment
     - name: cluster-access-secret-name
       type: string
-      default: "''"
+      default: $(context.pipelineRun.name)
       description: |
         (Optional) The name to assign to the Kubernetes Secret that will store
         the kubeconfig for the created cluster. If not specified, a name will be auto-generated.
@@ -134,6 +134,46 @@ spec:
         mountPath: /var/log-dir
 
   steps:
+    - name: create-kubeconfig-secret
+      image: registry.redhat.io/openshift4/ose-cli:4.13@sha256:e70eb2be867f1236b19f5cbfeb8e0625737ce0ec1369e32a4f9f146aaaf68d49
+      env:
+        - name: NAMESPACE
+          value: $(context.taskRun.namespace)
+        - name: OWNER_KIND
+          value: $(params.ownerKind)
+        - name: OWNER_NAME
+          value: $(params.ownerName)
+        - name: OWNER_UID
+          value: $(params.ownerUid)
+        - name: KUBECONFIG_SECRET_NAME
+          value: $(params.cluster-access-secret-name)
+      script: |
+        #!/bin/bash
+        set -eo pipefail
+
+        echo "[INFO] Creating secret: $KUBECONFIG_SECRET_NAME"
+
+        cat <<EOF | oc create -f -
+        apiVersion: v1
+        kind: Secret
+        metadata:
+          name: ${KUBECONFIG_SECRET_NAME}
+          namespace: ${NAMESPACE}
+          ownerReferences:
+          - apiVersion: tekton.dev/v1
+            kind: ${OWNER_KIND}
+            name: ${OWNER_NAME}
+            uid: ${OWNER_UID}
+        type: Opaque
+        data:
+          kubeconfig: ""
+        EOF
+
+        echo "[INFO] Successfully created secret: $KUBECONFIG_SECRET_NAME"
+
+        # Export secret name to result
+        echo -n "${KUBECONFIG_SECRET_NAME}" | tee $(results.cluster-access-secret.path)
+
     - name: provisioner
       onError: continue
       image: quay.io/redhat-developer/mapt:v0.9.2
@@ -177,50 +217,26 @@ spec:
           memory: "600Mi"
           cpu: "300m"
 
-    - name: host-info-secret
+    - name: update-kubeconfig-secret
       onError: continue
       image: registry.redhat.io/openshift4/ose-cli:4.13@sha256:e70eb2be867f1236b19f5cbfeb8e0625737ce0ec1369e32a4f9f146aaaf68d49
       env:
         - name: NAMESPACE
           value: $(context.taskRun.namespace)
-        - name: OWNER_KIND
-          value: $(params.ownerKind)
-        - name: OWNER_NAME
-          value: $(params.ownerName)
-        - name: OWNER_UID
-          value: $(params.ownerUid)
+        - name: KUBECONFIG_SECRET_NAME
+          value: $(params.cluster-access-secret-name)
       volumeMounts:
         - name: cluster-info
           mountPath: /opt/cluster-info
       script: |
         #!/bin/bash
         set -eo pipefail
-        export SECRETNAME="generateName: mapt-aws-kind-"
-        if [[ $(params.cluster-access-secret-name) != "" ]]; then
-          export SECRETNAME="name: $(params.cluster-access-secret-name)"
-        fi
-        cat <<EOF > cluster-info.yaml
-        apiVersion: v1
-        kind: Secret
-        metadata:
-          $SECRETNAME
-          namespace: $NAMESPACE
-          ownerReferences:
-          - apiVersion: tekton.dev/v1
-            kind: $OWNER_KIND
-            name: $OWNER_NAME
-            uid: $OWNER_UID
-        type: Opaque
-        data:
-          kubeconfig: $(cat /opt/cluster-info/kubeconfig | base64 -w0)
-        EOF
 
-        if [[ $(params.debug) == "true" ]]; then
-          cat /opt/cluster-info/*
-        fi
+        # Patch the existing secret to update the kubeconfig data
+        oc patch secret "${KUBECONFIG_SECRET_NAME}" -n "${NAMESPACE}" --type='merge' -p='{"data":{"kubeconfig":"'$(cat /opt/cluster-info/kubeconfig | base64 -w0)'"}}'
 
-        NAME=$(oc create -f cluster-info.yaml -o=jsonpath='{.metadata.name}')
-        echo -n "${NAME}" | tee $(results.cluster-access-secret.path)
+        echo "[INFO] Updated secret ${KUBECONFIG_SECRET_NAME} with kubeconfig."
+
     - name: secure-push-oci
       ref:
         resolver: git

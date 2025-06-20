@@ -135,7 +135,7 @@ metadata:
 rules:
   - apiGroups: [""]
     resources: ["secrets"]
-    verbs: ["get", "list", "create"]
+    verbs: ["get", "list", "create", "patch"]
 ```
 
 Bind this role to your pipeline's ServiceAccount with a `RoleBinding`:
