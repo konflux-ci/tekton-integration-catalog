@@ -67,32 +67,43 @@ The task produces the following results:
 11. **job-spec**: The konflux CI job spec metadata generated.
     - **Description**: This result contains a JSON object with comprehensive details about the job specification, including container image, component name, git information, and event type. It encapsulates all the relevant metadata for the CI job in a structured format, aiding in documentation and analysis.
 
-## Usage
+## Usage and Integration
 
-To effectively utilize the `test-metadata` task in a Tekton Pipeline, you can follow the example provided below. This example demonstrates how to define a Tekton pipeline that includes the `test-metadata` task, ensuring that all necessary parameters are specified correctly.
+**Purpose:** Extract and log metadata from a JSON snapshot or PipelineRun object during Tekton pipeline execution, producing results for event type, Git info, container image, and more.
 
+**When to Use:**
+- When you need to capture and document CI/CD metadata for traceability, reporting, or downstream automation in a Tekton pipeline.
+
+**Parameters:**
+- `SNAPSHOT` (string, required): JSON string representing the Snapshot under test.
+- `test-name` (string, required): Name of the test being executed.
+- `oras-container` (string, required): ORAS container for storing test artifacts.
+
+**Results:**
+- `test-event-type`, `pull-request-number`, `git-url`, `git-revision`, `container-image`, `git-org`, `git-repo`, `oras-container`, `pull-request-author`, `target-repo-branch`, `job-spec` (see above for details).
+
+**YAML Invocation Example:**
 ```yaml
-apiVersion: tekton.dev/v1beta1
-kind: Pipeline
-metadata:
-  name: test-metadata-pipeline
-spec:
-  tasks:
-    - name: extract-metadata
-      taskRef:
-        resolver: git
-        params:
-          - name: url
-            value: https://github.com/konflux-ci/konflux-qe-definitions
-          - name: revision
-            value: main
-          - name: pathInRepo
-            value: common/tasks/test-metadata/test-metadata.yaml
-      params:
-        - name: SNAPSHOT
-          value: "<your-snapshot-json>"
-        - name: test-name
-          value: "<your-test-name>"
-        - name: oras-container
-          value: "<your-oras-container-without-tag>"
+- name: extract-metadata
+  taskRef:
+    resolver: git
+    params:
+      - name: url
+        value: https://github.com/konflux-ci/konflux-qe-definitions
+      - name: revision
+        value: main
+      - name: pathInRepo
+        value: common/tasks/test-metadata/test-metadata.yaml
+  params:
+    - name: SNAPSHOT
+      value: "<your-snapshot-json>"
+    - name: test-name
+      value: "<your-test-name>"
+    - name: oras-container
+      value: "<your-oras-container-without-tag>"
 ```
+
+**Guidance:**
+- Ensure all required parameters are provided and valid JSON where applicable.
+- Use the produced results for downstream tasks that require CI/CD metadata.
+- Refer to the parameter/result tables above for detailed descriptions and usage context.
