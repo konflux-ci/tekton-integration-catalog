@@ -1,0 +1,228 @@
+---
+apiVersion: tekton.dev/v1
+kind: Task
+metadata:
+  name: test-metadata
+  labels:
+    app.kubernetes.io/version: "0.3"
+  annotations:
+    tekton.dev/pipelines.minVersion: 0.12.1
+    tekton.dev/tags: konflux
+spec:
+  description: |
+    The `test-metadata` Task is responsible for gathering and processing metadata during the execution of a pipeline test.
+    It collects various Git and repository details, such as the type of event that triggered the pipeline (Push or Pull Request),
+    the Git URL and revision, and details about the container image built during the test.
+    The task processes metadata labels and annotations, constructs a job specification for the Konflux CI system,
+    and writes this information to specified results. This version combines the individual result approach from 0.1
+    with the consolidated job-spec approach from 0.2, plus prefetch functionality.
+  results:
+    - name: test-event-type
+      description: Indicates if the job is triggered by a Pull Request or a Push event.
+    - name: pull-request-number
+      description: The pull request number if the job is triggered by a pull request event.
+    - name: git-url
+      description: The Git URL from which the test pipeline is originating. This can be from a fork or the original repository.
+    - name: git-revision
+      description: The Git revision (commit SHA) from which the test pipeline is originating.
+    - name: container-image
+      description: The container image built from the specified Git revision.
+    - name: git-org
+      description: The GitHub organization from which the test is originating.
+    - name: git-repo
+      description: The repository from which the test is originating.
+    - name: pull-request-author
+      description: The GitHub author of the pull request event.
+    - name: job-spec
+      description: The Konflux CI job spec metadata generated.
+    - name: source-repo-url
+      description: Will show the source from where a Pull Request was opened. Can be from a fork or upstream.
+    - name: source-repo-branch
+      description: Get the branch from the fork or upstream repo where the pipeline is executed.
+    - name: target-repo-branch
+      description: The target branch value from the Pull Request or the current branch value in case of push event. 
+    - name: component-name
+      description: The name of the component that is being executed from Konflux.
+    - name: prefetch-artifact
+      description: The OCI artifact that contains the prefetch dependencies generated during the build phase.
+    - name: container-repo
+      description: The container repository extracted from the container image.
+    - name: container-tag
+      description: The container tag extracted from the container image.
+  params:
+    - name: SNAPSHOT
+      description: The JSON string of the Snapshot under test.
+
+  steps:
+    - name: test-metadata
+      image: quay.io/konflux-qe-incubator/konflux-qe-tools:latest
+      workingDir: /workspace
+      env:
+        - name: SNAPSHOT
+          value: $(params.SNAPSHOT)
+
+        - name: EVENT_TYPE
+          valueFrom:
+            fieldRef:
+              fieldPath: metadata.labels['pac.test.appstudio.openshift.io/event-type']
+        - name: KONFLUX_COMPONENT_NAME
+          valueFrom:
+            fieldRef:
+              fieldPath: metadata.labels['appstudio.openshift.io/component']
+        - name: PULL_REQUEST_NUMBER
+          valueFrom:
+            fieldRef:
+              fieldPath: metadata.labels['pac.test.appstudio.openshift.io/pull-request']
+        - name: GIT_ORGANIZATION
+          valueFrom:
+            fieldRef:
+              fieldPath: metadata.labels['pac.test.appstudio.openshift.io/url-org']
+        - name: GIT_REPOSITORY
+          valueFrom:
+            fieldRef:
+              fieldPath: metadata.labels['pac.test.appstudio.openshift.io/url-repository']
+        - name: SOURCE_REPO_URL
+          valueFrom:
+            fieldRef:
+              fieldPath: metadata.annotations['pac.test.appstudio.openshift.io/source-repo-url']
+        - name: SOURCE_REPO_BRANCH
+          valueFrom:
+            fieldRef:
+              fieldPath: metadata.annotations['pac.test.appstudio.openshift.io/source-branch']
+        # This value refers to the target branch value in 'pull-request' events and branch value in 'push' events.
+        # E.g. for push event to 'main' branch this will have the value 'main'. For PR event that targets 'main' branch, this will be also 'main'.
+        - name: TARGET_REPO_BRANCH
+          valueFrom:
+            fieldRef:
+              fieldPath: metadata.annotations['pac.test.appstudio.openshift.io/branch']
+      script: |
+        #!/bin/bash
+
+        # Extract additional environment variables from SNAPSHOT
+        GIT_URL=$(jq -r --arg component_name "$KONFLUX_COMPONENT_NAME" '.components[] | select(.name == $component_name) | .source.git.url' <<< "$SNAPSHOT" 2>/dev/null || echo "")
+        GIT_REVISION=$(jq -r --arg component_name "$KONFLUX_COMPONENT_NAME" '.components[] | select(.name == $component_name) | .source.git.revision' <<< "$SNAPSHOT" 2>/dev/null || echo "")
+        COMPONENT_CONTAINER_IMAGE=$(jq -r --arg component_name "$KONFLUX_COMPONENT_NAME" '.components[] | select(.name == $component_name) | .containerImage' <<< "$SNAPSHOT" 2>/dev/null || echo "")
+        SOURCE_REPO_ORG=$(echo "$SOURCE_REPO_URL" | sed -E 's#https://github.com/([^/]+)/.*#\1#')
+
+        # Validate required variables
+        if [[ -z "$KONFLUX_COMPONENT_NAME" ]]; then
+          echo "[ERROR] KONFLUX_COMPONENT_NAME is required but not found"
+          exit 1
+        fi
+
+        PR_AUTHOR="$(curl -s https://api.github.com/repos/${GIT_ORGANIZATION}/${GIT_REPOSITORY}/pulls/${PULL_REQUEST_NUMBER} | jq -r .user.login 2>/dev/null || echo "")"
+
+        if [[ "$EVENT_TYPE" != "push" && -n "$PULL_REQUEST_NUMBER" ]]; then
+          EVENT_TYPE="pull_request"
+        elif [[ -z "$PULL_REQUEST_NUMBER" && "$EVENT_TYPE" != "push" ]]; then
+          EVENT_TYPE="push"
+        fi
+
+        JOB_SPEC=$(cat <<EOF
+        {
+            "container_image": "$COMPONENT_CONTAINER_IMAGE",
+            "konflux_component": "$KONFLUX_COMPONENT_NAME",
+            "snapshot": $SNAPSHOT,
+            "git": {
+                "pull_request_number": $PULL_REQUEST_NUMBER,
+                "pull_request_author": "$PR_AUTHOR",
+                "org": "$GIT_ORGANIZATION",
+                "repo": "$GIT_REPOSITORY",
+                "commit_sha": "$GIT_REVISION",
+                "event_type": "$EVENT_TYPE",
+                "source_repo_url": "$SOURCE_REPO_URL",
+                "source_repo_org": "$SOURCE_REPO_ORG",
+                "source_repo_branch": "$SOURCE_REPO_BRANCH",
+                "target_repo_branch": "$TARGET_REPO_BRANCH",
+                "url": "$GIT_URL",
+                "revision": "$GIT_REVISION"
+            }
+        }
+        EOF
+        )
+
+        echo "[INFO] Job spec:"
+        echo "$JOB_SPEC"
+
+        # Log the derived environment variables
+        echo "Integration Test metadata:"
+        echo "  SNAPSHOT: $SNAPSHOT"
+        echo "  EVENT_TYPE: $EVENT_TYPE"
+        echo "  KONFLUX_COMPONENT_NAME: $KONFLUX_COMPONENT_NAME"
+        echo "  PULL_REQUEST_NUMBER: $PULL_REQUEST_NUMBER"
+        echo "  GIT_ORGANIZATION: $GIT_ORGANIZATION"
+        echo "  GIT_REPOSITORY: $GIT_REPOSITORY"
+        echo "  GIT_URL: $GIT_URL"
+        echo "  GIT_REVISION: $GIT_REVISION"
+        echo "  PR_AUTHOR: $PR_AUTHOR"
+        echo "  COMPONENT_CONTAINER_IMAGE: $COMPONENT_CONTAINER_IMAGE"
+        echo "  SOURCE_REPO_URL: $SOURCE_REPO_URL"
+        echo "  SOURCE_REPO_BRANCH: $SOURCE_REPO_BRANCH"
+        echo "  TARGET_REPO_BRANCH: $TARGET_REPO_BRANCH"
+        echo "  SOURCE_REPO_ORG: $SOURCE_REPO_ORG"
+
+        # Write each environment variable to its respective result file (0.1 approach)
+        echo -n "$EVENT_TYPE" > $(results.test-event-type.path)
+        echo -n "$PULL_REQUEST_NUMBER" > $(results.pull-request-number.path)
+        echo -n "$GIT_ORGANIZATION" > $(results.git-org.path)
+        echo -n "$GIT_REPOSITORY" > $(results.git-repo.path)
+        echo -n "$COMPONENT_CONTAINER_IMAGE" > $(results.container-image.path)
+        echo -n "$GIT_URL" > $(results.git-url.path)
+        echo -n "$GIT_REVISION" > $(results.git-revision.path)
+        echo -n "$PR_AUTHOR" > $(results.pull-request-author.path)
+        echo -n "$JOB_SPEC" > $(results.job-spec.path)
+        echo -n "$SOURCE_REPO_URL" > $(results.source-repo-url.path)
+        echo -n "$SOURCE_REPO_BRANCH" > $(results.source-repo-branch.path)
+        echo -n "$TARGET_REPO_BRANCH" > $(results.target-repo-branch.path)
+        echo -n "$KONFLUX_COMPONENT_NAME" > $(results.component-name.path)
+
+        # Handle prefetch functionality (always enabled)
+        cosign download attestation "$COMPONENT_CONTAINER_IMAGE" > cosign_metadata.json 2>/dev/null || echo "{}" > cosign_metadata.json
+
+        CACHI2_SOURCE_ARTIFACT="$(jq -r \
+          '.payload | @base64d | fromjson | .predicate.buildConfig.tasks[] |
+          select(.name == "prefetch-dependencies") | .results[] | select(.name == "CACHI2_ARTIFACT") | .value' \
+          cosign_metadata.json 2>/dev/null || echo "")"
+
+        SOURCE_ARTIFACT="$(jq -r \
+          '.payload | @base64d | fromjson | .predicate.buildConfig.tasks[] |
+          select(.name == "prefetch-dependencies") | .results[] | select(.name == "SOURCE_ARTIFACT") | .value' \
+          cosign_metadata.json 2>/dev/null || echo "")"
+
+        # Check artifact status
+        if [[ -z "$CACHI2_SOURCE_ARTIFACT" || "$CACHI2_SOURCE_ARTIFACT" == "null" ]]; then
+          echo "[INFO] Cachi2 artifact: not found"
+          CACHI2_SOURCE_ARTIFACT=""
+        else
+          echo "[INFO] Cachi2 artifact: found ($CACHI2_SOURCE_ARTIFACT)"
+        fi
+
+        if [[ -z "$SOURCE_ARTIFACT" || "$SOURCE_ARTIFACT" == "null" ]]; then
+          echo "[INFO] Source artifact: not found"
+          SOURCE_ARTIFACT=""
+        else
+          echo "[INFO] Source artifact: found ($SOURCE_ARTIFACT)"
+        fi
+
+        # Extract repo and tag from image
+        IMAGE_WITHOUT_SHA="${COMPONENT_CONTAINER_IMAGE%%@sha256:*}"
+        CONTAINER_TAG="${IMAGE_WITHOUT_SHA##*:}"
+        CONTAINER_REPO="${IMAGE_WITHOUT_SHA%:*}"
+
+        # If tag is missing, default it based on event type
+        if [[ -z "$CONTAINER_TAG" ]]; then
+          if [[ "$EVENT_TYPE" == "pull_request" ]]; then
+            CONTAINER_TAG="on-pr-${GIT_REVISION}"
+          elif [[ "$EVENT_TYPE" == "push" ]]; then
+            CONTAINER_TAG="${GIT_REVISION}"
+          else
+            echo "[WARN] Unknown EVENT_TYPE: $EVENT_TYPE. Defaulting tag to revision."
+            CONTAINER_TAG="${GIT_REVISION}"
+          fi
+          echo "[INFO] No tag found, defaulting to: $CONTAINER_TAG"
+        fi
+
+        echo -n "$CACHI2_SOURCE_ARTIFACT" > $(results.prefetch-artifact.path)
+        echo -n "$SOURCE_ARTIFACT" > $(results.source-artifact.path)
+        echo -n "$CONTAINER_REPO" > $(results.container-repo.path)
+        echo -n "$CONTAINER_TAG" > $(results.container-tag.path)
