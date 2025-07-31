@@ -1,0 +1,128 @@
+---
+apiVersion: tekton.dev/v1
+kind: Task
+metadata:
+  name: verify-image-sources
+spec:
+  description: |
+    The image source test collects all image pull events on the testing cluster, starting from the operator's deployment on the cluster until the end of testing.
+
+    Container images used by the operator must be referenced by digest and must be available from one of the following registries:
+      * registry.redhat.io
+      * registry.access.redhat.com
+  params:
+    - name: imagesPulledAfterDeploymentStart
+      description: The list of images pulled after operator installation (newline-separated).
+      type: string
+    - name: bundleImage
+      description: The operator bundle image to verify.
+      type: string
+    - name: scorecardConfigImages
+      description: Additional images used in custom scorecard configs (newline-separated).
+      type: string
+      default: ""
+  steps:
+    - name: verify-image-sources
+      image: quay.io/konflux-ci/konflux-test:v1.4.20@sha256:f9db697d8a45870b862252de61b3c29d9d6f79272ef8bf61ecb645f8bca27705
+      env:
+        - name: PULLED_IMAGES
+          value: $(params.imagesPulledAfterDeploymentStart)
+        - name: BUNDLE_IMAGE
+          value: $(params.bundleImage)
+        - name: SCORECARD_CONFIG_IMAGES
+          value: $(params.scorecardConfigImages)
+      script: |
+        #!/usr/bin/env bash
+        set -euo pipefail
+        . /utils.sh
+
+        approved_registries=("registry.redhat.io" "registry.access.redhat.com")
+
+        allow_list=(
+          "quay.io/operator-framework/scorecard-untar:latest"
+          "quay.io/openshift-release-dev/ocp-v4.0-art-dev"
+          "quay.io/openshift-release-dev/ocp-release"
+          "brew.registry.redhat.io/rh-osbs/iib"
+        )
+
+        # Add operator bundle image to allow_list (registry/repo only)
+        image_data=$(parse_image_url "${BUNDLE_IMAGE}")
+        image_registry_repository=$(echo "${image_data}" | jq -r '.registry_repository')
+        allow_list+=("${image_registry_repository}")
+
+        # Add scorecard config images to allow_list
+        while IFS= read -r line; do
+          [[ -z "$line" ]] && continue
+          allow_list+=("$line")
+        done <<< "$SCORECARD_CONFIG_IMAGES"
+
+        echo "Allowed list:"
+        printf '%s\n' "${allow_list[@]}"
+        echo
+
+        # Get operator bundle manifest digest
+        operator_bundle_manifests=$(get_image_manifests -i "${BUNDLE_IMAGE}")
+        operator_bundle_manifest_digest=$(echo "${operator_bundle_manifests}" | jq -r '.["amd64"]')
+        echo "Manifest digest for operator bundle: ${operator_bundle_manifest_digest}"
+
+        image_source_test_passed=true
+
+        while IFS= read -r image; do
+          [[ -z "${image}" ]] && continue
+
+          echo
+          echo "Evaluating image: ${image}"
+
+          image_data=$(parse_image_url "${image}")
+          image_digest=$(echo "${image_data}" | jq -r '.digest')
+          image_registry_repository=$(echo "${image_data}" | jq -r '.registry_repository')
+          image_registry="${image_registry_repository%%/*}"
+          image_tag=$(echo "${image_data}" | jq -r '.tag')
+
+          if [[ -n "${operator_bundle_manifest_digest}" && "${image_digest}" == "${operator_bundle_manifest_digest}" ]]; then
+            echo "Ignoring ${image}: same digest as operator bundle image."
+            continue
+          fi
+
+          match_found=false
+          for allowed in "${allow_list[@]}"; do
+            if [[ "${image}" == "${allowed}"* ]]; then
+              match_found=true
+              break
+            fi
+          done
+          if [[ "${match_found}" == true ]]; then
+            echo "Ignoring ${image}: matches allow list."
+            continue
+          fi
+
+          image_passed=false
+          status_msg=""
+
+          if [[ " ${approved_registries[*]} " == *" ${image_registry} "* ]]; then
+            image_passed=true
+          else
+            status_msg="Registry not allowed"
+          fi
+
+          if [[ -n "${image_tag}" ]]; then
+            image_passed=false
+            status_msg+="Tags not permitted"
+          fi
+
+          echo "[${image_passed}] ${image} ${status_msg}"
+
+          if [[ "${image_passed}" == false ]]; then
+            image_source_test_passed=false
+          fi
+
+        done <<< "${PULLED_IMAGES}"
+
+        if [[ "${image_source_test_passed}" == false ]]; then
+          echo
+          echo "Operator image source test FAILED."
+          exit 1
+        else
+          echo
+          echo "Operator image source test PASSED."
+        fi
