@@ -279,7 +279,7 @@ spec:
             if [[ "$konflux_component" == "$COMPONENT_NAME" ]]; then
               echo "[INFO] Adding env var SEALIGHTS_TOKEN to the deployment of '$konflux_component'"
               deployment_name=$(kubectl get deployment -o name -n "$konflux_component")
-              kubectl patch "$deployment_name" -n "$konflux_component" --type='json' -p='[{"op": "add", "path": "/spec/template/spec/containers/0/env/-", "value": {"name": "SEALIGHTS_TOKEN", "value": "'"$SEALIGHTS_TOKEN"'"}}]'
+              kubectl -n "$konflux_component" set env "$deployment_name" SEALIGHTS_TOKEN="$SEALIGHTS_TOKEN" --containers="*"
             fi
           done
 
