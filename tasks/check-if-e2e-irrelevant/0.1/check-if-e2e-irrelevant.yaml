@@ -1,0 +1,111 @@
+---
+apiVersion: tekton.dev/v1
+kind: Task
+metadata:
+  name: check-if-e2e-irrelevant
+spec:
+  description: |
+    This task checks if the files changed in the pull request are all irrelevant to the e2e tests.
+    If all files are irrelevant, the task will exit with code 0 unless an error occurs,
+    and sets the result accordingly.
+  params:
+    - name: base-branch
+      description: The name of default branch.
+      type: string
+      default: "main"
+    - name: irrelevant_pattern
+      description: The regular expression for irrelevant files
+      type: string
+      default: '(^|.*/)(\.gitignore|PROJECT|LICENSE|\.sonarcloud\.properties|\.gitlint|\.dockerignore)$'
+  results:
+    - name: result
+      description: Check result, "true" if irrelevant, "false" if relevant.
+  steps:
+    - name: run-check
+      image: quay.io/konflux-qe-incubator/konflux-qe-tools:latest
+      workingDir: /workspace
+      env:
+        - name: GIT_ORGANIZATION
+          valueFrom:
+            fieldRef:
+              fieldPath: metadata.labels['pac.test.appstudio.openshift.io/url-org']
+        - name: GIT_REPOSITORY
+          valueFrom:
+            fieldRef:
+              fieldPath: metadata.labels['pac.test.appstudio.openshift.io/url-repository']
+        - name: PR_NUMBER
+          valueFrom:
+            fieldRef:
+              fieldPath: metadata.labels['pac.test.appstudio.openshift.io/pull-request']
+      script: |
+        #!/usr/bin/env bash
+        set -euo pipefail
+
+        # Function to handle exit and set result
+        exitfunc() {
+          local err=$1
+          local line=$2
+          local command="$3"
+          if [ "$err" -eq 0 ]; then
+            echo -n "true" | tee "$(results.result.path)"
+            exit 0
+          elif [ "$err" -eq 99 ]; then
+            echo -n "false" | tee "$(results.result.path)"
+            exit 0
+          else
+            echo "$0: ERROR $command failed at line $line - exited with status $err"
+            echo -n "true" | tee "$(results.result.path)"
+            exit "$err"
+          fi
+        }
+        trap 'exitfunc $? $LINENO "$BASH_COMMAND"' EXIT
+
+        # Setup workspace
+        WORK_DIR=".tmp_pr_check"
+        rm -rf "$WORK_DIR"
+        mkdir "$WORK_DIR"
+        cd "$WORK_DIR"
+
+        # Clone and checkout PR
+        if ! git clone --quiet "https://github.com/${GIT_ORGANIZATION}/${GIT_REPOSITORY}" "${GIT_REPOSITORY}"; then
+          echo "Failed to clone repository"
+          exit 1
+        fi
+        cd "${GIT_REPOSITORY}"
+        if ! git fetch origin pull/"$PR_NUMBER"/head:pr_"$PR_NUMBER" > /dev/null 2>&1; then
+          echo "Failed to fetch PR"
+          exit 1
+        fi
+        if ! git checkout pr_"$PR_NUMBER" > /dev/null 2>&1; then
+          echo "Failed to checkout PR branch"
+          exit 1
+        fi
+
+        # Get changed files
+        changed_files=$(git diff --name-only origin/"$(params.base-branch)"...HEAD)
+
+        if [[ -z "$changed_files" ]]; then
+          echo "No files changed."
+          exit 0
+        fi
+
+        all_irrelevant=true
+
+        while IFS= read -r file; do
+          # Consider as irrelevant if matches any of the following:
+          if [[ "$file" =~ ^\.github/.* ]] || [[ "$file" =~ ^.*\.md$ ]] || [[ "$file" =~ $(params.irrelevant_pattern) ]]; then
+            continue
+          else
+            echo "$file --> relevant"
+            all_irrelevant=false
+            break
+          fi
+        done <<< "$changed_files"
+
+        if [[ "$all_irrelevant" == true ]]; then
+          echo "Only irrelevant files changed."
+          exit 0
+        else
+          echo "Relevant file(s) changed"
+          exit 99
+        fi
