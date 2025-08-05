@@ -98,17 +98,16 @@ spec:
       script: |
         #!/bin/bash
 
+        if [[ -z "$KONFLUX_COMPONENT_NAME" ]]; then
+          echo "[ERROR] KONFLUX_COMPONENT_NAME is required but not found"
+          exit 1
+        fi
+
         # Extract additional environment variables from SNAPSHOT
         GIT_URL=$(jq -r --arg component_name "$KONFLUX_COMPONENT_NAME" '.components[] | select(.name == $component_name) | .source.git.url' <<< "$SNAPSHOT" 2>/dev/null || echo "")
         GIT_REVISION=$(jq -r --arg component_name "$KONFLUX_COMPONENT_NAME" '.components[] | select(.name == $component_name) | .source.git.revision' <<< "$SNAPSHOT" 2>/dev/null || echo "")
         COMPONENT_CONTAINER_IMAGE=$(jq -r --arg component_name "$KONFLUX_COMPONENT_NAME" '.components[] | select(.name == $component_name) | .containerImage' <<< "$SNAPSHOT" 2>/dev/null || echo "")
         SOURCE_REPO_ORG=$(echo "$SOURCE_REPO_URL" | sed -E 's#https://github.com/([^/]+)/.*#\1#')
-
-        # Validate required variables
-        if [[ -z "$KONFLUX_COMPONENT_NAME" ]]; then
-          echo "[ERROR] KONFLUX_COMPONENT_NAME is required but not found"
-          exit 1
-        fi
 
         PR_AUTHOR="$(curl -s https://api.github.com/repos/${GIT_ORGANIZATION}/${GIT_REPOSITORY}/pulls/${PULL_REQUEST_NUMBER} | jq -r .user.login 2>/dev/null || echo "")"
 
@@ -204,12 +203,22 @@ spec:
           echo "[INFO] Source artifact: found ($SOURCE_ARTIFACT)"
         fi
 
-        # Extract repo and tag from image
-        IMAGE_WITHOUT_SHA="${COMPONENT_CONTAINER_IMAGE%%@sha256:*}"
-        CONTAINER_TAG="${IMAGE_WITHOUT_SHA##*:}"
-        CONTAINER_REPO="${IMAGE_WITHOUT_SHA%:*}"
+        # Extract repo from image (handle both tag and digest formats)
+        if [[ "$COMPONENT_CONTAINER_IMAGE" == *"@"* ]]; then
+          # Image with digest (e.g., image@sha256:digest)
+          CONTAINER_REPO="${COMPONENT_CONTAINER_IMAGE%%@*}"
+          CONTAINER_TAG=""
+        elif [[ "$COMPONENT_CONTAINER_IMAGE" == *":"* ]]; then
+          # Image with tag (e.g., image:tag)
+          CONTAINER_REPO="${COMPONENT_CONTAINER_IMAGE%:*}"
+          CONTAINER_TAG="${COMPONENT_CONTAINER_IMAGE##*:}"
+        else
+          # Image without tag or digest
+          CONTAINER_REPO="$COMPONENT_CONTAINER_IMAGE"
+          CONTAINER_TAG=""
+        fi
 
-        # If tag is missing, default it based on event type
+        # Generate tag based on event type if not present
         if [[ -z "$CONTAINER_TAG" ]]; then
           if [[ "$EVENT_TYPE" == "pull_request" ]]; then
             CONTAINER_TAG="on-pr-${GIT_REVISION}"

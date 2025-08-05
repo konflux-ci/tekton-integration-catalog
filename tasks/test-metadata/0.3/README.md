@@ -1,11 +1,5 @@
 # Test Metadata Version 0.3
 
-This version converges the functionality from both 0.1 and 0.2 versions, providing the best of both approaches:
-
-- **From 0.1**: Individual result outputs for easy access to specific metadata values
-- **From 0.2**: Consolidated job-spec approach with enhanced git information and prefetch functionality
-- **New in 0.3**: Combined approach with both individual results AND consolidated job-spec, plus prefetch capabilities
-
 The `test-metadata` task is designed to extract and log metadata from a JSON snapshot or PipelineRun object during a Tekton pipeline execution. This task helps in identifying and documenting critical information such as the event type (push or pull request), Git URL, Git revision, container image, GitHub organization, repository, pull request number, and pull request author.
 
 ## Parameters
