@@ -102,7 +102,7 @@ spec:
           value: $(context.pipelineRun.name)
         - name: ownerUid
           value: $(context.pipelineRun.uid)
-    - name: fetch-image-mirror-set
+    - name: fetch-config-files
       runAfter:
         - provision-eaas-space
       when:
@@ -115,20 +115,14 @@ spec:
             description: "Contents of the image mirror set yaml file"
           - name: serializedMirrorSetYaml
             description: "A serialized string of an ImageDigestMirrorSet YAML, where each mirror entry is formatted with escaped newlines to preserve structure in a single-line format"
+          - name: scorecardConfigImages
+            description: "Images pulled from the scorecard config YAML."
         steps:
-          - name: retrieve-mirror-yaml
-            image: quay.io/konflux-ci/konflux-test:v1.4.26@sha256:124643eeaa77684dea6270eada4553ebd7d63fcc06ff0c57f4a7d43695507bb5
-            computeResources:
-              limits:
-                memory: 512Mi
-              requests:
-                memory: 512Mi
-                cpu: 100m
+          - name: retrieve-auth-header
+            image: quay.io/konflux-ci/konflux-test:v1.4.31@sha256:a7cae9e96663e277a3904d0c78630508ddb6cc8eebaa912a840bd20f68dcaad1
             env:
               - name: SOURCE_GIT_URL
                 value: "$(tasks.parse-metadata.results.source-git-url)"
-              - name: SOURCE_GIT_REVISION
-                value: "$(tasks.parse-metadata.results.source-git-revision)"
               - name: REPO_TOKEN
                 value: $(params.REPO_TOKEN)
               - name: REPO_KEY
@@ -139,9 +133,9 @@ spec:
               #!/usr/bin/env bash
               set -euo pipefail
               . /utils.sh
-              
-              mirror_set_url="${SOURCE_GIT_URL}/raw/${SOURCE_GIT_REVISION}/${PATH_TO_MIRROR_SET}"
-              
+
+              AUTH_HEADER=""
+
               # If REPO_TOKEN and REPO_KEY are defined, assume the source code repo is private and requires a token
               if [[ -n "${REPO_TOKEN}" && -n "${REPO_KEY}" ]]; then
                 echo "Source code repository is private and requires a token to access it"
@@ -162,16 +156,44 @@ spec:
                   echo "Unknown Git provider. Cannot determine proper authorization header."
                   exit 1
                 fi
-
-                # Fetch the file
-                mirror_set_yaml=$(curl -kfL -H "$AUTH_HEADER" "$mirror_set_url")
-              else
-                mirror_set_yaml=$(curl -kfL "$mirror_set_url")
               fi
 
-              echo "Image mirror set yaml is: $mirror_set_yaml"
+              echo "$AUTH_HEADER" > /tmp/auth_header.txt
+          - name: retrieve-mirror-set-and-scorecard-config
+            image: quay.io/konflux-ci/konflux-test:v1.4.31@sha256:a7cae9e96663e277a3904d0c78630508ddb6cc8eebaa912a840bd20f68dcaad1
+            computeResources:
+              limits:
+                memory: 512Mi
+              requests:
+                memory: 512Mi
+                cpu: 100m
+            env:
+              - name: SOURCE_GIT_URL
+                value: "$(tasks.parse-metadata.results.source-git-url)"
+              - name: SOURCE_GIT_REVISION
+                value: "$(tasks.parse-metadata.results.source-git-revision)"
+            script: |
+              #!/usr/bin/env bash
+              set -euo pipefail
+              . /utils.sh
 
-              if [[ $? -ne 0 || -z "$mirror_set_yaml" ]]; then
+              set +x  # Disable debug tracing to protect tokens
+
+              auth_header=""
+              if [[ -s "/tmp/auth_header.txt" ]]; then
+                auth_header=$(cat /tmp/auth_header.txt)
+              fi
+              
+              # Fetch image mirror set
+              mirror_set_url="${SOURCE_GIT_URL}/raw/${SOURCE_GIT_REVISION}/.tekton/images-mirror-set.yaml"
+
+              if [[ -n "$auth_header" ]]; then
+                mirror_set_yaml=$(curl -kfLs -H "$auth_header" "$mirror_set_url" 2>/dev/null)
+              else
+                mirror_set_yaml=$(curl -kfLs "$mirror_set_url" 2>/dev/null)
+              fi
+
+              if [[ -z "$mirror_set_yaml" ]]; then
                 echo "Could not fetch image mirror set at ${mirror_set_url}."
                 exit 1
               fi
@@ -182,9 +204,29 @@ spec:
               echo "Serialized image mirror set: $serialized_mirror_set"
 
               echo -e "$serialized_mirror_set" > "$(results.serializedMirrorSetYaml.path)"
+
+              # Fetch scorecard config
+              scorecard_config_url="${SOURCE_GIT_URL}/raw/${SOURCE_GIT_REVISION}/bundle/tests/scorecard/config.yaml"
+
+              if [[ -n "$auth_header" ]]; then
+                scorecard_config_yaml=$(curl -kfLs -H "$auth_header" "$scorecard_config_url" 2>/dev/null) || true
+              else
+                scorecard_config_yaml=$(curl -kfLs "$scorecard_config_url" 2>/dev/null) || true
+              fi
+
+              if [[ -z "$scorecard_config_yaml" ]]; then
+                echo "Scorecard config not found at $scorecard_config_url – skipping scorecard images retrieval."
+                scorecard_config_images=""
+              else
+                echo "Successfully fetched scorecard config"
+                scorecard_config_images=$(collect_scorecard_config_images "${scorecard_config_yaml}")
+                echo "Scorecard config images: $scorecard_config_images"
+              fi
+
+              echo -e "$scorecard_config_images" > "$(results.scorecardConfigImages.path)"
     - name: get-unreleased-bundle
       runAfter:
-        - fetch-image-mirror-set
+        - fetch-config-files
       when:
         - input: $(tasks.parse-metadata.results.test-event-type)
           operator: in
@@ -222,7 +264,7 @@ spec:
               - name: channelName
                 value: $(params.CHANNEL_NAME)
           - name: process-image-mirror-set
-            image: quay.io/konflux-ci/konflux-test:v1.4.21@sha256:ddce6bc954694b55808507c1f92dfe9d094d52c636c8154c3fee441faff19f90
+            image: quay.io/konflux-ci/konflux-test:v1.4.31@sha256:a7cae9e96663e277a3904d0c78630508ddb6cc8eebaa912a840bd20f68dcaad1
             computeResources:
               limits:
                 memory: 512Mi
@@ -233,7 +275,7 @@ spec:
               - name: BUNDLE_IMAGE
                 value: "$(steps.get-unreleased-bundle.results.unreleasedBundle)"
               - name: MIRROR_SET_YAML
-                value: "$(tasks.fetch-image-mirror-set.results.mirrorSetYaml)"
+                value: "$(tasks.fetch-config-files.results.mirrorSetYaml)"
             script: |
               #!/usr/bin/env bash
               set -euo pipefail
@@ -257,50 +299,35 @@ spec:
 
               process_image_digest_mirror_set "$MIRROR_SET_YAML" > /tekton/home/mirror-map.txt
 
-              # Check and apply mirror mapping
-              if [ -s /tekton/home/mirror-map.txt ]; then
-                echo "Image Mirror Map found:"
-                cat /tekton/home/mirror-map.txt
+              if [ ! -s /tekton/home/mirror-map.txt ]; then
+                echo "Mirror map file is empty or not found."
+                exit 1
+              fi
 
-                # Get registry and repo from BUNDLE_IMAGE
-                reg_and_repo=$(get_image_registry_and_repository "${BUNDLE_IMAGE}")
+              echo "Image Mirror Map found:"
+              cat /tekton/home/mirror-map.txt
 
-                # Check if there are any mirrors for the image
-                has_mirrors=$(jq -r --arg image "${reg_and_repo}" 'has($image)' /tekton/home/mirror-map.txt)
+              # Get registry and repo (without digest or tag)
+              reg_and_repo=$(get_image_registry_and_repository "${BUNDLE_IMAGE}")
 
-                if [[ "$has_mirrors" == "true" ]]; then
-                  mapfile -t mirrors < <(jq -r --arg image "${reg_and_repo}" '.[$image][]' /tekton/home/mirror-map.txt)
-                  
-                  echo "Mirrors for $reg_and_repo are:"
-                  printf "%s\n" "${mirrors[@]}"
+              # Look up the *original* image for which this is a mirror
+              upstream_image=$(jq -r --arg mirror "${reg_and_repo}" '
+                to_entries[] | select(.value[] == $mirror) | .key' /tekton/home/mirror-map.txt)
 
-                  mirror_found=false
-                  # Iterate over mirrors and try each one
-                  for mirror in "${mirrors[@]}"; do
-                    echo "Attempting to use mirror ${mirror}"
-                    replaced_image=$(replace_image_pullspec "$BUNDLE_IMAGE" "$mirror")
+              if [[ -n "$upstream_image" ]]; then
+                echo "Upstream image mapped to $reg_and_repo is $upstream_image"
+                
+                replaced_image=$(replace_image_pullspec "$BUNDLE_IMAGE" "$upstream_image")
 
-                    # Check if the mirror is accessible
-                    if ! bundle_out=$(skopeo inspect --no-tags --config "docker://${replaced_image}"); then
-                      echo "Mirror $replaced_image is inaccessible."
-                      continue
-                    fi
-
-                    echo "Replacing $BUNDLE_IMAGE with $replaced_image"
-                    mirror_found=true
-                    break
-                  done
-
-                  if [ "$mirror_found" = false ]; then
-                    echo "No valid mirrors found for $BUNDLE_IMAGE"
-                    exit 1
-                  fi
+                echo "Attempting to inspect upstream image: $replaced_image"
+                if skopeo inspect --no-tags --config "docker://${replaced_image}" > /dev/null 2>&1; then
+                  echo "Successfully using upstream image $replaced_image"
                 else
-                  echo "No mirrors found for $reg_and_repo in mirror map."
+                  echo "Mapped upstream image $replaced_image is inaccessible"
                   exit 1
                 fi
               else
-                echo "Mirror map file is empty or not found."
+                echo "No upstream mirror found for $reg_and_repo in mirror map."
                 exit 1
               fi
 
@@ -415,7 +442,7 @@ spec:
               - name: instanceType
                 value: "$(tasks.pick-cluster-params.results.bundleArch)"
               - name: imageContentSources
-                value: "$(tasks.fetch-image-mirror-set.results.serializedMirrorSetYaml)"
+                value: "$(tasks.fetch-config-files.results.serializedMirrorSetYaml)"
     - name: deploy-operator
       runAfter:
         - provision-cluster
@@ -440,6 +467,9 @@ spec:
         - name: channelName
           value: "$(tasks.get-unreleased-bundle.results.channelName)"
       taskSpec:
+        results:
+          - name: imagesPulledAfterDeploymentStart
+            description: "Images pulled to the cluster after the deployment start time"
         params:
           - name: eaasSpaceSecretRef
             type: string
@@ -481,7 +511,7 @@ spec:
             # In case the test fails, we don't want to fail the TaskRun immediately,
             # because we want to proceed with archiving the artifacts in a following step.
             onError: continue
-            image: quay.io/konflux-ci/konflux-test:v1.4.25@sha256:78f5fd149f6fcd1e8ab8c7227cfb82c1be2eba0bbda49f033b5d82e9154414b2
+            image: quay.io/konflux-ci/konflux-test:v1.4.31@sha256:a7cae9e96663e277a3904d0c78630508ddb6cc8eebaa912a840bd20f68dcaad1
             computeResources:
               limits:
                 memory: 4Gi
@@ -669,7 +699,8 @@ spec:
                 exit 1
               fi
 
-              echo "[$(date --utc +%FT%T.%3NZ)] Set the deployment start time"
+              DEPLOYMENT_START_TIME=$(date -u '+%Y-%m-%dT%H:%M:%SZ')
+              echo "[$(date --utc +%FT%T.%3NZ)] Set the deployment start time: ${DEPLOYMENT_START_TIME}"
 
               SUB_NAMESTANZA="generateName: oo-"
 
@@ -725,6 +756,16 @@ spec:
                     if [[ "$(oc -n "$INSTALL_NAMESPACE" get csv "$CSV" -o jsonpath='{.status.phase}')" == "Succeeded" ]]; then
                       echo "[$(date --utc +%FT%T.%3NZ)] ClusterServiceVersion \"$CSV\" ready"
                       echo "[$(date --utc +%FT%T.%3NZ)] Script Completed Execution Successfully !"
+
+                      IMAGE_PULL_EVENTS="$ARTIFACT_DIR/image_pull_events.txt"
+                      echo "[$(date --utc +%FT%T.%3NZ)] Dumping cluster image pull events as $IMAGE_PULL_EVENTS"
+                      oc get events --all-namespaces --field-selector reason==Pulling -o go-template='{{range .items}}{{.lastTimestamp}},{{.message}}{{"\n"}}{{end}}' >"$IMAGE_PULL_EVENTS"
+                      
+                      images_pulled_after_deployment_start=$(parse_collected_image_pulls "$IMAGE_PULL_EVENTS" "$DEPLOYMENT_START_TIME")
+                      echo -e "Images pulled after deployment start: $images_pulled_after_deployment_start"
+
+                      echo "$images_pulled_after_deployment_start" > "$(results.imagesPulledAfterDeploymentStart.path)"
+
                       exit 0
                     fi
                   fi
@@ -808,7 +849,7 @@ spec:
                 value: "/workspace/konflux-artifacts"
           # validate that the cluster resources are available in another tekton step
           - name: list-artifacts
-            image: quay.io/konflux-ci/konflux-test:v1.4.21@sha256:ddce6bc954694b55808507c1f92dfe9d094d52c636c8154c3fee441faff19f90
+            image: quay.io/konflux-ci/konflux-test:v1.4.31@sha256:a7cae9e96663e277a3904d0c78630508ddb6cc8eebaa912a840bd20f68dcaad1
             workingDir: "/workspace"
             script: |
               #!/bin/bash
@@ -840,3 +881,26 @@ spec:
                   value: main
                 - name: pathInRepo
                   value: stepactions/fail-if-any-step-failed/0.1/fail-if-any-step-failed.yaml
+    - name: verify-image-sources
+      runAfter:
+        - deploy-operator
+      when:
+        - input: $(tasks.parse-metadata.results.test-event-type)
+          operator: in
+          values: [ "push", "Push" ]
+      taskRef:
+        resolver: git
+        params:
+          - name: url
+            value: https://github.com/konflux-ci/tekton-integration-catalog.git
+          - name: revision
+            value: main
+          - name: pathInRepo
+            value: tasks/bundles/verify-image-sources/0.1/verify-image-sources.yaml
+      params:
+        - name: imagesPulledAfterDeploymentStart
+          value: "$(tasks.deploy-operator.results.imagesPulledAfterDeploymentStart)"
+        - name: bundleImage
+          value: "$(tasks.get-unreleased-bundle.results.unreleasedBundle)"
+        - name: scorecardConfigImages
+          value: "$(tasks.fetch-config-files.results.scorecardConfigImages)"

@@ -11,7 +11,7 @@ metadata:
     tekton.dev/tags: infrastructure, aws, kind
     tekton.dev/displayName: "Kind Cloud Single Node - Create"
     tekton.dev/platforms: "linux/amd64, linux/arm64"
-    mapt/version: "v0.9.2"
+    mapt/version: "v0.9.5"
 spec:
   description: |
     Creates a single-node Kubernetes cluster using Kind on AWS, powered by the Mapt CLI.
@@ -120,7 +120,12 @@ spec:
       description: |
         The secret name containing credentials for container registry where the artifacts will be stored.
       default: "konflux-test-infra"
-
+    - name: extra-port-mappings
+      type: string
+      description: |
+        Additional port mappings for the Kind cluster. Value should be a JSON array of objects with containerPort, hostPort, and protocol properties.
+        Example: '[{\"containerPort\":30012,\"hostPort\":8180,\"protocol\":\"TCP\"}, {\"containerPort\":30013,\"hostPort\":8280,\"protocol\":\"TCP\"}]'
+      default: ""
   results:
     - name: cluster-access-secret
       description: Secret with kubeconfig
@@ -176,7 +181,7 @@ spec:
 
     - name: provisioner
       onError: continue
-      image: quay.io/redhat-developer/mapt:v0.9.2
+      image: quay.io/redhat-developer/mapt:v0.9.5
       volumeMounts:
         - name: aws-credentials
           mountPath: /opt/aws-credentials
@@ -199,6 +204,7 @@ spec:
         cmd+="--arch $(params.arch) "
         cmd+="--cpus $(params.cpus) "
         cmd+="--memory $(params.memory) "
+        if [[ "$(params.extra-port-mappings)" != "" ]]; then cmd+="--extra-port-mappings $(params.extra-port-mappings) "; fi
         if [[ $(params.nested-virt) == "true" ]]; then cmd+="--nested-virt "; fi
         if [[ $(params.version) != "" ]]; then cmd+="--version $(params.version) "; fi
         if [[ $(params.spot) == "true" ]]; then

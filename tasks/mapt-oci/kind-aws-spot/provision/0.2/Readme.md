@@ -51,6 +51,7 @@ This task provisions a single-node Kubernetes cluster on AWS using Mapt. It outp
 | `timeout`                     | Auto-destroy timeout (`1h`, `30m`, etc.)                                    | `''`        | ❌       |
 | `oci-ref`                     | Full OCI artifact reference used for storing logs from the Task's Steps    | -        | ✅       |
 | `oci-credentials`             | The secret name containing credentials for container registry where the artifacts will be stored.  | -    | ✅       |
+| `extra-port-mappings`             | Additional port mappings for the Kind cluster. Value should be a JSON array of objects with containerPort, hostPort, and protocol properties. Example: '[{\"containerPort\":30012,\"hostPort\":8180,\"protocol\":\"TCP\"}, {\"containerPort\":30013,\"hostPort\":8280,\"protocol\":\"TCP\"}]'  | `''`    | ❌       |
 
 ---
 
