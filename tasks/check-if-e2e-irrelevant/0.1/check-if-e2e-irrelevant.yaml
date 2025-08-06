@@ -33,6 +33,10 @@ spec:
           valueFrom:
             fieldRef:
               fieldPath: metadata.labels['pac.test.appstudio.openshift.io/url-repository']
+        - name: EVENT_TYPE
+          valueFrom:
+            fieldRef:
+              fieldPath: metadata.labels['pac.test.appstudio.openshift.io/event-type']
         - name: PR_NUMBER
           valueFrom:
             fieldRef:
@@ -59,6 +63,11 @@ spec:
           fi
         }
         trap 'exitfunc $? $LINENO "$BASH_COMMAND"' EXIT
+       
+        # This is a workaround for periodic jobs
+        if [[ "$EVENT_TYPE" == "push" ]]; then
+          exit 99
+        fi
 
         # Setup workspace
         WORK_DIR=".tmp_pr_check"
