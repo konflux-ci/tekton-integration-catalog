@@ -1,0 +1,78 @@
+apiVersion: tekton.dev/v1
+kind: Task
+metadata:
+  name: datarouter
+  labels:
+    app.kubernetes.io/version: "0.1"
+  annotations:
+    tekton.dev/pipelines.minVersion: 0.12.1
+    tekton.dev/tags: konflux
+spec:
+  description: |
+    Send test results to Data Router for routing to configured target systems.
+
+  params:
+    - name: datarouter-url
+      type: string
+      description: Data Router API endpoint URL
+      default: "https://datarouter.ccitredhat.com"
+    - name: datarouter-credentials
+      type: string
+      description: Name of secret containing Data Router username and password
+      default: "datarouter-credentials"
+    - name: metadata-file
+      type: string
+      description: Path to Data Router metadata JSON file in workspace
+      default: "metadata.json"
+    - name: results-pattern
+      type: string
+      description: Glob pattern for xUnit test results files
+
+  workspaces:
+    - name: data
+      description: Workspace containing metadata file and test results
+
+  volumes:
+    - name: datarouter-creds
+      secret:
+        secretName: $(params.datarouter-credentials)
+
+  steps:
+    - name: send-results
+      image: quay.io/dno/droute:latest
+      workingDir: $(workspaces.data.path)
+      volumeMounts:
+        - name: datarouter-creds
+          mountPath: /credentials
+      env:
+        - name: DATAROUTER_USERNAME
+          valueFrom:
+            secretKeyRef:
+              name: $(params.datarouter-credentials)
+              key: username
+        - name: DATAROUTER_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: $(params.datarouter-credentials)
+              key: password
+      script: |
+        #!/bin/bash
+        set -euo pipefail
+
+        # Validate required inputs
+        if [[ ! -f "$(params.metadata-file)" ]]; then
+          echo "ERROR: Metadata file $(params.metadata-file) not found in workspace"
+          exit 1
+        fi
+
+        # Build droute command
+        DROUTE_CMD="/droute send"
+        DROUTE_CMD="$DROUTE_CMD --url=$(params.datarouter-url)"
+        DROUTE_CMD="$DROUTE_CMD --username=$DATAROUTER_USERNAME"  
+        DROUTE_CMD="$DROUTE_CMD --password=$DATAROUTER_PASSWORD"
+        DROUTE_CMD="$DROUTE_CMD --metadata=$(params.metadata-file)"
+        DROUTE_CMD="$DROUTE_CMD --results=$(params.results-pattern)"
+        DROUTE_CMD="$DROUTE_CMD --wait"
+
+        echo "Executing: $DROUTE_CMD"
+        eval $DROUTE_CMD
