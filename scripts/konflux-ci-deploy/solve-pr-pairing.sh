@@ -57,6 +57,22 @@ download_file() {
   log "Downloaded $(basename "$dest")"
 }
 
+IMAGE_TAG="on-pr-$PR_SHA"
+if [[ -z "$PR_AUTHOR" ]]; then
+  IMAGE_TAG=$PR_SHA
+  PR_AUTHOR=konflux-ci
+fi
+
+konflux_components=( build-service integration-service image-controller release-service)
+
+for component in "${konflux_components[@]}"; do
+  if [[ "$COMPONENT_NAME" == "$component" ]]; then
+    log "Setting up env vars for '$component'"
+    write_env_file "$IMAGE_TAG" "$PR_SHA"
+    cat "$ENV_FILE"
+  fi
+done
+
 if [[ "$COMPONENT_NAME" == "release-service-catalog" || "$COMPONENT_NAME" == "release-service" ]]; then
   if [[ "$COMPONENT_NAME" == "release-service-catalog" ]]; then
     log "Looking for paired PR in $RELEASE_SERVICE_REPO for 'release-service-catalog'"
@@ -69,13 +85,7 @@ if [[ "$COMPONENT_NAME" == "release-service-catalog" || "$COMPONENT_NAME" == "re
     else
       log "No paired PR found in $RELEASE_SERVICE_REPO by $PR_AUTHOR on branch $PR_SOURCE_BRANCH"
     fi
-
-  elif [[ "$COMPONENT_NAME" == "release-service" ]]; then
-    log "Setting up env vars for 'release-service'"
-    write_env_file "on-pr-$PR_SHA" "$PR_SHA"
-    cat "$ENV_FILE"
   fi
-
 
   log "Checking for paired PR in $INFRA_DEPLOYMENTS_REPO"
   PR_TO_PAIR=$(fetch_paired_pr_sha "$INFRA_DEPLOYMENTS_REPO")
