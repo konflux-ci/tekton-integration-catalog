@@ -1,0 +1,142 @@
+apiVersion: tekton.dev/v1
+kind: Task
+metadata:
+  name: datarouter
+  labels:
+    app.kubernetes.io/version: "0.1"
+  annotations:
+    tekton.dev/pipelines.minVersion: 0.12.1
+    tekton.dev/tags: konflux
+spec:
+  description: |
+    Send test results to Data Router for routing to configured target systems.
+
+  params:
+    - name: datarouter-url
+      type: string
+      description: Data Router API endpoint URL
+      default: "https://datarouter.ccitredhat.com"
+    - name: datarouter-credentials
+      type: string
+      description: Name of secret containing Data Router username and password
+      default: "datarouter-credentials"
+    - name: oci-artifact-uri
+      type: string
+      description: URI of the OCI artifact containing test results and metadata (e.g., quay.io/org/repo:tag)
+    - name: oci-credentials
+      type: string
+      description: Name of secret containing OCI registry credentials in dockerconfigjson format
+      default: "oci-registry-credentials"
+    - name: metadata-path
+      type: string
+      description: Path to metadata JSON file within the OCI artifact
+      default: "metadata.json"
+    - name: results-pattern
+      type: string
+      description: Glob pattern for test results files within the OCI artifact
+      default: "*.xml"
+    - name: attachments-dir
+      type: string
+      description: Optional directory path for test attachments within the OCI artifact
+      default: ""
+
+  results:
+    - name: status
+      description: Status of the Data Router send operation (success/failure)
+    - name: routing-id
+      description: Data Router routing request ID for tracking
+
+  volumes:
+    - name: datarouter-creds
+      secret:
+        secretName: $(params.datarouter-credentials)
+    - name: oci-creds
+      secret:
+        secretName: $(params.oci-credentials)
+        optional: true
+
+  steps:
+    - name: pull-oci-artifact
+      image: ghcr.io/oras-project/oras:v1.2.0
+      volumeMounts:
+        - name: oci-creds
+          mountPath: /tmp/docker-config
+      args: 
+        - pull
+        - $(params.oci-artifact-uri)
+        - --registry-config
+        - /tmp/docker-config/.dockerconfigjson
+        - -o
+        - /workspace/artifact
+
+    - name: send-results
+      image: quay.io/dno/droute:latest
+      imagePullPolicy: Always
+      workingDir: /workspace
+      volumeMounts:
+        - name: datarouter-creds
+          mountPath: /credentials
+      env:
+        - name: DATAROUTER_USERNAME
+          valueFrom:
+            secretKeyRef:
+              name: $(params.datarouter-credentials)
+              key: username
+        - name: DATAROUTER_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: $(params.datarouter-credentials)
+              key: password
+      script: |
+        #!/bin/bash
+        set -euo pipefail
+
+        ARTIFACT_DIR="/workspace/artifact"
+        METADATA_FILE="${ARTIFACT_DIR}/$(params.metadata-path)"
+        echo "Using metadata from: $METADATA_FILE"
+        echo "Metadata content:"
+        cat "$METADATA_FILE" | jq . || cat "$METADATA_FILE"
+
+        # Build droute command
+        DROUTE_CMD="/droute send"
+        DROUTE_CMD="$DROUTE_CMD --url=$(params.datarouter-url)"
+        DROUTE_CMD="$DROUTE_CMD --username=$DATAROUTER_USERNAME"  
+        DROUTE_CMD="$DROUTE_CMD --password=$DATAROUTER_PASSWORD"
+        DROUTE_CMD="$DROUTE_CMD --metadata=$METADATA_FILE"
+        DROUTE_CMD="$DROUTE_CMD --results=$(params.results-pattern)"
+        
+        # Add attachments directory if specified
+        if [[ -n "$(params.attachments-dir)" ]]; then
+          ATTACHMENTS_PATH="${ARTIFACT_DIR}/$(params.attachments-dir)"
+          DROUTE_CMD="$DROUTE_CMD --attachments=$ATTACHMENTS_PATH"
+        fi
+        
+        echo "Executing Data Router send"
+        echo "  URL: $(params.datarouter-url)"
+        echo "  Metadata: $METADATA_FILE"
+        echo "  Results: $(params.results-pattern)"
+        echo "  Attachments: $(params.attachments-dir)"
+        echo "  Username: $DATAROUTER_USERNAME"
+        
+        # Execute
+        cd "$ARTIFACT_DIR"
+        OUTPUT=$(eval $DROUTE_CMD 2>&1)
+        EXIT_CODE=$?
+        
+        echo "$OUTPUT"
+        
+        # Extract routing ID if available
+        ROUTING_ID=$(echo "$OUTPUT" | grep -o "routing[_-]id[:\s]*[a-zA-Z0-9-]*" | head -1 | sed 's/.*[:\s]\+//' || echo "")
+        
+        # Set results
+        if [[ $EXIT_CODE -eq 0 ]]; then
+          echo -n "success" > $(results.status.path)
+          echo "Data Router send operation completed successfully"
+        else
+          echo -n "failure" > $(results.status.path)
+          echo "Data Router send operation failed with exit code: $EXIT_CODE"
+        fi
+        
+        echo -n "$ROUTING_ID" > $(results.routing-id.path)
+        
+        exit $EXIT_CODE
