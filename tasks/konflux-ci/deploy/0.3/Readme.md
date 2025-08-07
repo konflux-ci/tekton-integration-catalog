@@ -1,6 +1,6 @@
 # 🚀 Tekton Task: `deploy-konflux-ci`
 
-Version: 0.2
+Version: 0.3
 
 This task automates the deployment of [Konflux CI](https://github.com/konflux-ci/konflux-ci) into a Kubernetes or OpenShift environment.
 It is tailored for use within OpenShift Pipelines (Tekton) and supports full setup, including dependencies, policies, and test resources.
