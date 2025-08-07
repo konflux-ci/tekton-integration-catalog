@@ -115,8 +115,14 @@ spec:
           operator: notin
           values: [ "" ]
       env:
+        - name: EVENT_TYPE
+          valueFrom:
+            fieldRef:
+              fieldPath: metadata.labels['pac.test.appstudio.openshift.io/event-type']
         - name: COMPONENT_NAME
           value: "$(params.component-name)"
+        - name: IMAGE_TAG
+          value: "$(params.component-image-tag)"
         - name: PR_SOURCE_BRANCH
           value: "$(params.component-pr-source-branch)"
         - name: PR_AUTHOR
