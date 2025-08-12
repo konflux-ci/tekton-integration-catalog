@@ -25,6 +25,7 @@ The **Pull Request Commenter Task** automatically posts a comment on a GitHub pu
 | `junit-report-name` | JUnit file report name for analysis. | `junit.xml` | ✅ Yes |
 | `e2e-log-name` | The name of the log file from end-to-end tests. | `e2e-tests.log` | ✅ Yes |
 | `cluster-provision-log-name` | The name of the log file from cluster provisioning. | `cluster-provision.log` | ✅ Yes |
+| `artifact-browser-url` | Provides the URL to the artifact browser deployment. | "" | ❌ No |
 
 ## Results
 
@@ -49,6 +50,12 @@ To enable the experimental **Test Results Analysis**, set `enable-test-results-a
 - Scan logs and reports stored in the specified OCI artifact.
 - Identify potential causes of test failures.
 - Append the analysis summary to the PR comment.
+
+## Enabling OCI Artifact Browser
+
+To enable the **OCI Artifact Browser**, provide the artifact browser deployment URL via the `artifact-browser-url` parameter. When a URL is provided, the task will generate a direct link to the specific test artifacts in the PR comment.
+
+If the parameter is empty or not provided, no artifact browser link will be included in the comment.
 
 ## Additional Notes
 
