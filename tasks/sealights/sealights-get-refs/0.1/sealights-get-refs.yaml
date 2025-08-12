@@ -70,6 +70,13 @@ spec:
         # Download cosign attestation metadata
         cosign download attestation "${COMPONENT_CONTAINER_IMAGE}" > cosign_metadata.json
 
+         # Set the container image ref to a format quay.io/<org>/<repo>:<tag>@sha256:<sha256-value>
+        COMPONENT_CONTAINER_IMAGE="$(jq -r '
+            .payload | @base64d | fromjson | .predicate.buildConfig.tasks[] |
+            select(.ref.params[].value == "build-image-index") |
+            .results[] | select(.name == "IMAGE_REF") | .value
+          ' cosign_metadata.json)"
+
         COMPONENT_SOURCE_ARTIFACT="$(jq -r '
           .payload | @base64d | fromjson | .predicate.buildConfig.tasks[] |
           select(.name == "clone-repository") |
