@@ -11,6 +11,7 @@ set -euo pipefail
 #
 # Required environment variables:
 #   - COMPONENT_NAME        (e.g. "release-service" or "release-service-catalog")
+#   - IMAGE_TAG             (related container image tag)
 #   - PR_SOURCE_BRANCH      (source branch of the PR to match)
 #   - PR_AUTHOR             (GitHub username of the PR author)
 #   - PR_SHA                (SHA of the current component PR)

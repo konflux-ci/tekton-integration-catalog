@@ -145,6 +145,11 @@ spec:
         - input: "$(params.component-name)"
           operator: notin
           values: [ "" ]
+      env:
+        - name: SOURCE_REPO_URL
+          valueFrom:
+            fieldRef:
+              fieldPath: metadata.annotations['pac.test.appstudio.openshift.io/source-repo-url']
       script: |
         #!/bin/bash
         set -euo pipefail
@@ -161,6 +166,15 @@ spec:
             IMAGE_TAG="$(params.component-image-tag)"
             PR_OWNER="$(params.component-pr-owner)"
             PR_SHA="$(params.component-pr-sha)"
+          fi
+
+          # Handles cases when PR is created from upstream repository branches (i.e. branches created by *[bot])
+          SOURCE_REPO_URL="${SOURCE_REPO_URL:-}"
+          SOURCE_REPO_OWNER="${PR_OWNER}"
+
+          if [[ -n "$SOURCE_REPO_URL" && "$SOURCE_REPO_URL" != *"/$SOURCE_REPO_OWNER/"* ]]; then
+            SOURCE_REPO_OWNER=$(echo "$SOURCE_REPO_URL" | sed -E 's|https://github.com/([^/]+)/.*|\1|')
+            echo "[INFO] SOURCE_REPO_OWNER updated to: $SOURCE_REPO_OWNER"
           fi
 
           # Repo names do not match the ones of the component. Try to find the right kustomization.yaml based on the component name.
@@ -183,10 +197,10 @@ spec:
             yq -i e "(.images.[] | select(.name==\"quay.io/konflux-ci/${COMPONENT_NAME}\")) |= .newTag=\"${IMAGE_TAG}\"" "$KUSTOMIZATION_PATH"
           fi
 
-          if [[ -n "$PR_OWNER" && -n "$PR_SHA" ]]; then
-            echo "[INFO] Updating GitHub reference to $PR_OWNER@$PR_SHA"
-            yq -i e "(.resources[] | select(. ==\"*github.com/konflux-ci/${COMPONENT_NAME}/config/default*\")) |= \"https://github.com/${PR_OWNER}/${COMPONENT_NAME}/config/default?ref=${PR_SHA}\"" "$KUSTOMIZATION_PATH"
-            yq -i e "(.resources[] | select(. ==\"*github.com/konflux-ci/${COMPONENT_NAME}/config/snapshotgc*\")) |= \"https://github.com/${PR_OWNER}/${COMPONENT_NAME}/config/snapshotgc?ref=${PR_SHA}\"" "$KUSTOMIZATION_PATH"
+          if [[ -n "$SOURCE_REPO_OWNER" && -n "$PR_SHA" ]]; then
+            echo "[INFO] Updating GitHub reference to $SOURCE_REPO_OWNER@$PR_SHA"
+            yq -i e "(.resources[] | select(. ==\"*github.com/konflux-ci/${COMPONENT_NAME}/config/default*\")) |= \"https://github.com/${SOURCE_REPO_OWNER}/${COMPONENT_NAME}/config/default?ref=${PR_SHA}\"" "$KUSTOMIZATION_PATH"
+            yq -i e "(.resources[] | select(. ==\"*github.com/konflux-ci/${COMPONENT_NAME}/config/snapshotgc*\")) |= \"https://github.com/${SOURCE_REPO_OWNER}/${COMPONENT_NAME}/config/snapshotgc?ref=${PR_SHA}\"" "$KUSTOMIZATION_PATH"
           fi
         } 2>&1 | tee -a $LOG_FILENAME
     - name: deploy-konflux-ci
