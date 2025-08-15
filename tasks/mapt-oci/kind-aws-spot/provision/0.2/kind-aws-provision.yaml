@@ -213,7 +213,10 @@ spec:
         if [[ $(params.timeout) != "" ]]; then cmd+="--timeout $(params.timeout) "; fi
         cmd+="--tags $(params.tags) "
 
-        eval "${cmd}" 2>&1 | tee $LOG_FILENAME
+        output=$(eval "${cmd}" 2>&1)
+        exit_code=$?
+        echo "${output}" | tee $LOG_FILENAME
+        exit $exit_code
 
       computeResources:
         requests:
