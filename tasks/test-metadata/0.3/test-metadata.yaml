@@ -45,6 +45,8 @@ spec:
       description: The name of the component that is being executed from Konflux.
     - name: prefetch-artifact
       description: The OCI artifact that contains the prefetch dependencies generated during the build phase.
+    - name: source-artifact
+      description: The OCI artifact that contains the source dependencies generated during the build phase.
     - name: container-repo
       description: The container repository extracted from the container image.
     - name: container-tag
