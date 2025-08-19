@@ -127,8 +127,6 @@ spec:
                 value: $(params.REPO_TOKEN)
               - name: REPO_KEY
                 value: $(params.REPO_KEY)
-              - name: PATH_TO_MIRROR_SET
-                value: $(params.PATH_TO_MIRROR_SET)
             script: |
               #!/usr/bin/env bash
               set -euo pipefail
@@ -172,6 +170,8 @@ spec:
                 value: "$(tasks.parse-metadata.results.source-git-url)"
               - name: SOURCE_GIT_REVISION
                 value: "$(tasks.parse-metadata.results.source-git-revision)"
+              - name: PATH_TO_MIRROR_SET
+                value: $(params.PATH_TO_MIRROR_SET)
             script: |
               #!/usr/bin/env bash
               set -euo pipefail
@@ -185,7 +185,7 @@ spec:
               fi
               
               # Fetch image mirror set
-              mirror_set_url="${SOURCE_GIT_URL}/raw/${SOURCE_GIT_REVISION}/.tekton/images-mirror-set.yaml"
+              mirror_set_url="${SOURCE_GIT_URL}/raw/${SOURCE_GIT_REVISION}/${PATH_TO_MIRROR_SET}"
 
               if [[ -n "$auth_header" ]]; then
                 mirror_set_yaml=$(curl -kfLs -H "$auth_header" "$mirror_set_url" 2>/dev/null)
