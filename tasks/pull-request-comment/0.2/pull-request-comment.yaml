@@ -44,6 +44,10 @@ spec:
       type: string
       default: "false"
       description: Add "true" if you want to enable experimental test analysis step
+    - name: artifact-browser-url
+      type: string
+      default: ""
+      description: Provides the URL to the artifact browser deployment.
   volumes:
     - name: konflux-test-infra-volume
       secret:
@@ -150,6 +154,16 @@ spec:
         # Store the content of the test results analysis (from a previous step) in a variable
         TEST_RESULTS_ANALYSIS=$(cat analysis.md || echo "\<not enabled\>")
 
+        # Generate artifact browser link if URL is provided
+        ARTIFACT_BROWSER_URL=$(echo "\<not enabled\>")
+        if [ -n "$(params.artifact-browser-url)" ]; then
+            # Use the provided artifact browser URL
+            export ARTIFACT_BROWSER_BASE_URL="$(params.artifact-browser-url)"
+            # Extract repository name from OCI container reference
+            REPO_NAME=$(echo "$OCI_STORAGE_CONTAINER" | sed 's|.*/||' | sed 's|:.*||')
+            ARTIFACT_BROWSER_URL="[View in Artifact Browser](${ARTIFACT_BROWSER_BASE_URL}/${REPO_NAME}/${TEST_NAME}/)"
+        fi
+
         PR_COMMENT=$(cat <<EOF
         @${PR_AUTHOR}: The following test has ${PIPELINE_RUN_AGGREGATE_STATUS}, say **/retest** to rerun failed tests.
 
@@ -169,6 +183,8 @@ spec:
         \`\`\`
         ### Test results analysis
         ${TEST_RESULTS_ANALYSIS}
+        ### OCI Artifact Browser URL
+        ${ARTIFACT_BROWSER_URL}
         EOF
         )
         # Combine body components into the final JSON body

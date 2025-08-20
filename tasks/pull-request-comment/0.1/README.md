@@ -20,6 +20,7 @@ Pull Request Commenter Task posts a comment on a GitHub pull request summarizing
 | e2e-log-name | The name of the log file from end-to-end tests. | e2e-tests.log | ✅ |
 | cluster-provision-log-name | The name of the log file from cluster provisioning. | cluster-provision.log | ✅ |
 | enable-test-results-analysis | Set to `true` to enable experimental test results analysis. | false | ❌ |
+| artifact-browser-url | Provides the URL to the artifact browser deployment. | "" | ❌ |
 
 ## Behavior
 
@@ -31,6 +32,7 @@ Pull Request Commenter Task posts a comment on a GitHub pull request summarizing
   - Instructions to rerun tests.
   - Steps to retrieve artifacts using ORAS.
   - Optional test results analysis if enabled.
+  - Optional OCI artifact browser link to related OCI artifact.
 
 ## Usage
 
