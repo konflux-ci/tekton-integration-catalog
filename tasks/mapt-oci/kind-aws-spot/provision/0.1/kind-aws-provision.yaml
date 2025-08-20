@@ -114,7 +114,7 @@ spec:
 
   steps:
     - name: provisioner
-      image: quay.io/redhat-developer/mapt:v0.9.6
+      image: quay.io/redhat-developer/mapt:v0.9.7
       volumeMounts:
         - name: aws-credentials
           mountPath: /opt/aws-credentials
