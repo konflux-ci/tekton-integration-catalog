@@ -1,0 +1,38 @@
+apiVersion: tekton.dev/v1
+kind: Task
+metadata:
+  name: checkton
+spec:
+    params:
+    - name: git-url
+      description: The Git URL from which the test pipeline is originating. This can be from a fork or the original repository.
+      type: string
+    - name: git-revision
+      description: The Git revision (commit SHA) from which the test pipeline is originating.
+      type: string
+    - name: exclude-dirs
+      description: A list of files or directories to exclude from the ShellCheck analysis.
+      type: array
+      default: []
+    - name: checkton-repo
+      type: string
+      default: chmeliik/checkton
+      description: name of github repo with checkton script, formatted as "org/name"
+    - name: checkton-repo-branch
+      type: string
+      default: main
+      description: name of branch within checkton repo from which to pull file
+    steps:
+    - name: clone-refs
+      image: quay.io/konflux-qe-incubator/konflux-qe-tools:latest
+      workingDir: /workspace
+      script: |
+        #!/bin/sh
+        set -e
+
+        git clone "$(params.git-url)" .
+        git checkout "$(params.git-revision)"
+    - name: run-checkton
+      image: ghcr.io/chmeliik/checkton:v0.4.0
+      workingDir: /workspace
+
