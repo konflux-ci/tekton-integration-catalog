@@ -1,0 +1,104 @@
+apiVersion: tekton.dev/v1
+kind: PipelineRun
+metadata:
+  annotations:
+    build.appstudio.openshift.io/repo: https://github.com/konflux-ci/tekton-integration-catalog?rev={{revision}}
+    build.appstudio.redhat.com/commit_sha: '{{revision}}'
+    build.appstudio.redhat.com/pull_request_number: '{{pull_request_number}}'
+    build.appstudio.redhat.com/target_branch: '{{target_branch}}'
+    pipelinesascode.tekton.dev/cancel-in-progress: "true"
+    pipelinesascode.tekton.dev/max-keep-runs: "3"
+    pipelinesascode.tekton.dev/on-cel-expression: event == "pull_request" && target_branch
+      == "main" && ( "tasks/mapt-oci/kind-aws-spot/***".pathChanged()
+      || ".tekton/mapt-provision-test-pull-request.yaml".pathChanged()
+      )
+  creationTimestamp: null
+  labels:
+    appstudio.openshift.io/application: mapt-provision-test
+    appstudio.openshift.io/component: mapt-provision-test
+    pipelines.appstudio.openshift.io/type: build
+  name: mapt-provision-test-on-pull-request
+  namespace: rh-konflux-devprod-tenant
+spec:
+  params:
+  - name: git-url
+    value: '{{source_url}}'
+  - name: revision
+    value: '{{revision}}'
+  - name: cluster-id
+    value: '{{revision}}'
+  - name: oci-container-repo
+    value: 'quay.io/konflux-test-storage/konflux-team/tekton-integration-catalog'
+  pipelineSpec:
+    description: |
+      This pipeline tests the mapt provision and deprovision tasks by creating a temporary Kind cluster on AWS
+      and then cleaning it up. It validates the complete lifecycle of cluster provisioning using the Mapt CLI.
+    params:
+    - description: Source Repository URL
+      name: git-url
+      type: string
+    - description: Revision of the Source Repository
+      name: revision
+      type: string
+    - description: Unique identifier for the test cluster
+      name: cluster-id
+      type: string
+    - description: The ORAS container used to store all test artifacts
+      name: oci-container-repo
+      type: string
+    tasks:
+    - name: provision-kind-cluster
+      taskRef:
+        resolver: git
+        params:
+          - name: url
+            value: $(params.git-url)
+          - name: revision
+            value: $(params.revision)
+          - name: pathInRepo
+            value: tasks/mapt-oci/kind-aws-spot/provision/0.2/kind-aws-provision.yaml
+      params:
+        - name: secret-aws-credentials
+          value: konflux-test-infra
+        - name: cluster-access-secret-name
+          value: $(context.pipelineRun.uid)
+        - name: id
+          value: $(params.cluster-id)
+        - name: tags
+          value: 'owner=konflux-devprod@redhat.com,project=Konflux,created-by=integration-pipeline,component=tekton-integration-catalog,pipelinerun=$(context.pipelineRun.name)'
+        - name: ownerKind
+          value: PipelineRun
+        - name: ownerName
+          value: $(context.pipelineRun.name)
+        - name: ownerUid
+          value: $(context.pipelineRun.uid)
+        - name: oci-ref
+          value: $(params.oci-container-repo):$(context.pipelineRun.name)
+        - name: spot-increase-rate
+          value: 80
+        - name: cpus
+          value: 2
+        - name: memory
+          value: 16
+    finally:
+    - name: deprovision-kind-cluster
+      taskRef:
+        resolver: git
+        params:
+          - name: url
+            value: $(params.git-url)
+          - name: revision
+            value: $(params.revision)
+          - name: pathInRepo
+            value: tasks/mapt-oci/kind-aws-spot/deprovision/0.1/kind-aws-deprovision.yaml
+      params:
+        - name: secret-aws-credentials
+          value: konflux-test-infra
+        - name: id
+          value: $(params.cluster-id)
+        - name: cluster-access-secret
+          value: $(tasks.provision-kind-cluster.results.cluster-access-secret)
+        - name: oci-container
+          value: $(params.oci-container-repo):$(context.pipelineRun.name)
+        - name: oci-credentials
+          value: konflux-test-infra
