@@ -306,32 +306,47 @@ spec:
 
               echo "Image Mirror Map found:"
               cat /tekton/home/mirror-map.txt
+              echo
 
               # Get registry and repo (without digest or tag)
               reg_and_repo=$(get_image_registry_and_repository "${BUNDLE_IMAGE}")
 
-              # Look up the *original* image for which this is a mirror
-              upstream_image=$(jq -r --arg mirror "${reg_and_repo}" '
-                to_entries[] | select(.value[] == $mirror) | .key' /tekton/home/mirror-map.txt)
+              #  Look up mirrors for this upstream image
+              mirrors=$(jq -r --arg source "${reg_and_repo}" '.[$source][]?' /tekton/home/mirror-map.txt)
 
-              if [[ -n "$upstream_image" ]]; then
-                echo "Upstream image mapped to $reg_and_repo is $upstream_image"
-                
-                replaced_image=$(replace_image_pullspec "$BUNDLE_IMAGE" "$upstream_image")
+              if [[ -n "$mirrors" ]]; then
+                echo "Found mirrors for $reg_and_repo:"
+                echo "$mirrors"
+                echo
 
-                echo "Attempting to inspect upstream image: $replaced_image"
-                if skopeo inspect --no-tags --config "docker://${replaced_image}" > /dev/null 2>&1; then
-                  echo "Successfully using upstream image $replaced_image"
-                else
-                  echo "Mapped upstream image $replaced_image is inaccessible"
+                mirror_found=0
+
+                for mirror in $mirrors; do
+                  replaced_image=$(replace_image_pullspec "$BUNDLE_IMAGE" "$mirror")
+                  echo "Attempting to inspect mirror image: $replaced_image"
+
+                  if skopeo inspect --no-tags --config "docker://${replaced_image}" > /dev/null 2>&1; then
+                    echo "Successfully using mirror image $replaced_image"
+                    mirror_found=1
+
+                    # Write the selected mirror to Tekton result
+                    echo -n "$replaced_image" > "$(results.unreleasedBundle.path)"
+
+                    break
+                  else
+                    echo "Mirror image $replaced_image is inaccessible, trying next..."
+                    echo
+                  fi
+                done
+
+                if [[ $mirror_found -eq 0 ]]; then
+                  echo "No working mirrors found for $reg_and_repo"
                   exit 1
                 fi
               else
-                echo "No upstream mirror found for $reg_and_repo in mirror map."
+                echo "No mirrors listed for $reg_and_repo in mirror map."
                 exit 1
               fi
-
-              echo -n "$replaced_image" > "$(results.unreleasedBundle.path)"
     - name: pick-cluster-params
       runAfter:
         - get-unreleased-bundle
