@@ -312,7 +312,7 @@ spec:
 
               # Look up the *original* image for which this is a mirror
               upstream_image=$(jq -r --arg mirror "${reg_and_repo}" '
-                to_entries[] | select(.value[] == $mirror) | .key' /tekton/home/mirror-map.txt)
+                to_entries[] | select(.key == $mirror) | .key' /tekton/home/mirror-map.txt)
 
               if [[ -n "$upstream_image" ]]; then
                 echo "Upstream image mapped to $reg_and_repo is $upstream_image"
