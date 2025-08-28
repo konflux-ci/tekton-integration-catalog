@@ -3,7 +3,7 @@ kind: Task
 metadata:
   name: checkton
 spec:
-    params:
+  params:
     - name: git-url
       description: The Git URL from which the test pipeline is originating. This can be from a fork or the original repository.
       type: string
@@ -22,7 +22,7 @@ spec:
       type: string
       default: main
       description: name of branch within checkton repo from which to pull file
-    steps:
+  steps:
     - name: clone-refs
       image: quay.io/konflux-qe-incubator/konflux-qe-tools:latest
       workingDir: /workspace
@@ -35,4 +35,9 @@ spec:
     - name: run-checkton
       image: ghcr.io/chmeliik/checkton:v0.4.0
       workingDir: /workspace
+      script: |
+        #!/bin/sh
+        set -e
 
+        # Download and run checkton script
+        curl -sSL "https://raw.githubusercontent.com/$(params.checkton-repo)/$(params.checkton-repo-branch)/checkton.sh" | sh

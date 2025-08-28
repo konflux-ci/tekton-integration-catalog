@@ -63,7 +63,7 @@ spec:
           fi
         }
         trap 'exitfunc $? $LINENO "$BASH_COMMAND"' EXIT
-       
+
         # This is a workaround for periodic jobs
         if [[ "$EVENT_TYPE" == "push" ]]; then
           exit 99

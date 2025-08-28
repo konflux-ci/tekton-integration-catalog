@@ -43,11 +43,11 @@ spec:
       echo "ERROR: Failed to determine target OCP version from FBC fragment." >&2
       exit 1
     fi
-    
+
     # Strip the leading "v" if present
     ocp_version="${ocp_version#v}"
     echo "Target OCP version: $ocp_version"
-    
+
     # Check if the OCP version exists in the cluster supported versions list
     if printf "%s\n" "${CLUSTER_VERSIONS[@]}" | grep -Fxq "$ocp_version"; then
       echo "$ocp_version" > "$(step.results.ocpVersion.path)"

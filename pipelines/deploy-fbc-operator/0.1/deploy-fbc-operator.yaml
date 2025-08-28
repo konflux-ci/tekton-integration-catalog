@@ -27,14 +27,14 @@ spec:
       name: SNAPSHOT
       type: string
     - description: |
-        An OLM package name present in the fragment or leave it empty so the step will determine the default package name. 
+        An OLM package name present in the fragment or leave it empty so the step will determine the default package name.
         * If there is only one 'olm.package', it's name is returned.
         * If multiple 'olm.package' entries contain unreleased bundles, user input is required; the PACKAGE_NAME parameter must be set by the user.
       name: PACKAGE_NAME
       default: ""
       type: string
     - description: |
-        An OLM channel name or leave it empty so the step will determine the default channel name. 
+        An OLM channel name or leave it empty so the step will determine the default channel name.
         * The default channel name corresponds to the 'defaultChannel' entry of the selected package.
       name: CHANNEL_NAME
       default: ""
@@ -87,7 +87,7 @@ spec:
       when:
         - input: $(tasks.parse-metadata.results.test-event-type)
           operator: in
-          values: [ "push", "Push" ]
+          values: ["push", "Push"]
       taskRef:
         resolver: git
         params:
@@ -108,7 +108,7 @@ spec:
       when:
         - input: $(tasks.parse-metadata.results.test-event-type)
           operator: in
-          values: [ "push", "Push" ]
+          values: ["push", "Push"]
       taskSpec:
         results:
           - name: mirrorSetYaml
@@ -144,7 +144,7 @@ spec:
                   echo "Failed to retrieve or decode token from secret '$REPO_TOKEN' key '$REPO_KEY'"
                   exit 1
                 fi
-                
+
                 # Determine token header type
                 if [[ "$SOURCE_GIT_URL" == *"github.com"* ]]; then
                   AUTH_HEADER="Authorization: token $TOKEN"
@@ -183,7 +183,7 @@ spec:
               if [[ -s "/tmp/auth_header.txt" ]]; then
                 auth_header=$(cat /tmp/auth_header.txt)
               fi
-              
+
               # Fetch image mirror set
               mirror_set_url="${SOURCE_GIT_URL}/raw/${SOURCE_GIT_REVISION}/${PATH_TO_MIRROR_SET}"
 
@@ -197,7 +197,7 @@ spec:
                 echo "Could not fetch image mirror set at ${mirror_set_url}."
                 exit 1
               fi
-              
+
               echo -n "$mirror_set_yaml" > "$(results.mirrorSetYaml.path)"
 
               serialized_mirror_set=$(serialize_image_mirrors_yaml "${mirror_set_yaml}")
@@ -230,7 +230,7 @@ spec:
       when:
         - input: $(tasks.parse-metadata.results.test-event-type)
           operator: in
-          values: [ "push", "Push" ]
+          values: ["push", "Push"]
       taskSpec:
         results:
           - name: unreleasedBundle
@@ -356,7 +356,7 @@ spec:
           values: [""]
         - input: $(tasks.parse-metadata.results.test-event-type)
           operator: in
-          values: [ "push", "Push" ]
+          values: ["push", "Push"]
       taskSpec:
         results:
           - name: ocpVersion
@@ -402,7 +402,7 @@ spec:
                   value: main
                 - name: pathInRepo
                   value: stepactions/bundles/pick-cluster-arch/0.1/pick-cluster-arch.yaml
-            params:            
+            params:
               - name: bundleImage
                 value: "$(tasks.get-unreleased-bundle.results.unreleasedBundle)"
     - name: provision-cluster
@@ -420,7 +420,7 @@ spec:
           values: [""]
         - input: $(tasks.parse-metadata.results.test-event-type)
           operator: in
-          values: [ "push", "Push" ]
+          values: ["push", "Push"]
       taskSpec:
         results:
           - name: clusterName
@@ -467,7 +467,7 @@ spec:
           values: [""]
         - input: $(tasks.parse-metadata.results.test-event-type)
           operator: in
-          values: [ "push", "Push" ]
+          values: ["push", "Push"]
       params:
         - name: eaasSpaceSecretRef
           value: $(tasks.provision-eaas-space.results.secretRef)
@@ -764,7 +764,7 @@ spec:
               if [ "$FOUND_INSTALLPLAN" = true ]; then
                 echo "[$(date --utc +%FT%T.%3NZ)] Install Plan approved"
                 echo "[$(date --utc +%FT%T.%3NZ)] Waiting up to 10 minutes for ClusterServiceVersion to become ready..."
-                
+
                 for _ in $(seq 1 60); do
                   CSV=$(oc -n "$INSTALL_NAMESPACE" get subscription "$SUB" -o jsonpath="{.status.installedCSV}" || true)
                   if [[ -n "$CSV" ]]; then
@@ -775,7 +775,7 @@ spec:
                       IMAGE_PULL_EVENTS="$ARTIFACT_DIR/image_pull_events.txt"
                       echo "[$(date --utc +%FT%T.%3NZ)] Dumping cluster image pull events as $IMAGE_PULL_EVENTS"
                       oc get events --all-namespaces --field-selector reason==Pulling -o go-template='{{range .items}}{{.lastTimestamp}},{{.message}}{{"\n"}}{{end}}' >"$IMAGE_PULL_EVENTS"
-                      
+
                       images_pulled_after_deployment_start=$(parse_collected_image_pulls "$IMAGE_PULL_EVENTS" "$DEPLOYMENT_START_TIME")
                       echo -e "Images pulled after deployment start: $images_pulled_after_deployment_start"
 
@@ -870,7 +870,7 @@ spec:
               #!/bin/bash
               ls -la /workspace
           - name: push-artifacts
-            ref: 
+            ref:
               resolver: git
               params:
                 - name: url
@@ -902,7 +902,7 @@ spec:
       when:
         - input: $(tasks.parse-metadata.results.test-event-type)
           operator: in
-          values: [ "push", "Push" ]
+          values: ["push", "Push"]
       taskRef:
         resolver: git
         params:

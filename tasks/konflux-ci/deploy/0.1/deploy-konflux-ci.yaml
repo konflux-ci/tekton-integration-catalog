@@ -86,7 +86,7 @@ spec:
       when:
         - input: "$(params.component-name)"
           operator: notin
-          values: [ "" ]
+          values: [""]
       env:
         - name: COMPONENT_NAME
           value: "$(params.component-name)"
@@ -109,7 +109,7 @@ spec:
       when:
         - input: "$(params.component-name)"
           operator: notin
-          values: [ "" ]
+          values: [""]
       script: |
         #!/bin/bash
         set -euo pipefail
@@ -189,4 +189,3 @@ spec:
 
         echo "[INFO] Creating Test Resources..."
         ./deploy-test-resources.sh
-

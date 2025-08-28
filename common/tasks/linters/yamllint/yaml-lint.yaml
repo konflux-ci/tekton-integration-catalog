@@ -5,8 +5,8 @@ metadata:
   name: yaml-lint
 spec:
   description: |
-    This task performs YAML linting on YAML files in a given Git repository. 
-    It clones the specified repository at the given revision, then applies 
+    This task performs YAML linting on YAML files in a given Git repository.
+    It clones the specified repository at the given revision, then applies
     linting rules to YAML files to identify potential syntax and formatting issues.
   params:
     - name: git-url

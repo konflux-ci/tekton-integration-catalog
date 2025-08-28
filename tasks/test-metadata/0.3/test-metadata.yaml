@@ -40,7 +40,7 @@ spec:
     - name: source-repo-branch
       description: Get the branch from the fork or upstream repo where the pipeline is executed.
     - name: target-repo-branch
-      description: The target branch value from the Pull Request or the current branch value in case of push event. 
+      description: The target branch value from the Pull Request or the current branch value in case of push event.
     - name: component-name
       description: The name of the component that is being executed from Konflux.
     - name: prefetch-artifact
