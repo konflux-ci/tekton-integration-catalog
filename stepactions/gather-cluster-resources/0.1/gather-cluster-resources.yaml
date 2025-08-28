@@ -27,7 +27,7 @@ spec:
       type: string
       description: Relative path to where you want the artifacts to be stored
       default: "/workspace"
-  args: 
+  args:
     - $(params.gather-urls[*])
   workingDir: $(params.artifact-dir)
   env:
@@ -42,9 +42,9 @@ spec:
       mountPath: /credentials
   script: |
     #!/bin/bash
-    set -x 
+    set -x
     export AUX=${KUBECONFIG#*"/credentials/"}
-    if [ -z "${AUX}" ]; then 
+    if [ -z "${AUX}" ]; then
       unset KUBECONFIG
       if [[ "${OC_LOGIN_COMMAND}" = *"oc login"* ]]; then
         echo "${OC_LOGIN_COMMAND}" | bash
@@ -59,5 +59,5 @@ spec:
       if ! [ -z "${url}" ]; then
         echo "curling ${url}"
         curl -sSL "${url}" | bash
-      fi; 
+      fi;
     done

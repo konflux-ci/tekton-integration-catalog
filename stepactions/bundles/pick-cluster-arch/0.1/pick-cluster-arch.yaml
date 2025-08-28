@@ -39,7 +39,7 @@ spec:
       echo "Could not get bundle-supported architectures" >&2
       exit 1
     fi
-    
+
     # If arm64 is supported, return it; otherwise, return amd64
     if echo "$arches" | grep -q "^arm64$"; then
       echo "arm64 architecture is supported"

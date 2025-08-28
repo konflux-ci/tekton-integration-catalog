@@ -5,8 +5,8 @@ metadata:
   name: shellcheck
 spec:
   description: |
-    This task performs a ShellCheck analysis on shell scripts in a given Git repository. 
-    It clones the specified repository at the given revision, then searches for all shell 
+    This task performs a ShellCheck analysis on shell scripts in a given Git repository.
+    It clones the specified repository at the given revision, then searches for all shell
     scripts and runs ShellCheck to identify potential issues and warnings.
   params:
     - name: git-url
