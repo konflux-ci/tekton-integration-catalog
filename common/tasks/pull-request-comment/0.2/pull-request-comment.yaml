@@ -70,7 +70,7 @@ spec:
       when:
         - input: "$(params.enable-test-results-analysis)"
           operator: in
-          values: [ "true" ]
+          values: ["true"]
     - name: pull-request-comment
       env:
         - name: JOB_SPEC

@@ -91,7 +91,7 @@ spec:
       when:
         - input: "$(params.enable-test-results-analysis)"
           operator: in
-          values: [ "true" ]
+          values: ["true"]
     - name: pull-request-comment
       env:
         - name: BUILD_CONSOLE_URL
@@ -181,7 +181,7 @@ spec:
             REPO_NAME=$(echo "$OCI_STORAGE_CONTAINER" | sed 's|.*/||' | sed 's|:.*||')
             ARTIFACT_BROWSER_URL="[View in Artifact Browser](${ARTIFACT_BROWSER_BASE_URL}/${REPO_NAME}/${TEST_NAME}/)"
         fi
-        
+
         PR_COMMENT=$(cat <<EOF
         @${PR_AUTHOR}: The following test has ${PIPELINE_RUN_AGGREGATE_STATUS}, say **/retest** to rerun failed tests.
 
