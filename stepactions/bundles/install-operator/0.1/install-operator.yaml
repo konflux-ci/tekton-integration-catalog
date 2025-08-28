@@ -257,7 +257,7 @@ spec:
     if [ "$FOUND_INSTALLPLAN" = true ]; then
       echo "[$(date --utc +%FT%T.%3NZ)] Install Plan approved"
       echo "[$(date --utc +%FT%T.%3NZ)] Waiting up to 10 minutes for ClusterServiceVersion to become ready..."
-      
+
       for _ in $(seq 1 60); do
         CSV=$(oc -n "$INSTALL_NAMESPACE" get subscription "$SUB" -o jsonpath="{.status.installedCSV}" || true)
         if [[ -n "$CSV" ]]; then

@@ -82,7 +82,7 @@ spec:
       when:
         - input: "$(params.enable-test-results-analysis)"
           operator: in
-          values: [ "true" ]
+          values: ["true"]
     - name: pull-request-comment
       env:
         - name: BUILD_CONSOLE_URL

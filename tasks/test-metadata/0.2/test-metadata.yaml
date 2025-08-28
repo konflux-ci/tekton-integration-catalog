@@ -122,9 +122,9 @@ spec:
             '.payload | @base64d | fromjson | .predicate.buildConfig.tasks[] |
             select(.name == "prefetch-dependencies") | .results[] | select(.name == "CACHI2_ARTIFACT") | .value' \
             cosign_metadata.json)"
-          
+
           echo "[INFO] Cachi2 source artifact: $CACHI2_SOURCE_ARTIFACT"
 
           echo -n "$CACHI2_SOURCE_ARTIFACT" > $(results.prefetch-artifact.path)
-          
+
         fi

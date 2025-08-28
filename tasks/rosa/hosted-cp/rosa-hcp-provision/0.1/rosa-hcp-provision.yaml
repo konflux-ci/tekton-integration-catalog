@@ -69,14 +69,14 @@ spec:
         REGION=$(jq -r '.aws["region"]' /usr/local/konflux-test-infra/$(params.cloud-credential-key))
 
         config_aws_creds() {
-            printf "INFO: Configure AWS Credentials...\n" 
+            printf "INFO: Configure AWS Credentials...\n"
             aws configure set aws_access_key_id "$AWS_ACCESS_KEY_ID"
             aws configure set aws_secret_access_key "$AWS_SECRET_ACCESS_KEY"
             aws configure set region "$REGION"
         }
 
         print_debug_info() {
-            printf "INFO: Print debug info......\n" 
+            printf "INFO: Print debug info......\n"
             rosa --region "$REGION" describe cluster --cluster="$CLUSTER_NAME"
         }
 
@@ -116,17 +116,17 @@ spec:
         check_cluster_health_endpoint() {
             cluster_id=$(ocm get clusters --parameter search="name like '$CLUSTER_NAME'" | jq -r '.items[].id')
             # 1. Wait for cluster to be reported as healthy
-            # 2. If the attempt fails, print out the list of cluster operators, which should provide a better overview about the current status of the cluster 
+            # 2. If the attempt fails, print out the list of cluster operators, which should provide a better overview about the current status of the cluster
             wait_for "ocm get subs --parameter search=\"cluster_id = '$cluster_id'\" | jq -r '.items[0].metrics[0].health_state' | grep -E ^healthy || (kubectl get clusteroperators -A && false)" \
                 "cluster to be reported as healthy" "60m" "60"
         }
 
         deploy_cluster() {
-            printf "INFO: Log in to your Red Hat account...\n" 
+            printf "INFO: Log in to your Red Hat account...\n"
             config_aws_creds
             rosa login --token="$ROSA_TOKEN"
 
-            printf "INFO: Create ROSA with HCP cluster...\n" 
+            printf "INFO: Create ROSA with HCP cluster...\n"
             get_hcp_full_version
             rosa create cluster --cluster-name "$CLUSTER_NAME" \
                 --sts --mode=auto --oidc-config-id "$AWS_OIDC_CONFIG_ID" \
@@ -141,10 +141,10 @@ spec:
                 --tags konflux-ci:true,creation-date:$(date -u +"%Y-%m-%d"),cluster-type:rosa-hcp \
                 --hosted-cp -y
 
-            printf "INFO: Track the progress of the cluster creation...\n" 
+            printf "INFO: Track the progress of the cluster creation...\n"
             rosa logs install --cluster="$CLUSTER_NAME" --region "$REGION" --watch
 
-            printf "INFO: ROSA with HCP cluster is ready, create a cluster admin account for accessing the cluster\n" 
+            printf "INFO: ROSA with HCP cluster is ready, create a cluster admin account for accessing the cluster\n"
             admin_output="$(rosa create admin --region "$REGION" --cluster="$CLUSTER_NAME")"
 
             # Get the admin account credentials and API server URL
@@ -159,7 +159,7 @@ spec:
             printf "INFO: Check if it's able to login to OCP cluster...\n"
             max_retries=10
             retries=0
-            
+
             while ! oc login "$api_url" --username "$admin_user" --password "$admin_pass" >/dev/null 2>&1; do
                 if [ "$retries" -eq "$max_retries" ]; then
                     echo "ERROR: Failed to login the cluster." >&2

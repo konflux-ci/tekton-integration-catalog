@@ -61,7 +61,7 @@ spec:
       volumeMounts:
         - name: oci-creds
           mountPath: /tmp/docker-config
-      args: 
+      args:
         - pull
         - $(params.oci-artifact-uri)
         - --registry-config
@@ -100,34 +100,34 @@ spec:
         # Build droute command
         DROUTE_CMD="/droute send"
         DROUTE_CMD="$DROUTE_CMD --url=$(params.datarouter-url)"
-        DROUTE_CMD="$DROUTE_CMD --username=$DATAROUTER_USERNAME"  
+        DROUTE_CMD="$DROUTE_CMD --username=$DATAROUTER_USERNAME"
         DROUTE_CMD="$DROUTE_CMD --password=$DATAROUTER_PASSWORD"
         DROUTE_CMD="$DROUTE_CMD --metadata=$METADATA_FILE"
         DROUTE_CMD="$DROUTE_CMD --results=$(params.results-pattern)"
-        
+
         # Add attachments directory if specified
         if [[ -n "$(params.attachments-dir)" ]]; then
           ATTACHMENTS_PATH="${ARTIFACT_DIR}/$(params.attachments-dir)"
           DROUTE_CMD="$DROUTE_CMD --attachments=$ATTACHMENTS_PATH"
         fi
-        
+
         echo "Executing Data Router send"
         echo "  URL: $(params.datarouter-url)"
         echo "  Metadata: $METADATA_FILE"
         echo "  Results: $(params.results-pattern)"
         echo "  Attachments: $(params.attachments-dir)"
         echo "  Username: $DATAROUTER_USERNAME"
-        
+
         # Execute
         cd "$ARTIFACT_DIR"
         OUTPUT=$(eval $DROUTE_CMD 2>&1)
         EXIT_CODE=$?
-        
+
         echo "$OUTPUT"
-        
+
         # Extract routing ID if available
         ROUTING_ID=$(echo "$OUTPUT" | grep -o "routing[_-]id[:\s]*[a-zA-Z0-9-]*" | head -1 | sed 's/.*[:\s]\+//' || echo "")
-        
+
         # Set results
         if [[ $EXIT_CODE -eq 0 ]]; then
           echo -n "success" > $(results.status.path)
@@ -136,7 +136,7 @@ spec:
           echo -n "failure" > $(results.status.path)
           echo "Data Router send operation failed with exit code: $EXIT_CODE"
         fi
-        
+
         echo -n "$ROUTING_ID" > $(results.routing-id.path)
-        
+
         exit $EXIT_CODE
