@@ -246,10 +246,19 @@ spec:
         #!/bin/bash
         set -eo pipefail
 
-        # Patch the existing secret to update the kubeconfig data
-        oc patch secret "${KUBECONFIG_SECRET_NAME}" -n "${NAMESPACE}" --type='merge' -p='{"data":{"kubeconfig":"'$(cat /opt/cluster-info/kubeconfig | base64 -w0)'"}}'
+        # Modify the kubeconfig to be insecure
+        KUBECONFIG_PATH="/opt/cluster-info/kubeconfig"
 
-        echo "[INFO] Updated secret ${KUBECONFIG_SECRET_NAME} with kubeconfig."
+        # Add insecure-skip-tls-verify: true to all clusters and contexts
+        yq eval '
+          .clusters[].cluster."insecure-skip-tls-verify" = true |
+          .contexts[].context."insecure-skip-tls-verify" = true
+        ' -i "$KUBECONFIG_PATH"
+
+        # Patch the existing secret to update the kubeconfig data
+        oc patch secret "${KUBECONFIG_SECRET_NAME}" -n "${NAMESPACE}" --type='merge' -p='{"data":{"kubeconfig":"'$(cat "$KUBECONFIG_PATH" | base64 -w0)'"}}'
+
+        echo "[INFO] Updated secret ${KUBECONFIG_SECRET_NAME} with insecure kubeconfig."
 
     - name: secure-push-oci
       ref:
