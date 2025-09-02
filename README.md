@@ -32,6 +32,13 @@ The **Pipelines** directory includes complete Tekton Pipelines composed of Tasks
 - **Adding a New Pipeline**:
    To add a new pipeline, create a `.yaml` file inside the `pipelines/<your-pipeline-name>/0.1/` directory. Ensure it follows the Tekton [Pipeline specification](https://tekton.dev/docs/pipelines/pipelines/), is well-documented (add `README.md` file), and [well-versioned](#-versioning).
 
+### 🧩 Pipeline Runs
+
+The **PipelineRuns** directory includes complete Tekton PipelineRuns composed of Tasks and StepActions. These PipelineRuns provide end-to-end examples of how to combine reusable components into robust CI/CD workflows with added customization options provided by the [PipelineRun](https://tekton.dev/docs/pipelines/pipelineruns/) definition format. If you're looking to orchestrate multiple tasks into a cohesive flow, PipelineRuns are a great starting point.
+
+- **Adding a New PipelineRun**:
+  To add a new pipelineRun, create a `.yaml` file inside the `pipelineruns/<your-pipelinerun-name>/0.1/` directory. Ensure it follows the Tekton [PipelineRun specification](https://tekton.dev/docs/pipelines/pipelineruns/), is well-documented (add `README.md` file), and [well-versioned](#-versioning).
+
 ### 🧰 Konflux Integration Tools
 
 The **Konflux Integration Tools** provide utilities specifically designed to facilitate the development and management of Tekton tasks.
