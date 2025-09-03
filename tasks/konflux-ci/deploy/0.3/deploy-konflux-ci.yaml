@@ -318,12 +318,6 @@ spec:
         set -euo pipefail
 
         {
-        # Delete existing kyverno policies and apply a policy for reducing CPU/Memory requests for E2E PLR pods
-        kubectl delete clusterpolicy --all
-        curl -s https://raw.githubusercontent.com/redhat-appstudio/infra-deployments/main/components/policies/development/taskruns-cluster-policy.yaml \
-          | yq 'del(.spec.rules[0].skipBackgroundRequests)' \
-          | kubectl apply -f -
-
         echo "[INFO] Creating Test Resources..."
         ./deploy-test-resources.sh
         } 2>&1 | tee -a $LOG_FILENAME
