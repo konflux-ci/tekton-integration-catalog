@@ -236,6 +236,9 @@ spec:
           # Apply pipelines-runner cluster role
           kubectl apply -f https://raw.githubusercontent.com/redhat-appstudio/infra-deployments/main/components/konflux-rbac/base/appstudio-pipelines-runner.yaml
 
+          # Apply integration-runner cluster role
+          kubectl apply -f https://raw.githubusercontent.com/redhat-appstudio/infra-deployments/main/components/konflux-rbac/base/konflux-integration-runner.yaml
+
           kubectl get po -A
         } 2>&1 | tee -a $LOG_FILENAME
     - name: deploy-image-controller-and-smee
