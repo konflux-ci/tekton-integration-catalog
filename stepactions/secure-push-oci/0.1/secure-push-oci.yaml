@@ -44,7 +44,7 @@ spec:
     set -e
 
     main() {
-      IMAGE_REF_REGEX='^quay\.io/[a-zA-Z0-9_-]+(/[a-zA-Z0-9_-]+)+:[a-zA-Z0-9._-]+$'
+      IMAGE_REF_REGEX='^[a-zA-Z0-9_:\]?quay\.io/[a-zA-Z0-9_-]+(/[a-zA-Z0-9_-]+)+:[a-zA-Z0-9._-]+$'
 
       if [[ ! $OCI_ARTIFACT_REFERENCE =~ $IMAGE_REF_REGEX ]]; then
           echo -e "[ERROR]: provided OCI artifact reference '$OCI_ARTIFACT_REFERENCE' is not in correct format 'quay.io/org/repo:tag'"
