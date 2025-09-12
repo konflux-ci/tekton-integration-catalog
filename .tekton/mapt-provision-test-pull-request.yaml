@@ -30,9 +30,9 @@ spec:
   - name: mapt-arch
     value: 'x86_64'
   - name: mapt-cpus
-    value: '1'
+    value: '4'
   - name: mapt-memory
-    value: '1'
+    value: '8'
   - name: mapt-spot
     value: 'true'
   - name: mapt-spot-increase-rate
