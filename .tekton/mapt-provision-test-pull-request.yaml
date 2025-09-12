@@ -30,15 +30,15 @@ spec:
   - name: mapt-arch
     value: 'x86_64'
   - name: mapt-cpus
-    value: '4'
+    value: '1'
   - name: mapt-memory
-    value: '8'
+    value: '1'
   - name: mapt-spot
     value: 'true'
   - name: mapt-spot-increase-rate
     value: '10'
   - name: mapt-timeout
-    value: '15m'
+    value: '20m'
   - name: aws-credentials-secret
     value: 'aws-credentials'
   - name: oci-credentials-secret
@@ -131,7 +131,7 @@ spec:
         workspace: source
     - name: mapt-provision
       runAfter: ["clone-repository"]
-      timeout: 25m
+      timeout: 30m
       params:
       - name: secret-aws-credentials
         value: $(params.aws-credentials-secret)
@@ -193,6 +193,13 @@ spec:
         steps:
         - name: provision-cluster
           image: alpine:latest
+          resources:
+            requests:
+              memory: "2Gi"
+              cpu: "500m"
+            limits:
+              memory: "4Gi"
+              cpu: "1000m"
           script: |
             #!/bin/sh
             set -e
@@ -236,6 +243,18 @@ spec:
               exit 1
             }
 
+            # Check AWS region and availability
+            echo "Checking AWS region and availability..."
+            aws ec2 describe-regions --region-names us-east-1 || {
+              echo "WARNING: Could not verify region availability"
+            }
+
+            # Check for existing resources that might conflict
+            echo "Checking for existing resources..."
+            aws ec2 describe-instances --filters "Name=tag:created-by,Values=tekton-pipeline" --query 'Reservations[*].Instances[*].[InstanceId,State.Name,Tags[?Key==`test-run`].Value|[0]]' --output table || {
+              echo "WARNING: Could not check for existing instances"
+            }
+
             # Download and install mapt
             echo "Downloading mapt CLI..."
             MAPT_VERSION="v0.9.5"
@@ -251,7 +270,10 @@ spec:
 
             # Create cluster using mapt
             echo "Creating cluster with mapt..."
-            /usr/local/bin/mapt provision \
+            echo "Command: /usr/local/bin/mapt provision --id $(params.id) --arch $(params.arch) --cpus $(params.cpus) --memory $(params.memory) --spot $(params.spot) --spot-increase-rate $(params.spot-increase-rate) --timeout $(params.timeout) --tags \"$(params.tags)\" --output-dir /cluster-info --verbose"
+
+            # Set a timeout for the mapt command itself
+            timeout 25m /usr/local/bin/mapt provision \
               --id $(params.id) \
               --arch $(params.arch) \
               --cpus $(params.cpus) \
@@ -261,7 +283,16 @@ spec:
               --timeout $(params.timeout) \
               --tags "$(params.tags)" \
               --output-dir /cluster-info \
-              --verbose
+              --verbose || {
+              echo "ERROR: mapt provision command failed or timed out"
+              echo "Checking if cluster was partially created..."
+              # Try to get any existing cluster info
+              if [ -d /cluster-info ]; then
+                echo "Cluster info directory contents:"
+                ls -la /cluster-info/
+              fi
+              exit 1
+            }
 
             echo "Cluster provisioning completed successfully"
           volumeMounts:
@@ -272,6 +303,13 @@ spec:
             mountPath: /cluster-info
         - name: create-cluster-secret
           image: alpine:latest
+          resources:
+            requests:
+              memory: "512Mi"
+              cpu: "100m"
+            limits:
+              memory: "1Gi"
+              cpu: "200m"
           script: |
             #!/bin/sh
             set -e
