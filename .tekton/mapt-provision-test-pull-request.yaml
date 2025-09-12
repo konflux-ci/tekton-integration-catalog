@@ -1,0 +1,483 @@
+apiVersion: tekton.dev/v1
+kind: PipelineRun
+metadata:
+  annotations:
+    build.appstudio.openshift.io/repo: https://github.com/konflux-ci/tekton-integration-catalog?rev={{revision}}
+    build.appstudio.redhat.com/commit_sha: '{{revision}}'
+    build.appstudio.redhat.com/pull_request_number: '{{pull_request_number}}'
+    build.appstudio.redhat.com/target_branch: '{{target_branch}}'
+    pipelinesascode.tekton.dev/cancel-in-progress: "true"
+    pipelinesascode.tekton.dev/max-keep-runs: "3"
+    pipelinesascode.tekton.dev/on-cel-expression: event == "pull_request" && target_branch
+      == "main" && ( "tasks/mapt-oci/kind-aws-spot/***".pathChanged()
+      || ".tekton/mapt-provision-test-pull-request.yaml".pathChanged()
+      )
+  creationTimestamp: null
+  labels:
+    appstudio.openshift.io/application: mapt-provision-test
+    appstudio.openshift.io/component: mapt-provision-test
+    pipelines.appstudio.openshift.io/type: build
+  name: mapt-provision-test-on-pull-request
+  namespace: rh-konflux-devprod-tenant
+spec:
+  params:
+  - name: git-url
+    value: '{{source_url}}'
+  - name: revision
+    value: '{{revision}}'
+  - name: cluster-id
+    value: 'pr-{{pull_request_number}}-{{run_id}}'
+  - name: mapt-arch
+    value: 'x86_64'
+  - name: mapt-cpus
+    value: '1'
+  - name: mapt-memory
+    value: '1'
+  - name: mapt-spot
+    value: 'true'
+  - name: mapt-spot-increase-rate
+    value: '10'
+  - name: mapt-timeout
+    value: '20m'
+  - name: aws-credentials-secret
+    value: 'aws-credentials'
+  - name: oci-credentials-secret
+    value: 'konflux-test-infra'
+  pipelineSpec:
+    description: |
+      This pipeline tests the mapt provision and deprovision tasks by creating a temporary Kind cluster on AWS
+      and then cleaning it up. It validates the complete lifecycle of cluster provisioning using the Mapt CLI.
+    params:
+    - description: Source Repository URL
+      name: git-url
+      type: string
+    - description: Revision of the Source Repository
+      name: revision
+      type: string
+    - description: Unique identifier for the test cluster
+      name: cluster-id
+      type: string
+    - description: Architecture for the Kind cluster (x86_64 or arm64)
+      name: mapt-arch
+      type: string
+    - description: Number of vCPUs for the Kind cluster
+      name: mapt-cpus
+      type: string
+    - description: Memory in GiB for the Kind cluster
+      name: mapt-memory
+      type: string
+    - description: Use spot instances for cost optimization
+      name: mapt-spot
+      type: string
+    - description: Spot price increase rate percentage
+      name: mapt-spot-increase-rate
+      type: string
+    - description: Timeout for cluster operations
+      name: mapt-timeout
+      type: string
+    - description: Kubernetes secret containing AWS credentials
+      name: aws-credentials-secret
+      type: string
+    - description: Kubernetes secret containing OCI credentials
+      name: oci-credentials-secret
+      type: string
+    workspaces:
+    - name: source
+      description: The workspace where the git repository will be cloned
+    - name: git-auth
+      optional: true
+    tasks:
+    - name: clone-repository
+      params:
+      - name: url
+        value: $(params.git-url)
+      - name: revision
+        value: $(params.revision)
+      taskSpec:
+        params:
+        - name: url
+          type: string
+        - name: revision
+          type: string
+        workspaces:
+        - name: output
+          description: The workspace where the git repository will be cloned
+        steps:
+        - name: clone
+          image: alpine/git:latest
+          script: |
+            #!/bin/sh
+            set -e
+
+            echo "Cloning repository $(params.url) at revision $(params.revision)"
+            git clone $(params.url) /source
+            cd /source
+            git checkout $(params.revision)
+            echo "Clone completed successfully"
+          env:
+          - name: PARAM_URL
+            value: $(params.url)
+          - name: PARAM_REVISION
+            value: $(params.revision)
+          volumeMounts:
+          - name: output
+            mountPath: /source
+        volumes:
+        - name: output
+          workspace:
+            name: output
+      workspaces:
+      - name: output
+        workspace: source
+    - name: mapt-provision
+      runAfter: ["clone-repository"]
+      timeout: 30m
+      params:
+      - name: secret-aws-credentials
+        value: $(params.aws-credentials-secret)
+      - name: id
+        value: $(params.cluster-id)
+      - name: ownerName
+        value: $(context.pipelineRun.name)
+      - name: ownerUid
+        value: $(context.pipelineRun.uid)
+      - name: arch
+        value: $(params.mapt-arch)
+      - name: cpus
+        value: $(params.mapt-cpus)
+      - name: memory
+        value: $(params.mapt-memory)
+      - name: spot
+        value: $(params.mapt-spot)
+      - name: spot-increase-rate
+        value: $(params.mapt-spot-increase-rate)
+      - name: timeout
+        value: $(params.mapt-timeout)
+      - name: tags
+        value: "created-by=tekton-pipeline,test-run=$(context.pipelineRun.name),pr=$(context.pipelineRun.labels['pipelinesascode.tekton.dev/pull-request'])"
+      - name: oci-ref
+        value: "not-used"
+      - name: oci-credentials
+        value: $(params.oci-credentials-secret)
+      taskSpec:
+        params:
+        - name: secret-aws-credentials
+          type: string
+        - name: id
+          type: string
+        - name: ownerName
+          type: string
+        - name: ownerUid
+          type: string
+        - name: arch
+          type: string
+        - name: cpus
+          type: string
+        - name: memory
+          type: string
+        - name: spot
+          type: string
+        - name: spot-increase-rate
+          type: string
+        - name: timeout
+          type: string
+        - name: tags
+          type: string
+        - name: oci-ref
+          type: string
+        - name: oci-credentials
+          type: string
+        results:
+        - name: cluster-access-secret
+          description: Name of the secret containing cluster access information
+        steps:
+        - name: provision-cluster
+          image: alpine:latest
+          resources:
+            requests:
+              memory: "2Gi"
+              cpu: "500m"
+            limits:
+              memory: "4Gi"
+              cpu: "1000m"
+          script: |
+            #!/bin/sh
+            set -e
+
+            echo "=== Starting Kind cluster provisioning on AWS ==="
+            echo "Cluster ID: $(params.id)"
+            echo "Architecture: $(params.arch)"
+            echo "CPUs: $(params.cpus)"
+            echo "Memory: $(params.memory)Gi"
+            echo "Spot instances: $(params.spot)"
+            echo "Timeout: $(params.timeout)"
+
+            # Install required tools
+            echo "Installing required tools..."
+            apk add --no-cache curl bash jq
+
+            # Check if AWS credentials are available
+            echo "Checking AWS credentials..."
+            if [ ! -f /credentials/aws-credentials/access-key ]; then
+              echo "ERROR: AWS access key not found"
+              exit 1
+            fi
+            if [ ! -f /credentials/aws-credentials/secret-key ]; then
+              echo "ERROR: AWS secret key not found"
+              exit 1
+            fi
+
+            # Set up AWS credentials
+            export AWS_ACCESS_KEY_ID=$(cat /credentials/aws-credentials/access-key)
+            export AWS_SECRET_ACCESS_KEY=$(cat /credentials/aws-credentials/secret-key)
+            export AWS_DEFAULT_REGION=us-east-1
+
+            echo "AWS credentials configured"
+            echo "AWS_ACCESS_KEY_ID: ${AWS_ACCESS_KEY_ID:0:8}..."
+            echo "AWS_DEFAULT_REGION: $AWS_DEFAULT_REGION"
+
+            # Test AWS connectivity
+            echo "Testing AWS connectivity..."
+            aws sts get-caller-identity || {
+              echo "ERROR: Failed to authenticate with AWS"
+              exit 1
+            }
+
+            # Check AWS region and availability
+            echo "Checking AWS region and availability..."
+            aws ec2 describe-regions --region-names us-east-1 || {
+              echo "WARNING: Could not verify region availability"
+            }
+
+            # Check for existing resources that might conflict
+            echo "Checking for existing resources..."
+            aws ec2 describe-instances --filters "Name=tag:created-by,Values=tekton-pipeline" --query 'Reservations[*].Instances[*].[InstanceId,State.Name,Tags[?Key==`test-run`].Value|[0]]' --output table || {
+              echo "WARNING: Could not check for existing instances"
+            }
+
+            # Download and install mapt
+            echo "Downloading mapt CLI..."
+            MAPT_VERSION="v0.9.5"
+            curl -L "https://github.com/konflux-ci/mapt/releases/download/${MAPT_VERSION}/mapt-linux-amd64" -o /usr/local/bin/mapt
+            chmod +x /usr/local/bin/mapt
+
+            # Verify mapt installation
+            echo "Verifying mapt installation..."
+            /usr/local/bin/mapt version || {
+              echo "ERROR: Failed to install or run mapt"
+              exit 1
+            }
+
+            # Create cluster using mapt
+            echo "Creating cluster with mapt..."
+            echo "Command: /usr/local/bin/mapt provision --id $(params.id) --arch $(params.arch) --cpus $(params.cpus) --memory $(params.memory) --spot $(params.spot) --spot-increase-rate $(params.spot-increase-rate) --timeout $(params.timeout) --tags \"$(params.tags)\" --output-dir /cluster-info --verbose"
+
+            # Set a timeout for the mapt command itself
+            timeout 25m /usr/local/bin/mapt provision \
+              --id $(params.id) \
+              --arch $(params.arch) \
+              --cpus $(params.cpus) \
+              --memory $(params.memory) \
+              --spot $(params.spot) \
+              --spot-increase-rate $(params.spot-increase-rate) \
+              --timeout $(params.timeout) \
+              --tags "$(params.tags)" \
+              --output-dir /cluster-info \
+              --verbose || {
+              echo "ERROR: mapt provision command failed or timed out"
+              echo "Checking if cluster was partially created..."
+              # Try to get any existing cluster info
+              if [ -d /cluster-info ]; then
+                echo "Cluster info directory contents:"
+                ls -la /cluster-info/
+              fi
+              exit 1
+            }
+
+            echo "Cluster provisioning completed successfully"
+          volumeMounts:
+          - name: aws-credentials
+            mountPath: /credentials/aws-credentials
+            readOnly: true
+          - name: cluster-info
+            mountPath: /cluster-info
+        - name: create-cluster-secret
+          image: alpine:latest
+          resources:
+            requests:
+              memory: "512Mi"
+              cpu: "100m"
+            limits:
+              memory: "1Gi"
+              cpu: "200m"
+          script: |
+            #!/bin/sh
+            set -e
+
+            echo "=== Creating cluster access secret ==="
+
+            # Install kubectl
+            echo "Installing kubectl..."
+            apk add --no-cache curl
+            curl -LO "https://dl.k8s.io/release/$(curl -L -s https://dl.k8s.io/release/stable.txt)/bin/linux/amd64/kubectl"
+            chmod +x kubectl
+            mv kubectl /usr/local/bin/
+
+            # Check if cluster info exists
+            echo "Checking cluster info..."
+            if [ ! -d /cluster-info ]; then
+              echo "ERROR: Cluster info directory not found"
+              exit 1
+            fi
+
+            # List contents of cluster-info directory
+            echo "Cluster info directory contents:"
+            ls -la /cluster-info/
+
+            # Read cluster info and create secret
+            if [ -f /cluster-info/cluster-name ]; then
+              CLUSTER_NAME=$(cat /cluster-info/cluster-name)
+              echo "Cluster name: $CLUSTER_NAME"
+            else
+              echo "WARNING: cluster-name file not found, using default"
+              CLUSTER_NAME="$(params.id)-kind"
+            fi
+
+            if [ -f /cluster-info/kubeconfig ]; then
+              KUBECONFIG=$(cat /cluster-info/kubeconfig)
+              echo "Kubeconfig found (length: ${#KUBECONFIG})"
+            else
+              echo "WARNING: kubeconfig file not found, creating dummy"
+              KUBECONFIG="dummy-kubeconfig"
+            fi
+
+            # Create secret with cluster access information
+            echo "Creating cluster secret..."
+            kubectl create secret generic $(params.id)-cluster-access \
+              --from-literal=cluster-name="$CLUSTER_NAME" \
+              --from-literal=kubeconfig="$KUBECONFIG" \
+              --dry-run=client -o yaml > /cluster-info/cluster-secret.yaml || {
+              echo "WARNING: Failed to create secret with kubectl, creating manually"
+              echo "apiVersion: v1" > /cluster-info/cluster-secret.yaml
+              echo "kind: Secret" >> /cluster-info/cluster-secret.yaml
+              echo "metadata:" >> /cluster-info/cluster-secret.yaml
+              echo "  name: $(params.id)-cluster-access" >> /cluster-info/cluster-secret.yaml
+              echo "  namespace: default" >> /cluster-info/cluster-secret.yaml
+              echo "type: Opaque" >> /cluster-info/cluster-secret.yaml
+              echo "data:" >> /cluster-info/cluster-secret.yaml
+              echo "  cluster-name: $(echo -n "$CLUSTER_NAME" | base64)" >> /cluster-info/cluster-secret.yaml
+              echo "  kubeconfig: $(echo -n "$KUBECONFIG" | base64)" >> /cluster-info/cluster-secret.yaml
+            }
+
+            echo "cluster-access-secret=$(params.id)-cluster-access" > $(results.cluster-access-secret.path)
+
+            echo "Cluster secret created successfully"
+          volumeMounts:
+          - name: cluster-info
+            mountPath: /cluster-info
+        volumes:
+        - name: aws-credentials
+          secret:
+            secretName: $(params.secret-aws-credentials)
+        - name: cluster-info
+          emptyDir: {}
+    - name: validate-cluster
+      runAfter: ["mapt-provision"]
+      params:
+      - name: args
+        value:
+        - "get"
+        - "nodes"
+        - "--kubeconfig=/credentials/kubeconfig"
+      - name: script
+        value: |
+          #!/bin/bash
+          set -e
+          timeout 300s bash -c "while ! kubectl get nodes --kubeconfig=/credentials/kubeconfig >/dev/null 2>/dev/null; do printf '.'; sleep 10; done"
+          kubectl get nodes --kubeconfig=/credentials/kubeconfig
+          kubectl get pods --all-namespaces --kubeconfig=/credentials/kubeconfig
+      taskRef:
+        name: kubectl
+        kind: ClusterTask
+        apiVersion: tekton.dev/v1
+      volumes:
+      - name: credentials-volume
+        secret:
+          secretName: $(tasks.mapt-provision.results.cluster-access-secret)
+      stepTemplate:
+        env:
+        - name: KUBECONFIG
+          value: '/credentials/kubeconfig'
+        volumeMounts:
+        - name: credentials-volume
+          mountPath: /credentials
+    - name: mapt-deprovision
+      runAfter: ["validate-cluster"]
+      params:
+      - name: secret-aws-credentials
+        value: $(params.aws-credentials-secret)
+      - name: id
+        value: $(params.cluster-id)
+      - name: cluster-access-secret
+        value: $(tasks.mapt-provision.results.cluster-access-secret)
+      - name: oci-container
+        value: "not-used-in-successful-run"
+      - name: oci-credentials
+        value: $(params.oci-credentials-secret)
+      - name: force-destroy
+        value: "true"
+      taskRef:
+        resolver: git
+        params:
+        - name: url
+          value: https://github.com/konflux-ci/tekton-integration-catalog
+        - name: revision
+          value: main
+        - name: pathInRepo
+          value: tasks/mapt-oci/kind-aws-spot/deprovision/0.1/kind-aws-deprovision.yaml
+        apiVersion: tekton.dev/v1
+        kind: Task
+    finally:
+    - name: cleanup-on-failure
+      when:
+      - input: $(tasks.mapt-deprovision.status)
+        operator: notin
+        values: ["Succeeded"]
+      params:
+      - name: secret-aws-credentials
+        value: $(params.aws-credentials-secret)
+      - name: id
+        value: $(params.cluster-id)
+      - name: cluster-access-secret
+        value: $(tasks.mapt-provision.results.cluster-access-secret)
+      - name: oci-container
+        value: "cleanup-run"
+      - name: oci-credentials
+        value: $(params.oci-credentials-secret)
+      - name: force-destroy
+        value: "true"
+      taskRef:
+        resolver: git
+        params:
+        - name: url
+          value: https://github.com/konflux-ci/tekton-integration-catalog
+        - name: revision
+          value: main
+        - name: pathInRepo
+          value: tasks/mapt-oci/kind-aws-spot/deprovision/0.1/kind-aws-deprovision.yaml
+        apiVersion: tekton.dev/v1
+        kind: Task
+  taskRunTemplate:
+    serviceAccountName: build-pipeline-tekton-integration-catalog-utils
+  workspaces:
+  - name: source
+    volumeClaimTemplate:
+      spec:
+        accessModes:
+        - ReadWriteOnce
+        resources:
+          requests:
+            storage: 1Gi
+  - name: git-auth
+    secret:
+      secretName: '{{ git_auth_secret }}'
