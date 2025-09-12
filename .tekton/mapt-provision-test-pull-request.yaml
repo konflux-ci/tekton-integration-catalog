@@ -337,7 +337,7 @@ spec:
           volumeMounts:
           - name: cluster-info
             mountPath: /cluster-info
-      volumes:
+        volumes:
         - name: aws-credentials
           secret:
             secretName: $(params.secret-aws-credentials)
