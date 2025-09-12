@@ -160,169 +160,104 @@ spec:
       - name: oci-credentials
         value: $(params.oci-credentials-secret)
       taskSpec:
-        apiVersion: tekton.dev/v1
-        kind: Task
-        metadata:
-          name: kind-aws-provision
-          labels:
-            app.kubernetes.io/version: "0.2"
-          annotations:
-            tekton.dev/pipelines.minVersion: "0.44.x"
-            tekton.dev/categories: infrastructure
-            tekton.dev/tags: infrastructure, aws, kind
-            tekton.dev/displayName: "Kind Cloud Single Node - Create"
-            tekton.dev/platforms: "linux/amd64, linux/arm64"
-            mapt/version: "v0.9.5"
-        spec:
-          description: |
-            Creates a single-node Kubernetes cluster using Kind on AWS, powered by the Mapt CLI.
-            This task is ideal for setting up ephemeral clusters for testing or CI/CD workflows.
-
-            It supports:
-              - Spot instance provisioning and nested virtualization
-              - Custom CPU, memory, and architecture configurations
-              - Automatic cluster cleanup via timeout
-              - Securely exposes the generated kubeconfig as a Kubernetes Secret
-          volumes:
-            - name: aws-credentials
-              secret:
-                secretName: $(params.secret-aws-credentials)
-            - name: cluster-info
-              emptyDir: {}
-            - name: logs
-              emptyDir: {}
-            - name: konflux-test-infra-volume
-              secret:
-                secretName: $(params.oci-credentials)
-          params:
-            - name: secret-aws-credentials
-              description: |
-                K8S secret holding the aws credentials. Secret should be accessible to this task.
-              type: string
-            - name: id
-              description: Unique identifier for the cluster
-              type: string
-            - name: ownerName
-              description: Name of the owner for resource tagging
-              type: string
-            - name: ownerUid
-              description: UID of the owner for resource tagging
-              type: string
-            - name: arch
-              description: Architecture for the Kind cluster (x86_64 or arm64)
-              type: string
-            - name: cpus
-              description: Number of vCPUs for the Kind cluster
-              type: string
-            - name: memory
-              description: Memory in GiB for the Kind cluster
-              type: string
-            - name: spot
-              description: Use spot instances for cost optimization
-              type: string
-            - name: spot-increase-rate
-              description: Spot price increase rate percentage
-              type: string
-            - name: timeout
-              description: Timeout for cluster operations
-              type: string
-            - name: tags
-              description: Additional tags for AWS resources
-              type: string
-            - name: oci-ref
-              description: OCI reference for the cluster
-              type: string
-            - name: oci-credentials
-              description: Kubernetes secret containing OCI credentials
-              type: string
-          results:
-            - name: cluster-access-secret
-              description: Name of the secret containing cluster access information
-            - name: cluster-name
-              description: Name of the created cluster
-            - name: cluster-endpoint
-              description: Endpoint of the created cluster
-          steps:
-            - name: provision-cluster
-              image: quay.io/konflux-ci/mapt:latest
-              script: |
-                #!/bin/bash
-                set -e
-                
-                echo "Starting Kind cluster provisioning on AWS..."
-                echo "Cluster ID: $(params.id)"
-                echo "Architecture: $(params.arch)"
-                echo "CPUs: $(params.cpus)"
-                echo "Memory: $(params.memory)Gi"
-                echo "Spot instances: $(params.spot)"
-                
-                # Set up AWS credentials
-                export AWS_ACCESS_KEY_ID=$(cat /credentials/aws-credentials/access-key)
-                export AWS_SECRET_ACCESS_KEY=$(cat /credentials/aws-credentials/secret-key)
-                export AWS_DEFAULT_REGION=us-east-1
-                
-                # Create cluster using mapt
-                mapt provision \
-                  --id $(params.id) \
-                  --arch $(params.arch) \
-                  --cpus $(params.cpus) \
-                  --memory $(params.memory) \
-                  --spot $(params.spot) \
-                  --spot-increase-rate $(params.spot-increase-rate) \
-                  --timeout $(params.timeout) \
-                  --tags "$(params.tags)" \
-                  --output-dir /cluster-info
-                
-                echo "Cluster provisioning completed successfully"
-              env:
-                - name: PARAM_ID
-                  value: $(params.id)
-                - name: PARAM_ARCH
-                  value: $(params.arch)
-                - name: PARAM_CPUS
-                  value: $(params.cpus)
-                - name: PARAM_MEMORY
-                  value: $(params.memory)
-                - name: PARAM_SPOT
-                  value: $(params.spot)
-                - name: PARAM_SPOT_INCREASE_RATE
-                  value: $(params.spot-increase-rate)
-                - name: PARAM_TIMEOUT
-                  value: $(params.timeout)
-                - name: PARAM_TAGS
-                  value: $(params.tags)
-              volumeMounts:
-                - name: aws-credentials
-                  mountPath: /credentials/aws-credentials
-                  readOnly: true
-                - name: cluster-info
-                  mountPath: /cluster-info
-            - name: create-cluster-secret
-              image: quay.io/konflux-ci/mapt:latest
-              script: |
-                #!/bin/bash
-                set -e
-                
-                echo "Creating cluster access secret..."
-                
-                # Read cluster info and create secret
-                CLUSTER_NAME=$(cat /cluster-info/cluster-name)
-                KUBECONFIG=$(cat /cluster-info/kubeconfig)
-                
-                # Create secret with cluster access information
-                kubectl create secret generic $(params.id)-cluster-access \
-                  --from-literal=cluster-name="$CLUSTER_NAME" \
-                  --from-literal=kubeconfig="$KUBECONFIG" \
-                  --dry-run=client -o yaml > /cluster-info/cluster-secret.yaml
-                
-                echo "cluster-access-secret=$(params.id)-cluster-access" > $(results.cluster-access-secret.path)
-                echo "cluster-name=$CLUSTER_NAME" > $(results.cluster-name.path)
-                echo "cluster-endpoint=https://$(params.id).kind.local" > $(results.cluster-endpoint.path)
-                
-                echo "Cluster secret created successfully"
-              volumeMounts:
-                - name: cluster-info
-                  mountPath: /cluster-info
+        params:
+        - name: secret-aws-credentials
+          type: string
+        - name: id
+          type: string
+        - name: ownerName
+          type: string
+        - name: ownerUid
+          type: string
+        - name: arch
+          type: string
+        - name: cpus
+          type: string
+        - name: memory
+          type: string
+        - name: spot
+          type: string
+        - name: spot-increase-rate
+          type: string
+        - name: timeout
+          type: string
+        - name: tags
+          type: string
+        - name: oci-ref
+          type: string
+        - name: oci-credentials
+          type: string
+        results:
+        - name: cluster-access-secret
+          description: Name of the secret containing cluster access information
+        steps:
+        - name: provision-cluster
+          image: quay.io/konflux-ci/mapt:latest
+          script: |
+            #!/bin/bash
+            set -e
+            
+            echo "Starting Kind cluster provisioning on AWS..."
+            echo "Cluster ID: $(params.id)"
+            echo "Architecture: $(params.arch)"
+            echo "CPUs: $(params.cpus)"
+            echo "Memory: $(params.memory)Gi"
+            echo "Spot instances: $(params.spot)"
+            
+            # Set up AWS credentials
+            export AWS_ACCESS_KEY_ID=$(cat /credentials/aws-credentials/access-key)
+            export AWS_SECRET_ACCESS_KEY=$(cat /credentials/aws-credentials/secret-key)
+            export AWS_DEFAULT_REGION=us-east-1
+            
+            # Create cluster using mapt
+            mapt provision \
+              --id $(params.id) \
+              --arch $(params.arch) \
+              --cpus $(params.cpus) \
+              --memory $(params.memory) \
+              --spot $(params.spot) \
+              --spot-increase-rate $(params.spot-increase-rate) \
+              --timeout $(params.timeout) \
+              --tags "$(params.tags)" \
+              --output-dir /cluster-info
+            
+            echo "Cluster provisioning completed successfully"
+          volumeMounts:
+          - name: aws-credentials
+            mountPath: /credentials/aws-credentials
+            readOnly: true
+          - name: cluster-info
+            mountPath: /cluster-info
+        - name: create-cluster-secret
+          image: quay.io/konflux-ci/mapt:latest
+          script: |
+            #!/bin/bash
+            set -e
+            
+            echo "Creating cluster access secret..."
+            
+            # Read cluster info and create secret
+            CLUSTER_NAME=$(cat /cluster-info/cluster-name)
+            KUBECONFIG=$(cat /cluster-info/kubeconfig)
+            
+            # Create secret with cluster access information
+            kubectl create secret generic $(params.id)-cluster-access \
+              --from-literal=cluster-name="$CLUSTER_NAME" \
+              --from-literal=kubeconfig="$KUBECONFIG" \
+              --dry-run=client -o yaml > /cluster-info/cluster-secret.yaml
+            
+            echo "cluster-access-secret=$(params.id)-cluster-access" > $(results.cluster-access-secret.path)
+            
+            echo "Cluster secret created successfully"
+          volumeMounts:
+          - name: cluster-info
+            mountPath: /cluster-info
+        volumes:
+        - name: aws-credentials
+          secret:
+            secretName: $(params.secret-aws-credentials)
+        - name: cluster-info
+          emptyDir: {}
     - name: validate-cluster
       runAfter: ["mapt-provision"]
       params:
