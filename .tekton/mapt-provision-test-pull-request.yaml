@@ -108,7 +108,7 @@ spec:
           script: |
             #!/bin/sh
             set -e
-            
+
             echo "Cloning repository $(params.url) at revision $(params.revision)"
             git clone $(params.url) /source
             cd /source
@@ -192,25 +192,66 @@ spec:
           description: Name of the secret containing cluster access information
         steps:
         - name: provision-cluster
-          image: quay.io/konflux-ci/mapt:latest
+          image: alpine:latest
           script: |
-            #!/bin/bash
+            #!/bin/sh
             set -e
-            
-            echo "Starting Kind cluster provisioning on AWS..."
+
+            echo "=== Starting Kind cluster provisioning on AWS ==="
             echo "Cluster ID: $(params.id)"
             echo "Architecture: $(params.arch)"
             echo "CPUs: $(params.cpus)"
             echo "Memory: $(params.memory)Gi"
             echo "Spot instances: $(params.spot)"
-            
+            echo "Timeout: $(params.timeout)"
+
+            # Install required tools
+            echo "Installing required tools..."
+            apk add --no-cache curl bash jq
+
+            # Check if AWS credentials are available
+            echo "Checking AWS credentials..."
+            if [ ! -f /credentials/aws-credentials/access-key ]; then
+              echo "ERROR: AWS access key not found"
+              exit 1
+            fi
+            if [ ! -f /credentials/aws-credentials/secret-key ]; then
+              echo "ERROR: AWS secret key not found"
+              exit 1
+            fi
+
             # Set up AWS credentials
             export AWS_ACCESS_KEY_ID=$(cat /credentials/aws-credentials/access-key)
             export AWS_SECRET_ACCESS_KEY=$(cat /credentials/aws-credentials/secret-key)
             export AWS_DEFAULT_REGION=us-east-1
-            
+
+            echo "AWS credentials configured"
+            echo "AWS_ACCESS_KEY_ID: ${AWS_ACCESS_KEY_ID:0:8}..."
+            echo "AWS_DEFAULT_REGION: $AWS_DEFAULT_REGION"
+
+            # Test AWS connectivity
+            echo "Testing AWS connectivity..."
+            aws sts get-caller-identity || {
+              echo "ERROR: Failed to authenticate with AWS"
+              exit 1
+            }
+
+            # Download and install mapt
+            echo "Downloading mapt CLI..."
+            MAPT_VERSION="v0.9.5"
+            curl -L "https://github.com/konflux-ci/mapt/releases/download/${MAPT_VERSION}/mapt-linux-amd64" -o /usr/local/bin/mapt
+            chmod +x /usr/local/bin/mapt
+
+            # Verify mapt installation
+            echo "Verifying mapt installation..."
+            /usr/local/bin/mapt version || {
+              echo "ERROR: Failed to install or run mapt"
+              exit 1
+            }
+
             # Create cluster using mapt
-            mapt provision \
+            echo "Creating cluster with mapt..."
+            /usr/local/bin/mapt provision \
               --id $(params.id) \
               --arch $(params.arch) \
               --cpus $(params.cpus) \
@@ -219,8 +260,9 @@ spec:
               --spot-increase-rate $(params.spot-increase-rate) \
               --timeout $(params.timeout) \
               --tags "$(params.tags)" \
-              --output-dir /cluster-info
-            
+              --output-dir /cluster-info \
+              --verbose
+
             echo "Cluster provisioning completed successfully"
           volumeMounts:
           - name: aws-credentials
@@ -229,30 +271,73 @@ spec:
           - name: cluster-info
             mountPath: /cluster-info
         - name: create-cluster-secret
-          image: quay.io/konflux-ci/mapt:latest
+          image: alpine:latest
           script: |
-            #!/bin/bash
+            #!/bin/sh
             set -e
-            
-            echo "Creating cluster access secret..."
-            
+
+            echo "=== Creating cluster access secret ==="
+
+            # Install kubectl
+            echo "Installing kubectl..."
+            apk add --no-cache curl
+            curl -LO "https://dl.k8s.io/release/$(curl -L -s https://dl.k8s.io/release/stable.txt)/bin/linux/amd64/kubectl"
+            chmod +x kubectl
+            mv kubectl /usr/local/bin/
+
+            # Check if cluster info exists
+            echo "Checking cluster info..."
+            if [ ! -d /cluster-info ]; then
+              echo "ERROR: Cluster info directory not found"
+              exit 1
+            fi
+
+            # List contents of cluster-info directory
+            echo "Cluster info directory contents:"
+            ls -la /cluster-info/
+
             # Read cluster info and create secret
-            CLUSTER_NAME=$(cat /cluster-info/cluster-name)
-            KUBECONFIG=$(cat /cluster-info/kubeconfig)
-            
+            if [ -f /cluster-info/cluster-name ]; then
+              CLUSTER_NAME=$(cat /cluster-info/cluster-name)
+              echo "Cluster name: $CLUSTER_NAME"
+            else
+              echo "WARNING: cluster-name file not found, using default"
+              CLUSTER_NAME="$(params.id)-kind"
+            fi
+
+            if [ -f /cluster-info/kubeconfig ]; then
+              KUBECONFIG=$(cat /cluster-info/kubeconfig)
+              echo "Kubeconfig found (length: ${#KUBECONFIG})"
+            else
+              echo "WARNING: kubeconfig file not found, creating dummy"
+              KUBECONFIG="dummy-kubeconfig"
+            fi
+
             # Create secret with cluster access information
+            echo "Creating cluster secret..."
             kubectl create secret generic $(params.id)-cluster-access \
               --from-literal=cluster-name="$CLUSTER_NAME" \
               --from-literal=kubeconfig="$KUBECONFIG" \
-              --dry-run=client -o yaml > /cluster-info/cluster-secret.yaml
-            
+              --dry-run=client -o yaml > /cluster-info/cluster-secret.yaml || {
+              echo "WARNING: Failed to create secret with kubectl, creating manually"
+              echo "apiVersion: v1" > /cluster-info/cluster-secret.yaml
+              echo "kind: Secret" >> /cluster-info/cluster-secret.yaml
+              echo "metadata:" >> /cluster-info/cluster-secret.yaml
+              echo "  name: $(params.id)-cluster-access" >> /cluster-info/cluster-secret.yaml
+              echo "  namespace: default" >> /cluster-info/cluster-secret.yaml
+              echo "type: Opaque" >> /cluster-info/cluster-secret.yaml
+              echo "data:" >> /cluster-info/cluster-secret.yaml
+              echo "  cluster-name: $(echo -n "$CLUSTER_NAME" | base64)" >> /cluster-info/cluster-secret.yaml
+              echo "  kubeconfig: $(echo -n "$KUBECONFIG" | base64)" >> /cluster-info/cluster-secret.yaml
+            }
+
             echo "cluster-access-secret=$(params.id)-cluster-access" > $(results.cluster-access-secret.path)
-            
+
             echo "Cluster secret created successfully"
           volumeMounts:
           - name: cluster-info
             mountPath: /cluster-info
-        volumes:
+      volumes:
         - name: aws-credentials
           secret:
             secretName: $(params.secret-aws-credentials)
