@@ -1,0 +1,129 @@
+apiVersion: tekton.dev/v1
+kind: PipelineRun
+metadata:
+  annotations:
+    build.appstudio.openshift.io/repo: https://github.com/konflux-ci/tekton-integration-catalog?rev={{revision}}
+    build.appstudio.redhat.com/commit_sha: '{{revision}}'
+    build.appstudio.redhat.com/pull_request_number: '{{pull_request_number}}'
+    build.appstudio.redhat.com/target_branch: '{{target_branch}}'
+    pipelinesascode.tekton.dev/cancel-in-progress: "true"
+    pipelinesascode.tekton.dev/max-keep-runs: "3"
+    pipelinesascode.tekton.dev/on-cel-expression: event == "pull_request" && target_branch
+      == "main" && ( "tasks/mapt-oci/kind-aws-spot/***".pathChanged()
+      || ".tekton/mapt-provision-test-pull-request.yaml".pathChanged()
+      )
+  creationTimestamp: null
+  labels:
+    appstudio.openshift.io/application: mapt-provision-test
+    appstudio.openshift.io/component: mapt-provision-test
+    pipelines.appstudio.openshift.io/type: build
+  name: mapt-provision-test-on-pull-request
+  namespace: rh-konflux-devprod-tenant
+spec:
+  params:
+  - name: git-url
+    value: '{{source_url}}'
+  - name: revision
+    value: '{{revision}}'
+  - name: cluster-id
+    value: 'pr-{{pull_request_number}}-test-cluster'
+  workspaces:
+  - name: source
+    volumeClaimTemplate:
+      spec:
+        accessModes:
+        - ReadWriteOnce
+        resources:
+          requests:
+            storage: 1Gi
+  pipelineSpec:
+    description: |
+      This pipeline tests the mapt provision and deprovision tasks by creating a temporary Kind cluster on AWS
+      and then cleaning it up. It validates the complete lifecycle of cluster provisioning using the Mapt CLI.
+    params:
+    - description: Source Repository URL
+      name: git-url
+      type: string
+    - description: Revision of the Source Repository
+      name: revision
+      type: string
+    - description: Unique identifier for the test cluster
+      name: cluster-id
+      type: string
+    workspaces:
+    - name: source
+      description: The workspace where the git repository will be cloned
+    tasks:
+    - name: clone-repository
+      taskRef:
+        resolver: bundles
+        params:
+          - name: bundle
+            value: quay.io/konflux-ci/tekton-catalog/task-git-clone:0.1
+          - name: name
+            value: git-clone
+          - name: kind
+            value: Task
+      params:
+        - name: url
+          value: $(params.git-url)
+        - name: revision
+          value: $(params.revision)
+        - name: subdirectory
+          value: source
+      workspaces:
+        - name: output
+          workspace: source
+    - name: provision-kind-cluster
+      runAfter:
+        - clone-repository
+      taskRef:
+        resolver: git
+        params:
+          - name: url
+            value: https://github.com/konflux-ci/tekton-integration-catalog.git
+          - name: revision
+            value: main
+          - name: pathInRepo
+            value: tasks/mapt-oci/kind-aws-spot/provision/0.2/kind-aws-provision.yaml
+      params:
+        - name: secret-aws-credentials
+          value: aws-secret
+        - name: cluster-access-secret-name
+          value: $(params.cluster-id)-kubeconfig
+        - name: id
+          value: $(params.cluster-id)
+        - name: tags
+          value: env=test,component=mapt,pr=$(context.pipelineRun.name)
+        - name: ownerKind
+          value: PipelineRun
+        - name: ownerName
+          value: $(context.pipelineRun.name)
+        - name: ownerUid
+          value: $(context.pipelineRun.uid)
+        - name: oci-ref
+          value: "dummy:latest"
+        - name: spot-increase-rate
+          value: 80
+    finally:
+    - name: deprovision-kind-cluster
+      taskRef:
+        resolver: git
+        params:
+          - name: url
+            value: https://github.com/konflux-ci/tekton-integration-catalog.git
+          - name: revision
+            value: main
+          - name: pathInRepo
+            value: tasks/mapt-oci/kind-aws-spot/deprovision/0.1/kind-aws-deprovision.yaml
+      params:
+        - name: secret-aws-credentials
+          value: aws-secret
+        - name: id
+          value: $(params.cluster-id)
+        - name: cluster-access-secret
+          value: $(tasks.provision-kind-cluster.results.cluster-access-secret)
+        - name: oci-container
+          value: "dummy:latest"
+        - name: oci-credentials
+          value: konflux-test-infra
