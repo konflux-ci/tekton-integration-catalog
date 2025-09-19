@@ -101,6 +101,8 @@ spec:
           value: $(context.pipelineRun.name)
         - name: ownerUid
           value: $(context.pipelineRun.uid)
+        - name: oci-ref
+          value: "dummy:latest"
         - name: spot-increase-rate
           value: 80
     finally:
