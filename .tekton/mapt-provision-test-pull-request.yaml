@@ -123,5 +123,7 @@ spec:
           value: $(params.cluster-id)
         - name: cluster-access-secret
           value: $(tasks.provision-kind-cluster.results.cluster-access-secret)
+        - name: oci-container
+          value: "dummy:latest"
         - name: oci-credentials
           value: konflux-test-infra
