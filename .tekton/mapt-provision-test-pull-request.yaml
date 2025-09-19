@@ -80,6 +80,8 @@ spec:
         - name: output
           workspace: source
     - name: provision-kind-cluster
+      runAfter:
+        - clone-repository
       taskRef:
         resolver: git
         params:
