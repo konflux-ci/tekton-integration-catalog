@@ -27,8 +27,6 @@ spec:
     value: '{{revision}}'
   - name: cluster-id
     value: 'pr-{{pull_request_number}}-test-cluster'
-  - name: oci-container-repo
-    value: 'quay.io/konflux-test-storage/konflux-team/mapt-test'
   workspaces:
   - name: source
     volumeClaimTemplate:
@@ -51,9 +49,6 @@ spec:
       type: string
     - description: Unique identifier for the test cluster
       name: cluster-id
-      type: string
-    - description: OCI container repository for storing artifacts
-      name: oci-container-repo
       type: string
     workspaces:
     - name: source
@@ -106,10 +101,6 @@ spec:
           value: $(context.pipelineRun.name)
         - name: ownerUid
           value: $(context.pipelineRun.uid)
-        - name: oci-ref
-          value: $(params.oci-container-repo):$(context.pipelineRun.name)
-        - name: oci-credentials
-          value: konflux-test-infra
         - name: spot-increase-rate
           value: 80
     finally:
@@ -130,7 +121,5 @@ spec:
           value: $(params.cluster-id)
         - name: cluster-access-secret
           value: $(tasks.provision-kind-cluster.results.cluster-access-secret)
-        - name: oci-container
-          value: $(params.oci-container-repo):$(context.pipelineRun.name)
         - name: oci-credentials
           value: konflux-test-infra
