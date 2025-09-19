@@ -27,16 +27,6 @@ spec:
     value: '{{revision}}'
   - name: cluster-id
     value: 'pr-{{pull_request_number}}-test-cluster'
-  - name: mapt-cpus
-    value: '2'
-  - name: mapt-memory
-    value: '4'
-  - name: mapt-spot-increase-rate
-    value: '50'
-  - name: aws-credentials-secret
-    value: 'aws-secret'
-  - name: oci-credentials-secret
-    value: 'konflux-test-infra'
   - name: oci-container-repo
     value: 'quay.io/konflux-test-storage/konflux-team/mapt-test'
   workspaces:
@@ -61,21 +51,6 @@ spec:
       type: string
     - description: Unique identifier for the test cluster
       name: cluster-id
-      type: string
-    - description: Number of vCPUs for the Kind cluster
-      name: mapt-cpus
-      type: string
-    - description: Memory in GiB for the Kind cluster
-      name: mapt-memory
-      type: string
-    - description: Spot price increase rate percentage
-      name: mapt-spot-increase-rate
-      type: string
-    - description: Kubernetes secret containing AWS credentials
-      name: aws-credentials-secret
-      type: string
-    - description: Kubernetes secret containing OCI credentials
-      name: oci-credentials-secret
       type: string
     - description: OCI container repository for storing artifacts
       name: oci-container-repo
@@ -105,8 +80,6 @@ spec:
         - name: output
           workspace: source
     - name: provision-kind-cluster
-      runAfter:
-        - clone-repository
       taskRef:
         resolver: git
         params:
@@ -118,29 +91,25 @@ spec:
             value: tasks/mapt-oci/kind-aws-spot/provision/0.2/kind-aws-provision.yaml
       params:
         - name: secret-aws-credentials
-          value: $(params.aws-credentials-secret)
+          value: aws-secret
         - name: cluster-access-secret-name
           value: $(params.cluster-id)-kubeconfig
         - name: id
           value: $(params.cluster-id)
+        - name: tags
+          value: env=test,component=mapt,pr=$(context.pipelineRun.name)
         - name: ownerKind
           value: PipelineRun
         - name: ownerName
           value: $(context.pipelineRun.name)
         - name: ownerUid
           value: $(context.pipelineRun.uid)
-        - name: cpus
-          value: $(params.mapt-cpus)
-        - name: memory
-          value: $(params.mapt-memory)
-        - name: tags
-          value: env=test,component=mapt,pr=$(context.pipelineRun.name)
-        - name: spot-increase-rate
-          value: $(params.mapt-spot-increase-rate)
         - name: oci-ref
           value: $(params.oci-container-repo):$(context.pipelineRun.name)
         - name: oci-credentials
-          value: $(params.oci-credentials-secret)
+          value: konflux-test-infra
+        - name: spot-increase-rate
+          value: 80
     finally:
     - name: deprovision-kind-cluster
       taskRef:
@@ -154,16 +123,12 @@ spec:
             value: tasks/mapt-oci/kind-aws-spot/deprovision/0.1/kind-aws-deprovision.yaml
       params:
         - name: secret-aws-credentials
-          value: $(params.aws-credentials-secret)
+          value: aws-secret
         - name: id
           value: $(params.cluster-id)
-        - name: pipeline-aggregate-status
-          value: $(tasks.status)
         - name: cluster-access-secret
           value: $(tasks.provision-kind-cluster.results.cluster-access-secret)
         - name: oci-container
           value: $(params.oci-container-repo):$(context.pipelineRun.name)
         - name: oci-credentials
-          value: $(params.oci-credentials-secret)
-        - name: force-destroy
-          value: "true"
+          value: konflux-test-infra
