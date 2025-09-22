@@ -1,0 +1,66 @@
+apiVersion: tekton.dev/v1
+kind: Task
+metadata:
+  name: hadolint
+spec:
+  description: |
+    The Hadolint task runs the Hadolint (Haskell Dockerfile Linter) Docker linting tool on Dockerfiles/Containerfiles
+    contained in the repository.
+  params:
+  - name: git-url
+    description: The Git URL from which the test pipeline is originating. This can be from a fork or the original repository.
+    type: string
+  - name: git-revision
+    description: The Git revision (commit SHA) from which the test pipeline is originating.
+    type: string
+  - name: dockerfile-path
+    description: Dockerfile path.
+    type: string
+    default: './Dockerfile'
+  - name: ignore-rules
+    description: Hadolint rules which will be ignored during linting. Separated by commas.
+    type: string
+    default: ''
+  - name: failure-threshold
+    description: Rule severity threshold for pipeline failure. One of (error, warning, info, style, ignore)
+    type: string
+    default: 'info'
+  - name: output-format
+    description: >-
+      The output format for the results (tty, json, checkstyle, codeclimate, gitlab_codeclimate, codacy).
+    type: string
+    default: tty
+  steps:
+  - name: clone-refs
+    image: quay.io/openshift-pipeline/pipelines-git-init-rhel9:1.20
+    workingDir: /workspace
+    securityContext:
+      runAsUser: 0
+    args:
+      - -url=$(params.git-url)
+      - -revision=$(params.git-revision)
+      - -path=.
+  - name: lint-dockerfile
+    image: ghcr.io/hadolint/hadolint:v2.14.0-debian
+    workingDir: /workspace
+    script: |
+      #!/bin/bash
+      set -e
+      command_to_run="hadolint"
+      if [ -n "${IGNORE_RULES}" ]
+      then
+        IFS="," read -r -a IGNORE_RULES <<< "${IGNORE_RULES}"
+        for rule in "${IGNORE_RULES[@]}"; do ignore_rules="--ignore $rule $ignore_rules"; done
+        command_to_run="hadolint ${ignore_rules}"
+      fi
+      echo "Running: ${command_to_run} ${DOCKERFILE} -f ${OUTPUT_FORMAT} -t ${FAILURE_THRESHOLD}"
+      ${command_to_run} "${DOCKERFILE}" -f "${OUTPUT_FORMAT}" -t "${FAILURE_THRESHOLD}"
+    env:
+      - name: IGNORE_RULES
+        value: "$(params.ignore-rules)"
+      - name: DOCKERFILE
+        value: "$(params.dockerfile-path)"
+      - name: OUTPUT_FORMAT
+        value: "$(params.output-format)"
+      - name: FAILURE_THRESHOLD
+        value: "$(params.failure-threshold)"
