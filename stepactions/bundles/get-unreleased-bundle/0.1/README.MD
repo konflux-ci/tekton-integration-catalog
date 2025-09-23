@@ -56,3 +56,5 @@ spec:
         - name: channelName
           value: $(params.channelName)
 ```
+
+### Not suitable for upstream communities

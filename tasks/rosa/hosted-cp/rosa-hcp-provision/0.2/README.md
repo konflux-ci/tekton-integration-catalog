@@ -101,3 +101,5 @@ This task can be integrated into a Tekton pipeline to automate the provisioning 
 - Ensure the `konflux-test-infra` secret contains valid AWS credentials and ROSA tokens.
 - Cluster provisioning may take several minutes depending on AWS region and workload.
 - Artifacts and logs are securely stored in the provided OCI container registry.
+
+### Not suitable for upstream communities

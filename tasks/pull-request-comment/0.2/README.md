@@ -62,3 +62,5 @@ If the parameter is empty or not provided, no artifact browser link will be incl
 - The task requires a GitHub token (stored in a secret) to authenticate and post comments.
 - Ensure ORAS is installed if you need to retrieve test artifacts.
 - Use `/retest` in the PR comment to trigger a rerun of failed tests.
+
+### Suitable for upstream communities
