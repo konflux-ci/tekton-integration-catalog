@@ -39,3 +39,5 @@ spec:
         - name: bundleImage
           value: $(params.bundleImage)
 ```
+
+### Suitable for upstream communities

@@ -5,6 +5,7 @@ metadata:
   name: test-metadata
   labels:
     app.kubernetes.io/version: "0.1"
+    upstream-usable: "true"
   annotations:
     tekton.dev/pipelines.minVersion: 0.12.1
     tekton.dev/tags: konflux

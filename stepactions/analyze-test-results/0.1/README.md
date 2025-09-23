@@ -14,3 +14,4 @@ The command then tries to identify the cause of the failure and provides the res
 |e2e-log-name|The name of the log from running tests|e2e-tests.log|true|
 |cluster-provision-log-name|The name of the log from provisioning a testing cluster|cluster-provision.log|true|
 
+### Suitable for upstream communities

@@ -24,3 +24,4 @@ sets the result accordingly.
 
 It returns "false" if the PR is e2e relevant, otherwise it returns "true" (including any error occurs).
 
+### Suitable for upstream communities

@@ -3,6 +3,8 @@ apiVersion: tekton.dev/v1
 kind: Task
 metadata:
   name: check-if-e2e-irrelevant
+  labels:
+    upstream-usable: "true"
 spec:
   description: |
     This task checks if the files changed in the pull request are all irrelevant to the e2e tests.

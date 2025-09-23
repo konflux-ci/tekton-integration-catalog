@@ -66,3 +66,5 @@ The `rosa-hcp-provision` Tekton task automates the creation and provisioning of 
         - name: hcp-config-secret
           value: "$(params.hcp-config-secret)"
 ```
+
+### Not suitable for upstream communities
