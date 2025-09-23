@@ -37,7 +37,7 @@ The task performs the following operations:
 | `component-pr-sha`        | Commit SHA of the PR (from `component-pr-owner`) supplying custom Kubernetes manifests for the `component-name`.                            | `''`                                           | ❌       |
 | `component-pr-source-branch`        | GitHub source branch of the pull request.     | `''`    | ❌       |
 | `oci-ref`                     | Full OCI artifact reference used for storing logs from the Task's Steps    | -        | ✅       |
-| `oci-credentials`             | The secret name containing credentials for container registry where the artifacts will be stored.  | -    | ✅       |
+| `oci-credentials`             | The secret name containing credentials for container registry where the artifacts will be stored. The secret should contain `data.oci-storage-dockerconfigjson: <dockerconfigjson-content>` | -    | ✅       |
 | `build-credentials`                     | A secret name containing credentials for deploying image-controller, smee.io and GitHub application used for building application using Konflux   | -        | ✅       |
 
 ---
