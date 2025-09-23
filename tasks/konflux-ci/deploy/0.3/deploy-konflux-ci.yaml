@@ -59,6 +59,7 @@ spec:
       type: string
       description: |
         A name of the secret containing credentials for container registry where the artifacts will be stored.
+        The secret should contain `data.oci-storage-dockerconfigjson: <dockerconfigjson-content>`
     - name: build-credentials
       type: string
       description: |

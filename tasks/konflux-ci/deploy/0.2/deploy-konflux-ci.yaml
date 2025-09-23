@@ -59,6 +59,7 @@ spec:
       type: string
       description: |
         The secret name containing credentials for container registry where the artifacts will be stored.
+        The secret should contain `data.oci-storage-dockerconfigjson: <dockerconfigjson-content>`
       default: "konflux-test-infra"
 
   volumes:
