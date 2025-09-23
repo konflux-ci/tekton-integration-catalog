@@ -42,8 +42,7 @@ RUN curl -L "https://mirror.openshift.com/pub/openshift-v4/clients/ocp/${OC_VERS
     mv oc kubectl /usr/local/bin && \
     oc version --client && \
     kubectl version --client
-
-RUN curl -L "https://mirror.openshift.com/pub/openshift-v4/x86_64/clients/rosa/${ROSA_VERSION//v}/rosa-linux.tar.gz" -o /tmp/rosa-linux.tar.gz && \
+RUN curl -L "https://mirror.openshift.com/pub/cgw/rosa/${ROSA_VERSION//v}/rosa-linux.tar.gz" -o /tmp/rosa-linux.tar.gz && \
     tar --no-same-owner -xzf /tmp/rosa-linux.tar.gz && \
     mv rosa /usr/local/bin && \
     rosa version
