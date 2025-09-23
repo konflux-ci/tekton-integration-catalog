@@ -13,3 +13,5 @@ If the tag exists, it will update the existing content with the content of the w
 |oci-ref|Full OCI artifact reference in a format "quay.io/org/repo:tag"||true|
 |oci-tag-expiration|OCI artifact tag expiration|1y|false|
 |always-pass|Even if execution of the stepaction's script fails, do not fail the step|"true"|false|
+
+### Suitable for upstream communities

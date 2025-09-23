@@ -74,3 +74,5 @@ spec:
         - name: dockerfile-path
           value: "./Dockerfile"
 ```
+
+### Suitable for upstream communities

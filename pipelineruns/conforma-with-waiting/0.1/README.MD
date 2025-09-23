@@ -74,3 +74,5 @@ spec:
         value: pipelineruns/conforma-with-waiting/0.1/conforma-with-waiting.yaml
     resolver: git
 ```
+
+### Not suitable for upstream communities

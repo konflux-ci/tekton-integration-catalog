@@ -96,3 +96,5 @@ spec:
         - name: oras-container
           value: "<your-oras-container-without-tag>"
 ```
+
+### Suitable for upstream communities

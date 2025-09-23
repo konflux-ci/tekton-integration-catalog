@@ -2,6 +2,8 @@ apiVersion: tekton.dev/v1alpha1
 kind: StepAction
 metadata:
   name: gather-cluster-resources
+  labels:
+    upstream-usable: "true"
 spec:
   description: >-
     This StepAction executes the gather extra script that gathers konflux related resources from the cluster.

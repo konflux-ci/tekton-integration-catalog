@@ -59,3 +59,5 @@ spec:
         - name: JOB_NAME
           value: <your Jenkins job full project name>
 ```
+
+### Suitable for upstream communities

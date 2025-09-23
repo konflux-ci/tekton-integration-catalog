@@ -65,3 +65,5 @@ spec:
         - name: git-revision
           value: "$(tasks.test-metadata.results.git-revision)"
 ```
+
+### Suitable for upstream communities
