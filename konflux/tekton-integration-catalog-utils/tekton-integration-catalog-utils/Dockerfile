@@ -6,7 +6,7 @@ USER root
 # renovate: datasource=repology depName=homebrew/openshift-cli
 ARG OC_VERSION=4.15.9
 # renovate: datasource=github-releases depName=openshift/rosa
-ARG ROSA_VERSION=v1.2.53
+ARG ROSA_VERSION=v1.2.56
 # renovate: datasource=github-releases depName=openshift-online/ocm-cli
 ARG OCM_VERSION=v1.0.3
 # renovate: datasource=github-releases depName=stedolan/jq
