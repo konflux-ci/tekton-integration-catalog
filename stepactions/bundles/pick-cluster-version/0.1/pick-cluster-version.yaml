@@ -2,6 +2,8 @@ apiVersion: tekton.dev/v1beta1
 kind: StepAction
 metadata:
   name: pick-cluster-version
+  labels:
+    upstream-usable: "true"
 spec:
   description: >-
     This StepAction selects a cluster version for provisioning. It determines the target OCP version of an FBC fragment.

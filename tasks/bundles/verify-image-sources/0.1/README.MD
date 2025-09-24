@@ -50,3 +50,6 @@ spec:
           value: $(params.bundleImage)
         - name: scorecardConfigImages
           value: $(params.scorecardConfigImages)
+```
+
+### Not suitable for upstream communities

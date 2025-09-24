@@ -111,3 +111,6 @@ spec:
           value: "<your-snapshot-json>"
         - name: test-name
           value: "<your-test-name>"
+```
+
+### Suitable for upstream communities

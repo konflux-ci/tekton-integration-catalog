@@ -5,6 +5,7 @@ metadata:
   name: sprayproxy-unregister-server
   labels:
     app.kubernetes.io/version: "0.1"
+    upstream-usable: "false"
   annotations:
     tekton.dev/pipelines.minVersion: 0.12.1
     tekton.dev/tags: konflux

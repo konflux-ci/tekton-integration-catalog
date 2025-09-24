@@ -44,3 +44,5 @@ spec:
 ## Results
 
 This task does not produce any output results.
+
+### Suitable for upstream communities

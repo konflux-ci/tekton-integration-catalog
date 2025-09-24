@@ -75,3 +75,5 @@ spec:
         - name: test-session-id
           value: $(params.test-session-id)
 ```
+
+### Not suitable for upstream communities
