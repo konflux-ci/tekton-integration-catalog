@@ -42,6 +42,10 @@ spec:
           valueFrom:
             fieldRef:
               fieldPath: metadata.labels['pac.test.appstudio.openshift.io/pull-request']
+        - name: IS_PR_GROUP
+          valueFrom:
+            fieldRef:
+              fieldPath: metadata.labels['test.appstudio.openshift.io/type']
       script: |
         #!/usr/bin/env bash
         set -euo pipefail
@@ -65,8 +69,8 @@ spec:
         }
         trap 'exitfunc $? $LINENO "$BASH_COMMAND"' EXIT
 
-        # This is a workaround for periodic jobs
-        if [[ "$EVENT_TYPE" == "push" ]]; then
+        # This is a workaround for periodic jobs and PR group
+        if [[ "$EVENT_TYPE" == "push" ]] || [[  "$IS_PR_GROUP" == "group" ]] ; then
           exit 99
         fi
 
