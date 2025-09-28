@@ -23,7 +23,6 @@ spec:
   steps:
     - name: run-check
       image: quay.io/konflux-qe-incubator/konflux-qe-tools:latest
-      workingDir: /workspace
       env:
         - name: GIT_ORGANIZATION
           valueFrom:
@@ -70,7 +69,7 @@ spec:
         fi
 
         # Setup workspace
-        WORK_DIR=".tmp_pr_check"
+        WORK_DIR="$HOME/.tmp_pr_check"
         rm -rf "$WORK_DIR"
         mkdir "$WORK_DIR"
         cd "$WORK_DIR"
