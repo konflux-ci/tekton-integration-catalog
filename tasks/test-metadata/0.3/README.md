@@ -196,3 +196,5 @@ spec:
 - **0.1**: Individual result outputs for specific metadata values
 - **0.2**: Consolidated job-spec approach with prefetch functionality
 - **0.3**: Combined approach with both individual and consolidated results, plus enhanced git information 
+
+### Suitable for upstream communities

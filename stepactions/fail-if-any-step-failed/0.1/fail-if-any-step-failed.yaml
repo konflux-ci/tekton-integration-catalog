@@ -2,6 +2,8 @@ apiVersion: tekton.dev/v1alpha1
 kind: StepAction
 metadata:
   name: fail-if-any-step-failed
+  labels:
+    upstream-usable: "true"
 spec:
   description: |
     This StepAction searches for exit codes (/tekton/steps/<step-name>/exitCode) in each step within the Task and fails if it detects that any `exitCode != "0"`

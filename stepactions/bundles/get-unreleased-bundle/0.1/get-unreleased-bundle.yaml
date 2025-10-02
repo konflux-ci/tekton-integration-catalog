@@ -2,6 +2,8 @@ apiVersion: tekton.dev/v1beta1
 kind: StepAction
 metadata:
   name: get-unreleased-bundle
+  labels:
+    upstream-usable: "false"
 spec:
   description: >-
     This StepAction retrieves the highest bundle version from a specified package, channel, and unreleased bundles list in the provided FBC fragment.

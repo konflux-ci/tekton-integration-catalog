@@ -65,3 +65,5 @@ spec:
           - name: pathInRepo
             value: stepactions/fail-if-any-step-failed/0.1/fail-if-any-step-failed.yaml
 ```
+
+### Suitable for upstream communities

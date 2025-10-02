@@ -155,3 +155,5 @@ Ensure this is a properly formatted `.dockerconfigjson` file and base64-encoded.
 ## ⚠️ Notes
 
 - **Graceful Failures**: Most steps have `onError: continue`, which ensures that even in failed pipelines, diagnostics can be gathered before final cleanup.
+
+### Suitable for upstream communities

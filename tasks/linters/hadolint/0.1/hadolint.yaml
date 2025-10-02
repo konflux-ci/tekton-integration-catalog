@@ -2,6 +2,8 @@ apiVersion: tekton.dev/v1
 kind: Task
 metadata:
   name: hadolint
+  labels:
+    upstream-usable: "true"
 spec:
   description: |
     The Hadolint task runs the Hadolint (Haskell Dockerfile Linter) Docker linting tool on Dockerfiles/Containerfiles

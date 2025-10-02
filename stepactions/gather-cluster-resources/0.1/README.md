@@ -58,3 +58,5 @@ have the `oc login` command:
                 #!/bin/bash
                 ls -la /workspace/artifact-gathering
 ```
+
+### Suitable for upstream communities

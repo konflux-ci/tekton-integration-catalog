@@ -2,6 +2,8 @@ apiVersion: tekton.dev/v1alpha1
 kind: StepAction
 metadata:
   name: upload-ginkgo-results
+  labels:
+    upstream-usable: "false"
 spec:
   description: |
     "This Tekton StepAction uploads Ginkgo test results to Sealights. It creates a Sealights test session

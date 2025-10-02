@@ -197,3 +197,5 @@ Once your FBC component is built, the `deploy-fbc-operator` pipeline will be tri
 Currently, pipeline failures only block the auto-release of the Snapshot. They do *not* prevent users from manually releasing.
 
 Until [KONFLUX-7345](https://issues.redhat.com/browse/KONFLUX-7345) is implemented, it is the product team’s responsibility to review test results and address any failures before release.
+
+### Suitable for upstream communities

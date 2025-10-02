@@ -2,6 +2,8 @@ apiVersion: tekton.dev/v1
 kind: Task
 metadata:
   name: rosa-hcp-provision
+  labels:
+    upstream-usable: "false"
 spec:
   description: |
     The `rosa-hcp-provision` task automates the creation and provisioning of an ephemeral OpenShift cluster using Red Hat OpenShift on AWS (ROSA) with Hosted Control Planes (HCP).

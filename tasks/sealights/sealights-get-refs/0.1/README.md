@@ -143,3 +143,5 @@ Add the following snippet after `prefetch-dependencies`:
       values:
         - "true"
 ```
+
+### Not suitable for upstream communities
