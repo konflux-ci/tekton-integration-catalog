@@ -1,4 +1,4 @@
-# Store Pipeline Status Task
+# Wait for Integration Tests Task
 
 **Version:** 0.1
 
