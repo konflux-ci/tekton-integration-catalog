@@ -3,7 +3,9 @@
   "customManagers": [
     {
       "customType": "regex",
-      "fileMatch": ["konflux/sealights-agents/nodejs/Dockerfile"],
+      "managerFilePatterns": [
+        "/konflux/sealights-agents/nodejs/Dockerfile/"
+      ],
       "matchStrings": [
         "ENV AGENT_VERSION=(?<currentValue>\\d+\\.\\d+\\.\\d+)"
       ],
@@ -13,7 +15,9 @@
     },
     {
       "customType": "regex",
-      "fileMatch": ["konflux/sealights-agents/python/Dockerfile"],
+      "managerFilePatterns": [
+        "/konflux/sealights-agents/python/Dockerfile/"
+      ],
       "matchStrings": [
         "ENV AGENT_VERSION=(?<currentValue>\\d+\\.\\d+\\.\\d+)"
       ],
