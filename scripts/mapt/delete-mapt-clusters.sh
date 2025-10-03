@@ -215,6 +215,38 @@ for region in $regions; do
   regional_lbs=0
 
   # -----------------------------------------------------------------
+  # TOP priority: Delete EC2 instances
+  # -----------------------------------------------------------------
+  ec2_json=$(
+      aws ec2 describe-instances \
+      --region "$region" \
+      --filter "$FILTER" \
+      --query "Reservations[].Instances[]" \
+      --output json 2>/dev/null
+  )
+
+  resources_with_time=$(
+      echo "$ec2_json" | \
+      jq -r '.[] | select((.LaunchTime != null) and (.State.Name == "running")) | .InstanceId + "," + .LaunchTime' 2>/dev/null
+  )
+
+  # Iterate over the resulting ID,Time pairs
+  while IFS=',' read -r resource_id creation_time; do
+
+      if [ -z "$resource_id" ]; then
+          continue
+      fi
+
+      age_seconds=$(get_age_seconds "$creation_time")
+
+      # Check if the resource is older than the limit (1 day)
+      if [ "$age_seconds" -gt "$AGE_LIMIT_SECONDS" ]; then
+          echo "  [MATCH] Instance: $resource_id (Created: $creation_time)"
+          delete_resource "EC2" "$resource_id" "$region" "Found old EC2 instance"
+      fi
+  done <<< "$resources_with_time"
+
+  # -----------------------------------------------------------------
   # 1. VPC IDENTIFICATION (via NAT Gateway)
   # -----------------------------------------------------------------
   
