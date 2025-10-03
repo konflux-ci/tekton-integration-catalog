@@ -15,12 +15,18 @@ spec:
     `appstudio.openshift.io/snapshot` label associated with the pipelineRun that's executing the current task.
     The space-separated list of integration test scenarios that it takes into account can be set via the `scenarios-to-check` parameter,
     otherwise it waits for all integration test pipelineRuns to complete.
+    If the fail-on-failed-test parameter is set to "true", the task will fail if any of the scenarios it waits for fails.
   params:
     - name: scenarios-to-check
       description: >-
         A space-separated list of integrationTestScenarios that will be considered for the check, others will be ignored.
         If this parameter is not set, the task will wait for any of the integrationTestScenarios that haven't completed.
       default: ""
+      type: string
+    - name: fail-on-failed-test
+      description: >-
+        Determines if the task will fail if one of the scenarios-to-check fails its run. Can be "true" or "false".
+      default: "false"
       type: string
   steps:
     - name: wait-for-pipelineruns
@@ -29,6 +35,8 @@ spec:
       env:
         - name: SCENARIOS_TO_CHECK
           value: $(params.scenarios-to-check)
+        - name: FAIL_ON_FAILED_TEST
+          value: $(params.fail-on-failed-test)
         - name: THIS_SNAPSHOT_NAME
           valueFrom:
             fieldRef:
@@ -51,7 +59,28 @@ spec:
         do
           all_scenarios_completed=true
           # Get the Snapshot's status annotation and find all scenarios that don't have completionTime set for them
-          scenarios_not_completed=$(oc get snapshots "${THIS_SNAPSHOT_NAME}" -o json | jq -r '.metadata.annotations["test.appstudio.openshift.io/status"]' | jq -r '.[] | select(.completionTime == null).scenario')
+
+          test_status=$(oc get snapshots "${THIS_SNAPSHOT_NAME}" -o json | jq -r '.metadata.annotations["test.appstudio.openshift.io/status"]' )
+          scenarios_not_completed=$(echo -n "${test_status}" | jq -r '.[] | select(.completionTime == null).scenario')
+          scenarios_failed=$(echo -n "${test_status}" | jq -r '.[] | select(.status == "TestFail").scenario')
+
+          # If fail-on-failed-test parameter is set, check if any of the failed scenarios are in the scenarios-to-check list and fail if so
+          if [[ "${FAIL_ON_FAILED_TEST}" == "true" && $(echo "${scenarios_failed}" | wc -w) -gt 0 ]]; then
+            should_fail=false
+            for scenario_name in $(echo -n "${scenarios_failed}")
+            do
+              if [[ $(echo "${SCENARIOS_TO_CHECK}" | wc -w) -gt 0 ]] && ! echo "${SCENARIOS_TO_CHECK}" | grep -qw "${scenario_name}"; then
+                echo "Skipped ${scenario_name} since it isn't listed in the SCENARIOS_TO_CHECK parameter"
+                continue
+              else
+                echo "Failing the task on account of ${scenario_name} failing"
+                should_fail=true
+              fi
+            done
+            if [[ "${should_fail}" == "true" ]]; then
+                exit 1
+            fi
+          fi
 
           for scenario_name in $(echo -n "${scenarios_not_completed}")
           do

@@ -9,9 +9,10 @@ The space-separated list of integration test scenarios that it takes into accoun
 otherwise it waits for all integration test pipelineRuns to complete.
 
 ## Parameters
-|name|description|default value|required|
-|---|---|---|---|
-|scenarios_to_check|A space-separated list of integrationTestScenarios that will be considered for the check, others will be ignored.If this parameter is not set, the task will wait for any of the integrationTestScenarios that haven't completed.||true|
+|name|description| default value | required |
+|---|---|---------------|----------|
+|scenarios_to_check|A space-separated list of integrationTestScenarios that will be considered for the check, others will be ignored.If this parameter is not set, the task will wait for any of the integrationTestScenarios that haven't completed.|               | false    |
+|fail-on-failed-test|Determines if the task will fail if one of the scenarios-to-check fails its run. Can be "true" or "false".| false         | false    |
 
 ## Usage
 
