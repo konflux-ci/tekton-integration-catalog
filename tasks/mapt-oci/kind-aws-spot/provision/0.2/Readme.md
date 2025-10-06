@@ -11,7 +11,7 @@ This task is ideal for managing **ephemeral clusters** in Tekton-based CI/CD wor
 ## ✅ Requirements
 
 - Tekton Pipelines v0.44.x or newer
-- Valid AWS credentials stored as a Kubernetes Secret
+- Valid AWS credentials stored as a Kubernetes Secret named "konflux-test-infra"
 
 ---
 
