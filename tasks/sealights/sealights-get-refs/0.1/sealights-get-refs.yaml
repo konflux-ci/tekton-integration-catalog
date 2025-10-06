@@ -103,7 +103,7 @@ spec:
           SL_CONTAINER_IMAGE="$(jq -r --arg sl_source_artifact "$SL_SOURCE_ARTIFACT" '
             .payload | @base64d | fromjson | .predicate.buildConfig.tasks[] |
             select(.invocation.parameters.SOURCE_ARTIFACT == $sl_source_artifact) |
-            select(.ref.params[].value == "buildah-oci-ta") |
+            select(any(.ref.params[]?; .value | test("^buildah(-remote)?-oci-ta$"))) |
             .results[] | select(.name == "IMAGE_REF") | .value
           ' cosign_metadata.json)"
         else
