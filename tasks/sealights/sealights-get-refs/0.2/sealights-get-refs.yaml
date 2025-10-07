@@ -11,8 +11,8 @@ metadata:
 spec:
   description: |
     The sealights-get-refs Task processes all components in a Snapshot,
-    retrieves their attestation metadata using cosign, and extracts the container 
-    image references that were built using the sealights-instrumentation tasks 
+    retrieves their attestation metadata using cosign, and extracts the container
+    image references that were built using the sealights-instrumentation tasks
     (buildah-oci-ta or buildah-remote-oci-ta).
   results:
     - name: sealights-instrumented-images
@@ -31,7 +31,7 @@ spec:
         set -euox pipefail
 
         SEALIGHTS_IMAGES="[]"
-        
+
         COMPONENT_IMAGES=$(jq -r '.components[] | .containerImage' <<< "$SNAPSHOT")
 
         echo "Processing component images from Snapshot..."
@@ -51,7 +51,7 @@ spec:
                 echo "WARNING: Could not download attestation for $IMAGE_DIGEST_REF. Skipping."
                 continue
             fi
-            
+
             SL_CONTAINER_IMAGE="$(jq -r '
               .payload | @base64d | fromjson | .predicate.buildConfig.tasks[]
               | select(.ref.params[]?.value | test("^buildah(-remote)?-oci-ta$"))
@@ -67,9 +67,9 @@ spec:
 
             rm "$TEMP_METADATA_FILE"
         done
-        
+
         echo "---"
         echo "Final list of instrumented images:"
         echo "$SEALIGHTS_IMAGES"
-        
-        echo -n "$SEALIGHTS_IMAGES" > $(results.sealights-instrumented-images.path)
+
+        echo -n "$SEALIGHTS_IMAGES" > "$(results.sealights-instrumented-images.path)"
