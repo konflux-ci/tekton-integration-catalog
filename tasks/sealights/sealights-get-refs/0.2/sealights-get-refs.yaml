@@ -33,6 +33,7 @@ spec:
         set -euox pipefail
 
         SEALIGHTS_IMAGES="[]"
+        SL_BSID=""
 
         COMPONENT_IMAGES=$(jq -r '.components[] | .containerImage' <<< "$SNAPSHOT")
 
@@ -54,11 +55,18 @@ spec:
                 continue
             fi
 
-            SL_BSID="$(jq -r '
-              .payload | @base64d | fromjson | .predicate.buildConfig.tasks[] |
-              select(.invocation.environment.labels."konflux-ci/sealights" == "true") |
-              .results[] | select(.name == "sealights-bsid") | .value
-            ' "$TEMP_METADATA_FILE")"
+            if [[ -z "$SL_BSID" ]]; then
+                NEW_BSID="$(jq -r '
+                  .payload | @base64d | fromjson | .predicate.buildConfig.tasks[] |
+                  select(.invocation.environment.labels."konflux-ci/sealights" == "true") |
+                  .results[] | select(.name == "sealights-bsid") | .value
+                ' "$TEMP_METADATA_FILE")"
+                
+                if [[ -n "$NEW_BSID" ]]; then
+                    SL_BSID="$NEW_BSID"
+                    echo "INFO: Found Sealights BSID: $SL_BSID"
+                fi
+            fi
 
             SL_CONTAINER_IMAGE="$(jq -r '
               .payload | @base64d | fromjson | .predicate.buildConfig.tasks[]
