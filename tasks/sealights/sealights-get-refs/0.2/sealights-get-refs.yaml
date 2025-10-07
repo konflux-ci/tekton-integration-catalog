@@ -1,0 +1,75 @@
+apiVersion: tekton.dev/v1
+kind: Task
+metadata:
+  name: sealights-get-refs
+  labels:
+    konflux-ci/sealights: "true"
+    app.kubernetes.io/version: "0.2"
+  annotations:
+    tekton.dev/pipelines.minVersion: 0.12.1
+    tekton.dev/tags: konflux
+spec:
+  description: |
+    The sealights-get-refs Task processes all components in a Snapshot,
+    retrieves their attestation metadata using cosign, and extracts the container 
+    image references that were built using the sealights-instrumentation tasks 
+    (buildah-oci-ta or buildah-remote-oci-ta).
+  results:
+    - name: sealights-instrumented-images
+      description: A JSON array of all Sealights-instrumented container images found in the snapshot components.
+  params:
+    - name: SNAPSHOT
+      description: The JSON string of the Snapshot under test containing multiple components.
+  steps:
+    - name: extract-images
+      image: quay.io/konflux-qe-incubator/konflux-qe-tools:latest
+      env:
+        - name: SNAPSHOT
+          value: $(params.SNAPSHOT)
+      script: |
+        #!/bin/bash
+        set -euox pipefail
+
+        SEALIGHTS_IMAGES="[]"
+        
+        COMPONENT_IMAGES=$(jq -r '.spec.components[] | .containerImage' <<< "$SNAPSHOT")
+
+        echo "Processing component images from Snapshot..."
+
+        for IMAGE_DIGEST_REF in $COMPONENT_IMAGES; do
+            echo "---"
+            echo "Inspecting image: $IMAGE_DIGEST_REF"
+
+            if [[ -z "$IMAGE_DIGEST_REF" ]]; then
+                echo "Skipping component with empty containerImage."
+                continue
+            fi
+
+            TEMP_METADATA_FILE="cosign_metadata_$(echo "$IMAGE_DIGEST_REF" | sha256sum | head -c 10).json"
+
+            if ! cosign download attestation "$IMAGE_DIGEST_REF" > "$TEMP_METADATA_FILE"; then
+                echo "WARNING: Could not download attestation for $IMAGE_DIGEST_REF. Skipping."
+                continue
+            fi
+            
+            SL_CONTAINER_IMAGE="$(jq -r '
+              .payload | @base64d | fromjson | .predicate.buildConfig.tasks[]
+              | select(.ref.params[]?.value | test("^buildah(-remote)?-oci-ta$"))
+              | .results[] | select(.name == "IMAGE_REF") | .value // empty
+            ' "$TEMP_METADATA_FILE" | head -n 1)"
+
+            if [[ -n "$SL_CONTAINER_IMAGE" ]]; then
+                echo "SUCCESS: Found instrumented image: $SL_CONTAINER_IMAGE"
+                SEALIGHTS_IMAGES=$(jq -r --arg image "$SL_CONTAINER_IMAGE" '. + [$image]' <<< "$SEALIGHTS_IMAGES")
+            else
+                echo "INFO: No Sealights-instrumented image found for this component."
+            fi
+
+            rm "$TEMP_METADATA_FILE"
+        done
+        
+        echo "---"
+        echo "Final list of instrumented images:"
+        echo "$SEALIGHTS_IMAGES"
+        
+        echo -n "$SEALIGHTS_IMAGES" > $(results.sealights-instrumented-images.path)
