@@ -10,7 +10,7 @@ The `sealights-get-refs` Tekton Task (**v0.2**) is designed to retrieve the Seal
 
 The Task performs the following steps:
 
-1.  Retrieves all component container image references from the provided `SNAPSHOT` JSON string (from `.spec.components[*].containerImage`).
+1.  Retrieves all component container image references from the provided `SNAPSHOT` JSON string (from `.components[*].containerImage`).
 2.  **Loops** through each component image.
 3.  For each component image, downloads the associated **attestation metadata** using `cosign`.
 4.  Parses the attestation metadata, specifically looking for the `IMAGE_REF` result from tasks matching the pattern **`buildah(-remote)?-oci-ta$`** (the tasks that build the instrumented image).
