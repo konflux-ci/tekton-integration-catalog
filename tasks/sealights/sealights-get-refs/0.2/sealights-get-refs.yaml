@@ -17,6 +17,8 @@ spec:
   results:
     - name: sealights-instrumented-images
       description: A JSON array of all Sealights-instrumented container images found in the snapshot components.
+    - name: sealights-bsid
+      description: The Build Session ID (BSID) generated during the build for sealights.
   params:
     - name: SNAPSHOT
       description: The JSON string of the Snapshot under test containing multiple components.
@@ -52,6 +54,12 @@ spec:
                 continue
             fi
 
+            SL_BSID="$(jq -r '
+              .payload | @base64d | fromjson | .predicate.buildConfig.tasks[] |
+              select(.invocation.environment.labels."konflux-ci/sealights" == "true") |
+              .results[] | select(.name == "sealights-bsid") | .value
+            ' "$TEMP_METADATA_FILE")"
+
             SL_CONTAINER_IMAGE="$(jq -r '
               .payload | @base64d | fromjson | .predicate.buildConfig.tasks[]
               | select(.ref.params[]?.value | test("^buildah(-remote)?-oci-ta$"))
@@ -71,5 +79,7 @@ spec:
         echo "---"
         echo "Final list of instrumented images:"
         echo "$SEALIGHTS_IMAGES"
+        echo "Build Session ID: $SL_BSID"
 
         echo -n "$SEALIGHTS_IMAGES" > "$(results.sealights-instrumented-images.path)"
+        echo -n "$SL_BSID" > "$(results.sealights-bsid.path)"
