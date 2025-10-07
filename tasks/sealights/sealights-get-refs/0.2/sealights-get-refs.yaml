@@ -56,15 +56,14 @@ spec:
             fi
 
             if [[ -z "$SL_BSID" ]]; then
-                NEW_BSID="$(jq -r '
-                  .payload | @base64d | fromjson | .predicate.buildConfig.tasks[] |
-                  select(.invocation.environment.labels."konflux-ci/sealights" == "true") |
-                  .results[] | select(.name == "sealights-bsid") | .value
-                ' "$TEMP_METADATA_FILE")"
-                
+                NEW_BSID="$(jq -r '
+                  .payload | @base64d | fromjson | .predicate.buildConfig.tasks[] |
+                  select(.invocation.environment.labels."konflux-ci/sealights" == "true") |
+                  .results[] | select(.name == "sealights-bsid") | .value
+                ' "$TEMP_METADATA_FILE")"
+
                 if [[ -n "$NEW_BSID" ]]; then
                     SL_BSID="$NEW_BSID"
-                    echo "INFO: Found Sealights BSID: $SL_BSID"
                 fi
             fi
 
