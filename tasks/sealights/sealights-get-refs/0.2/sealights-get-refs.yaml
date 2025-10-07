@@ -32,7 +32,7 @@ spec:
 
         SEALIGHTS_IMAGES="[]"
         
-        COMPONENT_IMAGES=$(jq -r '.spec.components[] | .containerImage' <<< "$SNAPSHOT")
+        COMPONENT_IMAGES=$(jq -r '.components[] | .containerImage' <<< "$SNAPSHOT")
 
         echo "Processing component images from Snapshot..."
 
