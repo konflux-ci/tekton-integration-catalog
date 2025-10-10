@@ -2,6 +2,8 @@ apiVersion: tekton.dev/v1alpha1
 kind: StepAction
 metadata:
   name: secure-push-oci
+  labels:
+    upstream-usable: "true"
 spec:
   description: |
     This StepAction scans specified directory (workingDir) using [leaktk-scanner CLI](https://github.com/leaktk/scanner)

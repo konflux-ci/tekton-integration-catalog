@@ -257,3 +257,5 @@ spec:
 
 - **Image:** [quay.io/dno/droute](https://quay.io/repository/dno/droute?tab=info)
 - **Data Router User's Guide:** [Data Router User's Guide](https://spaces.redhat.com/x/7VbhB)
+
+### Suitable for upstream communities

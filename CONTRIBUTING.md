@@ -23,6 +23,7 @@ Thank you for your interest in contributing! This project benefits from a collab
    - Add new Tekton Tasks, StepActions, or Pipelines.
    - If updating an existing task, **ensure backward compatibility** or create a new version.
    - Update documentation if needed.
+   - Ensure appropriate upstream labels are added.
 
 4. **Test Your Changes**
    - Validate YAML files to check for syntax errors.

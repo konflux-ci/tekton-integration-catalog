@@ -68,3 +68,5 @@ Then, in a subsequent task (e.g., `rosa-hcp-provision`), reference the generated
 - This ensures unique cluster names in different pipeline runs.
 - The fixed `kx` prefix helps in identifying clusters created via Tekton automation.
 - The cluster name is capped at a reasonable length to comply with OpenShift and AWS naming conventions.
+
+### Not suitable for upstream communities

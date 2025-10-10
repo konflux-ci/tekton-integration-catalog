@@ -41,3 +41,5 @@ This task is useful in Konflux CI workflows where feedback on pull request testi
 ## Results
 
 This task does not produce any output results.
+
+### Suitable for upstream communities

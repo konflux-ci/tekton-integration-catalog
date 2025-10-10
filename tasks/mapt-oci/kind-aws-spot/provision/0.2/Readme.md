@@ -157,3 +157,5 @@ roleRef:
 ```
 
 > **Note:** Without these permissions, the task will fail when attempting to create the kubeconfig Secret.
+
+### Suitable for upstream communities

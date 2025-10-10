@@ -1,5 +1,9 @@
 apiVersion: tekton.dev/v1
 kind: PipelineRun
+metadata:
+  name: conforma-with-waiting
+  labels:
+    upstream-usable: "false"
 spec:
   pipelineSpec:
     params:

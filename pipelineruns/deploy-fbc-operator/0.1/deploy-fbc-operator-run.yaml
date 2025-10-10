@@ -2,6 +2,8 @@ apiVersion: tekton.dev/v1
 kind: PipelineRun
 metadata:
   name: deploy-fbc-operator-run
+  labels:
+    upstream-usable: "true"
 spec:
   pipelineRef:
     resolver: git

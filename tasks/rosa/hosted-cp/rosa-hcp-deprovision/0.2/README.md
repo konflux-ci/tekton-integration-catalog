@@ -114,3 +114,5 @@ This task can be included in a Tekton pipeline to ensure proper cleanup and arti
 
 - Ensure that the `konflux-test-infra` secret contains the necessary AWS credentials and ROSA tokens.
 - Artifact storage requires authentication to an OCI container registry.
+
+### Not suitable for upstream communities
