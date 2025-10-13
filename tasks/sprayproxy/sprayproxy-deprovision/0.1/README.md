@@ -93,3 +93,5 @@ spec:
 - OpenShift CLI (`oc`) installed
 - Valid OpenShift cluster credentials
 - A running SprayProxy server in one of your clusters
+
+### Not suitable for upstream communities

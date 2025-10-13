@@ -5,6 +5,7 @@ metadata:
   name: kind-aws-provision
   labels:
     app.kubernetes.io/version: "0.2"
+    upstream-usable: "true"
   annotations:
     tekton.dev/pipelines.minVersion: "0.44.x"
     tekton.dev/categories: infrastructure

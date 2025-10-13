@@ -2,6 +2,8 @@ apiVersion: tekton.dev/v1alpha1
 kind: StepAction
 metadata:
   name: analyze-test-results
+  labels:
+    upstream-usable: "true"
 spec:
   description: >-
     This StepAction runs "analyze-test-results" command from qe-tools binary against supplied

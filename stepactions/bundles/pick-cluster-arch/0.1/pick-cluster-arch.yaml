@@ -2,6 +2,8 @@ apiVersion: tekton.dev/v1beta1
 kind: StepAction
 metadata:
   name: pick-cluster-arch
+  labels:
+    upstream-usable: "true"
 spec:
   description: |
     This StepAction retrieves the supported architectures for a bundle by checking the "operatorframework.io/arch" labels on the bundle CSV.
