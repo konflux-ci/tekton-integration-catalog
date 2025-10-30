@@ -1,0 +1,81 @@
+apiVersion: tekton.dev/v1
+kind: Task
+metadata:
+  name: fetch-data-to-trusted-artifact
+spec:
+  description: fetch data by running script within specific image and upload it as oci trusted artifact
+
+  params:
+  - name: SOURCE_ARTIFACT
+    description: The Trusted Artifact URI pointing to the artifact with the application source code.
+      This should be the result of the git-clone task, an attempt to use results of prefetch-dependencies task may
+      cause errors later in the pipeline.
+    type: string
+  - name: ociStorage
+    description: The OCI repository where the Trusted Artifacts are stored.
+    type: string
+  - name: ociArtifactExpiresAfter
+    description: Expiration date for the trusted artifacts created in the OCI repository.
+    type: string
+  - name: runtimeImage
+    description: Image to run command to get the updated db
+    type: string
+  - name: executionScript
+    type: string
+    description: "the script to update clair-action or clamav db"
+    default: |
+      echo "Running default Python script"
+  results:
+  - name: SOURCE_ARTIFACT
+    description: The Trusted Artifact URI pointing to the artifact with the application source code and additional
+      downloaded blobs.
+    type: string
+  volumes:
+  - name: workdir
+    emptyDir: {}
+
+  stepTemplate:
+    volumeMounts:
+    - mountPath: /var/workdir
+      name: workdir
+
+  steps:
+
+  - name: use-trusted-artifact
+    image: quay.io/redhat-appstudio/build-trusted-artifacts:latest@sha256:9b180776a41d9a22a1c51539f1647c60defbbd55b44bbebdd4130e33512d8b0d
+    computeResources:
+      requests:
+        memory: 2Gi
+      limits:
+        memory: 2Gi
+    args:
+    - use
+    - $(params.SOURCE_ARTIFACT)=/var/workdir/source
+
+  - name: fetch-db-data
+    image: $(params.runtimeImage)
+    workingDir: /var/workdir/source
+    computeResources:
+      requests:
+        cpu: "1"
+        memory: 1Gi
+      limits:
+        memory: 10Gi
+    timeout: 1h30m
+    script: $(params.executionScript)
+
+  - name: create-trusted-artifact
+    image: quay.io/redhat-appstudio/build-trusted-artifacts:latest@sha256:9b180776a41d9a22a1c51539f1647c60defbbd55b44bbebdd4130e33512d8b0d
+    computeResources:
+      requests:
+        memory: 2Gi
+      limits:
+        memory: 2Gi
+    args:
+    - create
+    - --store
+    - $(params.ociStorage)
+    - $(results.SOURCE_ARTIFACT.path)=/var/workdir/source
+    env:
+    - name: IMAGE_EXPIRES_AFTER
+      value: $(params.ociArtifactExpiresAfter)
