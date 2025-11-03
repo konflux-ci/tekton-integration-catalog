@@ -54,6 +54,10 @@ spec:
           valueFrom:
             fieldRef:
               fieldPath: metadata.labels['test.appstudio.openshift.io/scenario']
+        - name: BUILD_CONSOLE_URL
+          valueFrom:
+            fieldRef:
+              fieldPath: metadata.annotations['pac.test.appstudio.openshift.io/log-url']
 
       workingDir: /workspace/pipeline-status
       script: |
@@ -106,21 +110,70 @@ spec:
         echo "Summarizing PipelineRun: $PLR_NAME (excluding the TaskRun: $CURRENT_TR_NAME)"
         echo "Output file: $OUTPUT_FILE"
 
+        # Get PipelineRun JSON for extracting additional fields
+        PLR_JSON=$(kubectl get pipelinerun "$PLR_NAME" -o json)
+        NAMESPACE=$(echo "$PLR_JSON" | jq -r '.metadata.namespace')
+        CREATED_AT=$(echo "$PLR_JSON" | jq -r '.metadata.creationTimestamp')
+        STARTED_AT=$(echo "$PLR_JSON" | jq -r '.status.startTime // empty')
+
+        # Convert NOW_SECS to ISO 8601 format for finishedAt
+        FINISHED_AT=$(date -u -d "@${NOW_SECS}" +"%Y-%m-%dT%H:%M:%SZ" 2>/dev/null || date -u -r "${NOW_SECS}" +"%Y-%m-%dT%H:%M:%SZ" 2>/dev/null || echo "")
+
+        # Get commit SHA from PipelineRun labels or annotations
+        COMMIT_SHA=$(echo "$PLR_JSON" | jq -r '.metadata.labels["pac.test.appstudio.openshift.io/sha"] // .metadata.annotations["pac.test.appstudio.openshift.io/sha"] // .metadata.labels["pac.test.appstudio.openshift.io/git-revision"] // .metadata.annotations["pac.test.appstudio.openshift.io/git-revision"] // empty')
+
+        # Get console URL - use BUILD_CONSOLE_URL as-is
+        CONSOLE_URL="${BUILD_CONSOLE_URL:-}"
+
         {
           echo '{'
           echo "  \"pipelineRunName\": \"$PLR_NAME\","
+          echo "  \"namespace\": \"$NAMESPACE\","
 
-          PR_START=$(kubectl get pipelinerun "$PLR_NAME" -o jsonpath="{.status.startTime}")
-          PR_START_SECS=$(date -d "$PR_START" +%s 2>/dev/null || date -j -f "%Y-%m-%dT%H:%M:%S%z" "$PR_START" +%s)
-          DURATION=$((NOW_SECS - PR_START_SECS))
-          echo "  \"duration\": \"${DURATION}s\","
+          PR_START=$(echo "$PLR_JSON" | jq -r '.status.startTime // empty')
+          if [[ -n "$PR_START" && "$PR_START" != "null" ]]; then
+            PR_START_SECS=$(date -d "$PR_START" +%s 2>/dev/null || date -j -f "%Y-%m-%dT%H:%M:%S%z" "$PR_START" +%s 2>/dev/null || echo "")
+            if [[ -n "$PR_START_SECS" ]]; then
+              DURATION=$((NOW_SECS - PR_START_SECS))
+              echo "  \"duration\": \"${DURATION}s\","
+            else
+              echo "  \"duration\": \"0s\","
+            fi
+          else
+            echo "  \"duration\": \"0s\","
+          fi
 
           echo "  \"status\": \"${PLR_STATUS}\","
           echo "  \"eventType\": \"$EVENT_TYPE\","
           echo "  \"scenario\": \"$SCENARIO_NAME\","
+          echo "  \"consoleUrl\": \"${CONSOLE_URL:-}\","
           echo '  "git": {'
           echo "    \"gitOrganization\": \"$TARGET_GIT_ORGANIZATION\","
-          echo "    \"gitRepository\": \"$TARGET_GIT_REPOSITORY\""
+          echo -n "    \"gitRepository\": \"$TARGET_GIT_REPOSITORY\""
+          if [[ -n "$PULL_REQUEST_NUMBER" && "$PULL_REQUEST_NUMBER" != "null" ]]; then
+            echo ","
+            echo -n "    \"pullRequestNumber\": \"$PULL_REQUEST_NUMBER\""
+          fi
+          if [[ -n "$COMMIT_SHA" && "$COMMIT_SHA" != "null" ]]; then
+            echo ","
+            echo -n "    \"commitSha\": \"$COMMIT_SHA\""
+          fi
+          echo ","
+          echo -n "    \"pullRequestAuthor\": \"\""
+          echo
+          echo '  },'
+          echo '  "timestamps": {'
+          echo -n "    \"createdAt\": \"${CREATED_AT:-}\""
+          if [[ -n "$STARTED_AT" && "$STARTED_AT" != "null" ]]; then
+            echo ","
+            echo -n "    \"startedAt\": \"$STARTED_AT\""
+          else
+            echo ","
+            echo -n "    \"startedAt\": \"\""
+          fi
+          echo ","
+          echo -n "    \"finishedAt\": \"${FINISHED_AT:-}\""
+          echo
           echo '  },'
           echo "  \"taskRuns\": ["
 
