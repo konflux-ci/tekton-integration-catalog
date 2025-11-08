@@ -129,3 +129,5 @@ data:
   gh-app-webhook-secret: <Webhook secret of the GitHub App>
   smee-channel: <smee.io URL used for redirecting events sent by GitHub App>
 ```
+
+### Suitable for upstream communities

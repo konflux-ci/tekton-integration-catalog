@@ -2,6 +2,8 @@ apiVersion: tekton.dev/v1
 kind: Task
 metadata:
   name: checkton
+  labels:
+    upstream-usable: "true"
 spec:
   params:
   - name: git-url

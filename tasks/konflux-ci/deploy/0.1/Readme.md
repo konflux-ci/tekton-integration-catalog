@@ -88,3 +88,6 @@ metadata:
 type: Opaque
 data:
   kubeconfig: <base64-encoded-kubeconfig>
+```
+
+### Suitable for upstream communities

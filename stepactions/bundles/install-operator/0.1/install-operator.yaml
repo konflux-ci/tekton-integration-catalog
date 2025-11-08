@@ -2,6 +2,8 @@ apiVersion: tekton.dev/v1beta1
 kind: StepAction
 metadata:
   name: install-operator
+  labels:
+    upstream-usable: "true"
 spec:
   description: |
     This StepAction installs an operator from a provided FBC fragment.

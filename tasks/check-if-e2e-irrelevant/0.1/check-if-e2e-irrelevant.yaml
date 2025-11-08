@@ -3,6 +3,8 @@ apiVersion: tekton.dev/v1
 kind: Task
 metadata:
   name: check-if-e2e-irrelevant
+  labels:
+    upstream-usable: "true"
 spec:
   description: |
     This task checks if the files changed in the pull request are all irrelevant to the e2e tests.
@@ -23,7 +25,6 @@ spec:
   steps:
     - name: run-check
       image: quay.io/konflux-qe-incubator/konflux-qe-tools:latest
-      workingDir: /workspace
       env:
         - name: GIT_ORGANIZATION
           valueFrom:
@@ -41,6 +42,10 @@ spec:
           valueFrom:
             fieldRef:
               fieldPath: metadata.labels['pac.test.appstudio.openshift.io/pull-request']
+        - name: IS_PR_GROUP
+          valueFrom:
+            fieldRef:
+              fieldPath: metadata.labels['test.appstudio.openshift.io/type']
       script: |
         #!/usr/bin/env bash
         set -euo pipefail
@@ -64,13 +69,13 @@ spec:
         }
         trap 'exitfunc $? $LINENO "$BASH_COMMAND"' EXIT
 
-        # This is a workaround for periodic jobs
-        if [[ "$EVENT_TYPE" == "push" ]]; then
+        # This is a workaround for periodic jobs and PR group
+        if [[ "$EVENT_TYPE" == "push" ]] || [[  "$IS_PR_GROUP" == "group" ]] ; then
           exit 99
         fi
 
         # Setup workspace
-        WORK_DIR=".tmp_pr_check"
+        WORK_DIR="$HOME/.tmp_pr_check"
         rm -rf "$WORK_DIR"
         mkdir "$WORK_DIR"
         cd "$WORK_DIR"

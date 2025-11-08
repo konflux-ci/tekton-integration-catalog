@@ -1,5 +1,9 @@
 apiVersion: tekton.dev/v1
 kind: PipelineRun
+metadata:
+  name: conforma-with-waiting
+  labels:
+    upstream-usable: "false"
 spec:
   pipelineSpec:
     params:
@@ -9,6 +13,11 @@ spec:
         description: |
           A space-separated list of integrationTestScenarios that will be considered for the check, others will be ignored.
           If this parameter is not set, the task will wait for any of the integrationTestScenarios that haven't completed.
+      - name: FAIL_ON_FAILED_TEST
+        description: >-
+          Determines if the task will fail if one of the scenarios to check fails its run. Can be "true" or "false".
+        default: "false"
+        type: string
       - name: SNAPSHOT
         type: string
         description: |
@@ -90,6 +99,8 @@ spec:
         params:
           - name: scenarios-to-check
             value: "$(params.SCENARIOS_TO_CHECK)"
+          - name: fail-on-failed-test
+            value: "$(params.FAIL_ON_FAILED_TEST)"
         taskRef:
           resolver: git
           params:

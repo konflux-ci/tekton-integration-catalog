@@ -57,3 +57,5 @@ spec:
         - name: test-stage
           value: $(params.test-stage)
 ```
+
+### Not suitable for upstream communities

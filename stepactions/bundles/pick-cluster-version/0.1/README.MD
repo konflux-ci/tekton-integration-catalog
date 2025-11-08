@@ -54,3 +54,5 @@ spec:
         - name: clusterVersions
           value: ["$(steps.get-supported-versions.results.versions[*])"]
 ```
+
+### Suitable for upstream communities

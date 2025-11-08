@@ -3,6 +3,8 @@ apiVersion: tekton.dev/v1
 kind: Task
 metadata:
   name: verify-image-sources
+  labels:
+    upstream-usable: "false"
 spec:
   description: |
     The image source test collects all image pull events on the testing cluster, starting from the operator's deployment on the cluster until the end of testing.

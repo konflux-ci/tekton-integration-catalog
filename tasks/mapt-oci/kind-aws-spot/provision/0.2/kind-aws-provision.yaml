@@ -5,6 +5,7 @@ metadata:
   name: kind-aws-provision
   labels:
     app.kubernetes.io/version: "0.2"
+    upstream-usable: "true"
   annotations:
     tekton.dev/pipelines.minVersion: "0.44.x"
     tekton.dev/categories: infrastructure
@@ -107,7 +108,7 @@ spec:
         The desired Kubernetes version for the Kind cluster. If left blank, the latest stable version will be used.
       default: 'v1.32'
     - name: tags
-      description: AWS resource tags
+      description: AWS resource tags. Tags iac=mapt and k8s-type=kind are added automatically.
       default: "''"
     - name: debug
       description: |
@@ -217,7 +218,7 @@ spec:
           cmd+="--spot --spot-increase-rate $(params.spot-increase-rate) --spot-eviction-tolerance $(params.spot-eviction-tolerance) "
         fi
         if [[ $(params.timeout) != "" ]]; then cmd+="--timeout $(params.timeout) "; fi
-        cmd+="--tags $(params.tags) "
+        cmd="${cmd}--tags iac=mapt,k8s-type=kind,cluster-name=$(params.id),$(params.tags) "
 
         eval "${cmd}" 2>&1 | tee "$LOG_FILENAME"
         exit_code="${PIPESTATUS[0]}"

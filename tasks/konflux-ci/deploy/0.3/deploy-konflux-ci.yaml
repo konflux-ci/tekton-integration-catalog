@@ -6,6 +6,7 @@ metadata:
   labels:
     konflux-ci/kind: "true"
     app.kubernetes.io/version: "0.3"
+    upstream-usable: "true"
   annotations:
     tekton.dev/pipelines.minVersion: "0.44.x"
     tekton.dev/tags: konflux

@@ -3,6 +3,8 @@ apiVersion: tekton.dev/v1beta1
 kind: Task
 metadata:
   name: yaml-lint
+  labels:
+    upstream-usable: "true"
 spec:
   description: |
     This task performs YAML linting on YAML files in a given Git repository.

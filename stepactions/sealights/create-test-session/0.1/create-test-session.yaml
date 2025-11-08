@@ -2,6 +2,8 @@ apiVersion: tekton.dev/v1alpha1
 kind: StepAction
 metadata:
   name: create-test-session
+  labels:
+    upstream-usable: "false"
 spec:
   description: |
     The `create-test-session` initializes a new Sealights test session by creating a session ID using the Sealights API and storing it for later use in the pipeline.

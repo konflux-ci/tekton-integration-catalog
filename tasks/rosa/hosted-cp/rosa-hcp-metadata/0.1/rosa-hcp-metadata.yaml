@@ -2,6 +2,8 @@ apiVersion: tekton.dev/v1
 kind: Task
 metadata:
   name: rosa-hcp-metadata
+  labels:
+    upstream-usable: "false"
 spec:
   description: |
     The `rosa-hcp-metadata` task generates a unique name for an OpenShift cluster using a predefined prefix and a randomly generated hexadecimal string.

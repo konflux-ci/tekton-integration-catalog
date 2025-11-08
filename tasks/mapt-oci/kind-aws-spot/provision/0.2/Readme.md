@@ -11,7 +11,7 @@ This task is ideal for managing **ephemeral clusters** in Tekton-based CI/CD wor
 ## ✅ Requirements
 
 - Tekton Pipelines v0.44.x or newer
-- Valid AWS credentials stored as a Kubernetes Secret
+- Valid AWS credentials stored as a Kubernetes Secret named "konflux-test-infra"
 
 ---
 
@@ -46,7 +46,7 @@ This task provisions a single-node Kubernetes cluster on AWS using Mapt. It outp
 | `spot`                        | Use spot instances                                                          | `true`      | ❌       |
 | `spot-increase-rate`         | % increase on spot price to improve instance allocation                     | `20`        | ❌       |
 | `version`                     | Kubernetes version                                                          | `v1.32`     | ❌       |
-| `tags`                        | AWS resource tags                                                           | `''`        | ❌       |
+| `tags`                        | description: AWS resource tags. Tags iac=mapt, k8s-type=kind and cluster-name=$(params.id) are added automatically. | `''`        | ❌       |
 | `debug`                       | Enable verbose output (prints credentials; use with caution)               | `false`     | ❌       |
 | `timeout`                     | Auto-destroy timeout (`1h`, `30m`, etc.)                                    | `''`        | ❌       |
 | `oci-ref`                     | Full OCI artifact reference used for storing logs from the Task's Steps    | -        | ✅       |
@@ -157,3 +157,5 @@ roleRef:
 ```
 
 > **Note:** Without these permissions, the task will fail when attempting to create the kubeconfig Secret.
+
+### Suitable for upstream communities
