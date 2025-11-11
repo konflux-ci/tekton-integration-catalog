@@ -46,6 +46,10 @@ spec:
           valueFrom:
             fieldRef:
               fieldPath: metadata.labels['test.appstudio.openshift.io/type']
+        - name: TARGET_BRANCH
+          valueFrom:
+            fieldRef:
+              fieldPath: metadata.annotations['build.appstudio.redhat.com/target_branch']
       script: |
         #!/usr/bin/env bash
         set -euo pipefail
@@ -86,13 +90,27 @@ spec:
           exit 1
         fi
         cd "${GIT_REPOSITORY}"
-        if ! git fetch origin pull/"$PR_NUMBER"/head:pr_"$PR_NUMBER" > /dev/null 2>&1; then
-          echo "Failed to fetch PR"
-          exit 1
-        fi
-        if ! git checkout pr_"$PR_NUMBER" > /dev/null 2>&1; then
-          echo "Failed to checkout PR branch"
-          exit 1
+
+        # Check if TARGET_BRANCH is a merge queue branch
+        if [[ "$TARGET_BRANCH" == gh-readonly-queue/* ]]; then
+          echo "Detected merge queue branch: $TARGET_BRANCH"
+          if ! git fetch origin "$TARGET_BRANCH":"$TARGET_BRANCH" > /dev/null 2>&1; then
+            echo "Failed to fetch target branch: $TARGET_BRANCH"
+            exit 1
+          fi
+          if ! git checkout "$TARGET_BRANCH" > /dev/null 2>&1; then
+            echo "Failed to checkout target branch: $TARGET_BRANCH"
+            exit 1
+          fi
+        else
+          if ! git fetch origin pull/"$PR_NUMBER"/head:pr_"$PR_NUMBER" > /dev/null 2>&1; then
+            echo "Failed to fetch PR"
+            exit 1
+          fi
+          if ! git checkout pr_"$PR_NUMBER" > /dev/null 2>&1; then
+            echo "Failed to checkout PR branch"
+            exit 1
+          fi
         fi
 
         # Get changed files

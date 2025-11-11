@@ -120,6 +120,11 @@ spec:
           EVENT_TYPE="push"
         fi
 
+        # Set PULL_REQUEST_NUMBER to 0 if not set (for valid JSON numeric value)
+        if [[ -z "$PULL_REQUEST_NUMBER" ]]; then
+          PULL_REQUEST_NUMBER=0
+        fi
+
         JOB_SPEC=$(cat <<EOF
         {
             "container_image": "$COMPONENT_CONTAINER_IMAGE",
@@ -224,6 +229,8 @@ spec:
         # Generate tag based on event type if not present
         if [[ -z "$CONTAINER_TAG" ]]; then
           if [[ "$EVENT_TYPE" == "pull_request" ]]; then
+            CONTAINER_TAG="on-pr-${GIT_REVISION}"
+          elif [[ "$TARGET_REPO_BRANCH" == gh-readonly-queue/* ]]; then
             CONTAINER_TAG="on-pr-${GIT_REVISION}"
           elif [[ "$EVENT_TYPE" == "push" ]]; then
             CONTAINER_TAG="${GIT_REVISION}"
