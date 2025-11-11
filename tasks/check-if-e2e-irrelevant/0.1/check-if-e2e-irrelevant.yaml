@@ -74,7 +74,8 @@ spec:
         trap 'exitfunc $? $LINENO "$BASH_COMMAND"' EXIT
 
         # This is a workaround for periodic jobs and PR group
-        if [[ "$EVENT_TYPE" == "push" ]] || [[  "$IS_PR_GROUP" == "group" ]] ; then
+        # But allow merge queue branches to proceed with normal checks
+        if [[ "$EVENT_TYPE" == "push" || "$IS_PR_GROUP" == "group" ]] && [[ "$TARGET_BRANCH" != gh-readonly-queue/* ]]; then
           exit 99
         fi
 
