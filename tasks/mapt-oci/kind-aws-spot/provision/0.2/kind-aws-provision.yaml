@@ -208,9 +208,13 @@ spec:
         cmd+="--project-name kind-$(params.id) "
         cmd+="--backed-url s3://${BUCKET}/mapt/kind/$(params.id) "
         cmd+="--conn-details-output /opt/cluster-info "
-        cmd+="--arch $(params.arch) "
-        cmd+="--cpus $(params.cpus) "
-        cmd+="--memory $(params.memory) "
+        if [[ "$(params.compute-sizes)" != "" ]]; then
+          cmd+="--compute-sizes $(params.compute-sizes) "
+        else
+          cmd+="--arch $(params.arch) "
+          cmd+="--cpus $(params.cpus) "
+          cmd+="--memory $(params.memory) "
+        fi
         if [[ "$(params.extra-port-mappings)" != "" ]]; then cmd+="--extra-port-mappings $(params.extra-port-mappings) "; fi
         if [[ $(params.nested-virt) == "true" ]]; then cmd+="--nested-virt "; fi
         if [[ $(params.version) != "" ]]; then cmd+="--version $(params.version) "; fi
