@@ -42,6 +42,7 @@ This task provisions a single-node Kubernetes cluster on AWS using Mapt. It outp
 | `arch`                        | Instance architecture (`x86_64`, `arm64`)                                   | `x86_64`    | ❌       |
 | `cpus`                        | Number of vCPUs to provision                                                | `16`        | ❌       |
 | `memory`                      | Memory in GiB                                                               | `64`        | ❌       |
+| `compute-sizes`               | Comma-separated list of compute sizes, e.g.: `m5a.large,m6a.large` (takes presendence over `arch`, `cpus` and `memory`) | —           | ❌       |
 | `nested-virt`                 | Enable nested virtualization                                                | `false`     | ❌       |
 | `spot`                        | Use spot instances                                                          | `true`      | ❌       |
 | `spot-increase-rate`         | % increase on spot price to improve instance allocation                     | `20`        | ❌       |
