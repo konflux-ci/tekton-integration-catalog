@@ -268,7 +268,7 @@ spec:
           INSTRUMENTED_TAG=""
         else
           echo "[INFO] Instrumented image: found ($INSTRUMENTED_IMAGE)"
-          
+
           # Extract repo and tag from instrumented image (handle both tag and digest formats)
           if [[ "$INSTRUMENTED_IMAGE" == *"@"* ]]; then
             # Image with digest - extract the part before the digest
@@ -311,6 +311,6 @@ spec:
           fi
         fi
 
-        echo -n "$INSTRUMENTED_IMAGE" > $(results.instrumented-container-image.path)
-        echo -n "$INSTRUMENTED_REPO" > $(results.instrumented-container-repo.path)
-        echo -n "$INSTRUMENTED_TAG" > $(results.instrumented-container-tag.path)
+        printf "%s" "$INSTRUMENTED_IMAGE" > "$(results.instrumented-container-image.path)"
+        printf "%s" "$INSTRUMENTED_REPO" > "$(results.instrumented-container-repo.path)"
+        printf "%s" "$INSTRUMENTED_TAG" > "$(results.instrumented-container-tag.path)"

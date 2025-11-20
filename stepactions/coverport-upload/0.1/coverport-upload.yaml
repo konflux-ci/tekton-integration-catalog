@@ -14,14 +14,14 @@ metadata:
 spec:
   description: |
     Processes collected coverage data and uploads to coverage services (Codecov, SonarQube).
-    
+
     - Reads the metadata.json manifest created by coverport-collect
     - Automatically processes ALL collected components in batch mode
     - For each component: extracts git metadata (including PR number), clones repo, processes coverage, uploads
     - Automatically detects Pull Request numbers from image metadata for proper Codecov association
-    
+
     This should run after coverport-collect and secure-push-oci steps.
-    
+
     More information: https://github.com/konflux-ci/coverport
 
   image: quay.io/konflux-ci/konflux-devprod/coverport-cli@sha256:bef3f7af97512649141bb273530be99f9afdebd6aaa1dfa795a0c84b5e322112
@@ -36,7 +36,7 @@ spec:
         Example: /workspace/coverage
       type: string
       default: "/workspace/coverage"
-    
+
     # Processing parameters
     - name: coverage-format
       description: |
@@ -44,41 +44,41 @@ spec:
         Currently only 'go' is fully implemented.
       type: string
       default: "auto"
-    
+
     - name: coverage-filters
       description: |
         Comma-separated list of file patterns to exclude from coverage.
         Example: "coverage_server.go,*_test.go,vendor/*"
       type: string
       default: "coverage_server.go,*_test.go"
-    
+
     - name: generate-html
       description: |
         Generate HTML coverage reports (requires source code).
         Note: May fail for some coverage files due to Go tooling limitations.
       type: string
       default: "false"
-    
+
     # Upload parameters
     - name: upload-codecov
       description: "Upload coverage to Codecov"
       type: string
       default: "true"
-    
+
     - name: codecov-flags
       description: |
         Comma-separated list of Codecov flags.
         Example: "e2e-tests,integration"
       type: string
       default: "e2e-tests"
-    
+
     - name: codecov-name
       description: |
         Name for Codecov upload (optional).
         Example: "E2E Tests - PR 123"
       type: string
       default: ""
-    
+
     # Git options
     - name: clone-depth
       description: |
@@ -86,25 +86,25 @@ spec:
         Set to 0 for full clone (needed for some coverage tools).
       type: string
       default: "1"
-    
+
     - name: skip-clone
       description: |
         Skip cloning repositories (for testing or if repos already cloned).
         Usually leave as false.
       type: string
       default: "false"
-    
+
     # Advanced options
     - name: workspace-path
       description: "Working directory for coverage processing"
       type: string
       default: "/workspace/coverport-process"
-    
+
     - name: keep-workspace
       description: "Keep workspace directory after processing (for debugging)"
       type: string
       default: "false"
-    
+
     - name: verbose
       description: "Enable verbose logging"
       type: string
@@ -147,12 +147,12 @@ spec:
       description: |
         Number of components successfully processed and uploaded.
         Example: "3"
-    
+
     - name: total-coverage
       description: |
         Total coverage percentage (if calculable).
         Example: "78.5%"
-    
+
     - name: codecov-urls
       description: |
         Newline-separated list of Codecov URLs for uploaded coverage.
@@ -161,51 +161,50 @@ spec:
   script: |
     #!/bin/sh
     set -e
-    
+
     log() { echo "📋 $*"; }
     error() { echo "❌ ERROR: $*" >&2; exit 1; }
     warn() { echo "⚠️  WARNING: $*"; }
-    
+
     log "Starting coverport coverage processing and upload (manifest-based workflow)"
-    
+
     # Check if upload is enabled
     if [ "$UPLOAD_CODECOV" != "true" ]; then
       log "Codecov upload disabled, skipping"
-      echo -n "0" > "$(step.results.components-processed.path)"
-      echo -n "N/A" > "$(step.results.total-coverage.path)"
-      echo -n "" > "$(step.results.codecov-urls.path)"
+      printf "0" > "$(step.results.components-processed.path)"
+      printf "N/A" > "$(step.results.total-coverage.path)"
+      printf "" > "$(step.results.codecov-urls.path)"
       exit 0
     fi
-    
+
     # Check for Codecov token
     if [ -z "$CODECOV_TOKEN" ]; then
       warn "CODECOV_TOKEN not set, skipping upload"
       warn "Set the codecov-token key in the coverport-secrets Secret to enable"
-      echo -n "0" > "$(step.results.components-processed.path)"
-      echo -n "N/A" > "$(step.results.total-coverage.path)"
-      echo -n "" > "$(step.results.codecov-urls.path)"
+      printf "0" > "$(step.results.components-processed.path)"
+      printf "N/A" > "$(step.results.total-coverage.path)"
+      printf "" > "$(step.results.codecov-urls.path)"
       exit 0
     fi
-    
+
     # Validate inputs
     if [ ! -d "$COVERAGE_PATH" ]; then
       error "Coverage path not found: $COVERAGE_PATH"
     fi
-    
+
     # Check for manifest file
     MANIFEST_FILE="$COVERAGE_PATH/metadata.json"
     if [ ! -f "$MANIFEST_FILE" ]; then
-      error "Manifest file not found: $MANIFEST_FILE"
-      error "The coverage directory must contain a metadata.json manifest created by coverport-collect"
+      error "Manifest file not found: $MANIFEST_FILE. The coverage directory must contain a metadata.json manifest created by coverport-collect"
     fi
-    
+
     if [ "$VERBOSE" = "true" ]; then
       set -x
     fi
-    
+
     log "Processing coverage from: $COVERAGE_PATH"
     log "Using manifest-based batch processing"
-    
+
     # Build coverport process command (batch mode with manifest)
     PROCESS_CMD="coverport process"
     PROCESS_CMD="$PROCESS_CMD --coverage-dir=$COVERAGE_PATH"
@@ -214,42 +213,42 @@ spec:
     PROCESS_CMD="$PROCESS_CMD --filters=$COVERAGE_FILTERS"
     PROCESS_CMD="$PROCESS_CMD --codecov-flags=$CODECOV_FLAGS"
     PROCESS_CMD="$PROCESS_CMD --clone-depth=$CLONE_DEPTH"
-    
+
     if [ "$GENERATE_HTML" = "true" ]; then
       PROCESS_CMD="$PROCESS_CMD --generate-html"
     fi
-    
+
     if [ -n "$WORKSPACE_PATH" ] && [ "$WORKSPACE_PATH" != "/workspace/coverport-process" ]; then
       PROCESS_CMD="$PROCESS_CMD --workspace=$WORKSPACE_PATH"
     fi
-    
+
     if [ "$SKIP_CLONE" = "true" ]; then
       PROCESS_CMD="$PROCESS_CMD --skip-clone"
     fi
-    
+
     if [ -n "$CODECOV_NAME" ]; then
       PROCESS_CMD="$PROCESS_CMD --codecov-name='$CODECOV_NAME'"
     fi
-    
+
     if [ "$KEEP_WORKSPACE" = "true" ]; then
       PROCESS_CMD="$PROCESS_CMD --keep-workspace"
     fi
-    
+
     if [ "$VERBOSE" = "true" ]; then
       PROCESS_CMD="$PROCESS_CMD --verbose"
     fi
-    
+
     # Execute processing (handles all components automatically)
     log "Executing: $PROCESS_CMD"
     if ! eval "$PROCESS_CMD"; then
       error "Coverage processing failed"
     fi
-    
+
     # Extract results from command output (coverport prints summary)
     # For now, use simple heuristics - could be improved with JSON output in future
     COMPONENT_COUNT=$(find "$COVERAGE_PATH" -mindepth 1 -maxdepth 1 -type d -not -name "*-workspace" 2>/dev/null | wc -l)
     TOTAL_COVERAGE="N/A"
-    
+
     # Try to get coverage from any workspace coverage file
     if [ -n "$WORKSPACE_PATH" ] && [ -d "$WORKSPACE_PATH" ]; then
       COVERAGE_FILE=$(find "$WORKSPACE_PATH" -name "coverage_filtered.out" 2>/dev/null | head -1 || echo "")
@@ -263,17 +262,16 @@ spec:
         fi
       fi
     fi
-    
+
     log "========================================"
     log "Processing Summary"
     log "========================================"
     log "Components processed: $COMPONENT_COUNT"
     log "Coverage: $TOTAL_COVERAGE (sample from one component)"
-    
-    # Write results
-    echo -n "$COMPONENT_COUNT" > "$(step.results.components-processed.path)"
-    echo -n "$TOTAL_COVERAGE" > "$(step.results.total-coverage.path)"
-    echo -n "" > "$(step.results.codecov-urls.path)"  # TODO: extract from coverport output
-    
-    log "✅ Coverage processing and upload complete"
 
+    # Write results
+    printf "%s" "$COMPONENT_COUNT" > "$(step.results.components-processed.path)"
+    printf "%s" "$TOTAL_COVERAGE" > "$(step.results.total-coverage.path)"
+    printf "" > "$(step.results.codecov-urls.path)"  # TODO: extract from coverport output
+
+    log "✅ Coverage processing and upload complete"
