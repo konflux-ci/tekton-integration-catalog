@@ -280,33 +280,6 @@ spec:
 
           kubectl get po -A
         } 2>&1 | tee -a $LOG_FILENAME
-    - name: update-component-deployment-with-sealights-token
-      image: quay.io/konflux-ci/tekton-integration-catalog/utils:latest
-      workingDir: /var/workdir
-      when:
-        - input: "$(params.component-name)"
-          operator: notin
-          values: [""]
-      script: |
-        #!/bin/bash
-        set -euo pipefail
-
-        {
-          export COMPONENT_NAME="$(params.component-name)"
-          export SEALIGHTS_TOKEN=$(< /build-credentials/sealights-token)
-
-          konflux_components=( build-service image-controller integration-service release-service )
-
-          for konflux_component in "${konflux_components[@]}"; do
-            if [[ "$konflux_component" == "$COMPONENT_NAME" ]]; then
-              echo "[INFO] Adding env var SEALIGHTS_TOKEN to the deployment of '$konflux_component'"
-              deployment_name=$(kubectl get deployment -o name -n "$konflux_component")
-              kubectl -n "$konflux_component" set env "$deployment_name" SEALIGHTS_TOKEN="$SEALIGHTS_TOKEN" --containers="*"
-            fi
-          done
-
-          ./wait-for-all.sh
-        } 2>&1 | tee -a $LOG_FILENAME
     - name: create-test-resources
       image: quay.io/konflux-ci/tekton-integration-catalog/utils:latest
       onError: continue
