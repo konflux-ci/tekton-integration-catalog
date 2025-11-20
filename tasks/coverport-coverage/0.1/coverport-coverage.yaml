@@ -30,64 +30,64 @@ spec:
         Example: "quay.io/org/app-instrumented@sha256:abc,quay.io/org/service-instrumented@sha256:def"
       type: string
       default: "quay.io/redhat-user-workloads-stage/psturc-tenant/go-coverage-http:ee282f9ede36db993d3b3d1e3da4bbd090f5f915"
-    
+
     - name: cluster-access-secret-name
       description: |
         Secret containing kubeconfig to access the testing cluster (where the instrumented images are running).
         Leave empty to use in-cluster config.
       type: string
-    
+
     - name: test-namespace
       description: |
         Kubernetes namespace where test pods are running.
         Leave empty to search all non-system namespaces.
       type: string
       default: ""
-    
+
     - name: test-name
       description: |
         Name for this test run (used in artifact naming and identification).
         If empty, auto-generated based on timestamp.
       type: string
       default: "e2e-tests"
-    
+
     - name: oci-container
       description: |
         OCI container reference where artifacts will be stored.
         Example: "quay.io/org/test-artifacts:tag"
       type: string
-    
+
     - name: upload-target
       description: |
         Coverage upload target: "codecov", "sonarcloud" (will be added in the future)
         Default is codecov only.
       type: string
       default: "codecov"
-    
+
     - name: codecov-flags
       description: |
         Comma-separated list of Codecov flags for categorizing coverage.
         Example: "e2e-tests,integration"
       type: string
       default: "e2e-tests"
-    
+
     - name: credentials-secret-name
       description: |
         Secret containing OCI registry credentials for pushing artifacts.
         Required for secure-push-oci step.
       type: string
       default: "coverport-secrets"
-  
+
   results:
     - name: coverage-collected
       description: Number of components with coverage collected
-    
+
     - name: coverage-uploaded
       description: Number of components successfully uploaded
-    
+
     - name: total-coverage
       description: Total coverage percentage across all components
-  
+
   volumes:
     - name: cluster-credentials
       secret:
@@ -115,14 +115,13 @@ spec:
     - name: collect-coverage
       onError: continue
       ref:
-        # name: coverport-collect
         resolver: git
         params:
           - name: url
-          # revert once related changes are merged to main
+            # revert once related changes are merged to main
             value: https://github.com/psturc/tekton-integration-catalog.git
           - name: revision
-          # revert once related changes are merged to main
+            # revert once related changes are merged to main
             value: KFLUXDP-591
           - name: pathInRepo
             value: stepactions/coverport-collect/0.1/coverport-collect.yaml
@@ -139,7 +138,7 @@ spec:
           value: "true"
         - name: verbose
           value: "false"
-    
+
     # Step 2: Push coverage artifacts to OCI registry
     - name: push-artifacts-to-oci
       ref:
@@ -158,21 +157,20 @@ spec:
           value: $(params.oci-container)
         - name: credentials-volume-name
           value: oci-credentials-volume
-    
+
     # Step 3: Process and upload coverage to services
     # Note: Uses manifest-based workflow - automatically processes all components
     # from the metadata.json manifest created by coverport-collect
     - name: upload-coverage
       onError: continue
       ref:
-        # name: coverport-upload
         resolver: git
         params:
           - name: url
-          # revert once related changes are merged to main
+            # revert once related changes are merged to main
             value: https://github.com/psturc/tekton-integration-catalog.git
           - name: revision
-          # revert once related changes are merged to main
+            # revert once related changes are merged to main
             value: KFLUXDP-591
           - name: pathInRepo
             value: stepactions/coverport-upload/0.1/coverport-upload.yaml
@@ -185,4 +183,3 @@ spec:
           value: $(params.codecov-flags)
         - name: verbose
           value: "false"
-
