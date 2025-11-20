@@ -1,0 +1,247 @@
+apiVersion: tekton.dev/v1beta1
+kind: StepAction
+metadata:
+  name: coverport-collect
+  labels:
+    app.kubernetes.io/name: coverport
+    app.kubernetes.io/component: stepaction
+  annotations:
+    tekton.dev/pipelines.minVersion: "0.56.0"
+    tekton.dev/categories: "Testing"
+    tekton.dev/tags: "coverage,testing,go"
+    tekton.dev/displayName: "Coverport - Collect Coverage"
+    tekton.dev/platforms: "linux/amd64,linux/arm64"
+spec:
+  description: |
+    Collects raw coverage data from instrumented applications running in Kubernetes pods.
+    
+    This StepAction:
+    - Discovers pods by image list, or label selector
+    - Collects binary coverage data via port-forward
+    - Saves raw coverage files to specified output path
+    - Creates a metadata.json manifest with collection parameters and component info
+    
+    The manifest enables simplified batch processing: the coverport-upload StepAction
+    can process all components automatically without needing to specify images again.
+    
+    The collected coverage can then be pushed to OCI registry using secure-push-oci
+    and later processed/uploaded using coverport-upload StepAction.
+    
+    For more information: https://github.com/konflux-ci/coverport
+
+  image: quay.io/konflux-ci/konflux-devprod/coverport-cli@sha256:bef3f7af97512649141bb273530be99f9afdebd6aaa1dfa795a0c84b5e322112
+
+  params:
+    - name: images
+      description: |
+        Comma-separated list of instrumented container image references.
+        These are the test images built with coverage instrumentation, NOT the production images from SNAPSHOT.
+        Example: "quay.io/org/app-instrumented@sha256:abc,quay.io/org/service-instrumented@sha256:def"
+      type: string
+    
+    - name: label-selector
+      description: |
+        Label selector to filter pods (alternative to instrumented images).
+        Example: "app=myapp,tier=backend"
+      type: string
+      default: ""
+    
+    - name: namespace
+      description: |
+        Kubernetes namespace to search for pods.
+        Leave empty to search all non-system namespaces.
+      type: string
+      default: ""
+    
+    # Collection parameters
+    - name: test-name
+      description: |
+        Name for this coverage collection run.
+        If empty, auto-generated based on timestamp.
+      type: string
+      default: ""
+    
+    - name: coverage-port
+      description: "Port where coverage server is listening in pods"
+      type: string
+      default: "9095"
+    
+    - name: output-path
+      description: |
+        Output directory path for collected coverage data.
+        Typically set to /workspace/artifact-dir/coverage for integration
+        with secure-push-oci StepAction.
+      type: string
+      default: "/workspace/coverage"
+    
+    - name: coverage-filters
+      description: |
+        Comma-separated list of file patterns to exclude from coverage reports.
+        Example: "coverage_server.go,*_test.go"
+      type: string
+      default: "coverage_server.go"
+    
+    # Processing options
+    - name: generate-reports
+      description: |
+        Generate text and filtered coverage reports during collection.
+        Set to false to only collect raw binary coverage.
+        Note: HTML generation has been moved to coverport-upload (process phase)
+        as it requires source code access.
+      type: string
+      default: "true"
+    
+    - name: remap-paths
+      description: |
+        Enable automatic path remapping for coverage reports.
+        Usually not needed during collection, handled in upload phase.
+      type: string
+      default: "false"
+    
+    # Advanced options
+    - name: timeout
+      description: "Timeout in seconds for coverage collection operations"
+      type: string
+      default: "120"
+    
+    - name: verbose
+      description: "Enable verbose logging"
+      type: string
+      default: "false"
+
+  results:
+    - name: coverage-path
+      description: |
+        Path to the collected coverage data directory.
+        This path should be included in artifact pushes.
+    
+    - name: components-collected
+      description: |
+        Number of components for which coverage was collected.
+        Example: "3"
+    
+    - name: test-name
+      description: |
+        The test name used for this collection run.
+        Example: "e2e-tests-20241119-123456"
+
+  env:
+    - name: IMAGES
+      value: $(params.images)
+    - name: LABEL_SELECTOR
+      value: $(params.label-selector)
+    - name: NAMESPACE
+      value: $(params.namespace)
+    - name: TEST_NAME
+      value: $(params.test-name)
+    - name: COVERAGE_PORT
+      value: $(params.coverage-port)
+    - name: OUTPUT_PATH
+      value: $(params.output-path)
+    - name: COVERAGE_FILTERS
+      value: $(params.coverage-filters)
+    - name: GENERATE_REPORTS
+      value: $(params.generate-reports)
+    - name: REMAP_PATHS
+      value: $(params.remap-paths)
+    - name: TIMEOUT
+      value: $(params.timeout)
+    - name: VERBOSE
+      value: $(params.verbose)
+
+  script: |
+    #!/bin/sh
+    set -e
+    
+    log() { echo "📋 $*"; }
+    error() { echo "❌ ERROR: $*" >&2; exit 1; }
+    warn() { echo "⚠️  WARNING: $*"; }
+    
+    log "Starting coverport coverage collection"
+    
+    # Validate inputs
+    if [ -z "$IMAGES" ] && [ -z "$LABEL_SELECTOR" ]; then
+      error "Must specify one of: images, or label-selector"
+    fi
+    
+    # Build coverport collect command
+    CMD="coverport collect"
+    
+    # Discovery method
+    if [ -n "$IMAGES" ]; then
+      log "Using instrumented image list for pod discovery"
+      CMD="$CMD --images=$IMAGES"
+    elif [ -n "$LABEL_SELECTOR" ]; then
+      log "Using label selector for pod discovery"
+      CMD="$CMD --label-selector=$LABEL_SELECTOR"
+      if [ -z "$NAMESPACE" ]; then
+        error "namespace is required when using label-selector"
+      fi
+    fi
+    
+    # Namespace
+    if [ -n "$NAMESPACE" ]; then
+      CMD="$CMD --namespace=$NAMESPACE"
+    fi
+    
+    # Test name
+    if [ -z "$TEST_NAME" ]; then
+      TEST_NAME="coverage-$(date +%Y%m%d-%H%M%S)"
+    fi
+    CMD="$CMD --test-name=$TEST_NAME"
+    
+    # Output directory
+    mkdir -p "$OUTPUT_PATH"
+    CMD="$CMD --output=$OUTPUT_PATH"
+    
+    # Collection options
+    CMD="$CMD --port=$COVERAGE_PORT"
+    CMD="$CMD --timeout=$TIMEOUT"
+    
+    if [ -n "$COVERAGE_FILTERS" ]; then
+      CMD="$CMD --filters=$COVERAGE_FILTERS"
+    fi
+    
+    # Processing options
+    if [ "$GENERATE_REPORTS" = "false" ]; then
+      CMD="$CMD --skip-generate"
+    fi
+    
+    if [ "$REMAP_PATHS" = "false" ]; then
+      CMD="$CMD --remap-paths=false"
+    fi
+    
+    # Note: HTML generation moved to coverport-upload (process phase)
+    
+    # Verbose mode
+    if [ "$VERBOSE" = "true" ]; then
+      CMD="$CMD --verbose"
+      set -x
+    fi
+    
+    # Execute collection
+    log "Executing: $CMD"
+    eval "$CMD"
+    
+    # Count collected components
+    COMPONENT_COUNT=0
+    if [ -d "$OUTPUT_PATH" ]; then
+      COMPONENT_COUNT=$(find "$OUTPUT_PATH" -mindepth 1 -maxdepth 1 -type d | wc -l)
+    fi
+    
+    # Write results
+    echo -n "$OUTPUT_PATH" > "$(step.results.coverage-path.path)"
+    echo -n "$COMPONENT_COUNT" > "$(step.results.components-collected.path)"
+    echo -n "$TEST_NAME" > "$(step.results.test-name.path)"
+    
+    log "✅ Coverage collection complete"
+    log "   Output path: $OUTPUT_PATH"
+    log "   Components: $COMPONENT_COUNT"
+    log "   Test name: $TEST_NAME"
+    
+    # List collected files for visibility
+    if [ "$VERBOSE" = "true" ] && [ -d "$OUTPUT_PATH" ]; then
+      log "Collected files:"
+      find "$OUTPUT_PATH" -type f | head -20
+    fi
+
