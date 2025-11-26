@@ -110,11 +110,16 @@ spec:
       type: string
       default: "false"
 
+    - name: credentials-secret-name
+      description: "Name of the Secret containing the Codecov token and OCI registry credentials"
+      type: string
+      default: "coverport-secrets"
+
   env:
     - name: CODECOV_TOKEN
       valueFrom:
         secretKeyRef:
-          name: coverport-secrets
+          name: $(params.credentials-secret-name)
           key: codecov-token
           optional: true
     - name: COVERAGE_PATH
@@ -180,7 +185,7 @@ spec:
     # Check for Codecov token
     if [ -z "$CODECOV_TOKEN" ]; then
       warn "CODECOV_TOKEN not set, skipping upload"
-      warn "Set the codecov-token key in the coverport-secrets Secret to enable"
+      warn "Set the codecov-token key in the Secret specified by credentials-secret-name parameter to enable"
       printf "0" > "$(step.results.components-processed.path)"
       printf "N/A" > "$(step.results.total-coverage.path)"
       printf "" > "$(step.results.codecov-urls.path)"
