@@ -114,11 +114,9 @@ spec:
         resolver: git
         params:
           - name: url
-            # revert once related changes are merged to main
-            value: https://github.com/psturc/tekton-integration-catalog.git
+            value: https://github.com/konflux-ci/tekton-integration-catalog.git
           - name: revision
-            # revert once related changes are merged to main
-            value: KFLUXDP-591
+            value: main
           - name: pathInRepo
             value: stepactions/coverport-collect/0.1/coverport-collect.yaml
       params:
@@ -163,11 +161,9 @@ spec:
         resolver: git
         params:
           - name: url
-            # revert once related changes are merged to main
-            value: https://github.com/psturc/tekton-integration-catalog.git
+            value: https://github.com/konflux-ci/tekton-integration-catalog.git
           - name: revision
-            # revert once related changes are merged to main
-            value: KFLUXDP-591
+            value: main
           - name: pathInRepo
             value: stepactions/coverport-upload/0.1/coverport-upload.yaml
       params:
