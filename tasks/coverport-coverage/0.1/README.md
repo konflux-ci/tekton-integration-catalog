@@ -17,7 +17,7 @@ This task is designed to integrate with Konflux Integration pipelines and uses `
 | oci-container | OCI container reference where artifacts will be stored. | | ✅ |
 | upload-target | Coverage upload target: "codecov", "sonarcloud" (future). | codecov | ❌ |
 | codecov-flags | Comma-separated list of Codecov flags for categorizing coverage. | e2e-tests | ❌ |
-| credentials-secret-name | Secret containing OCI registry credentials for pushing artifacts. | coverport-secrets | ❌ |
+| credentials-secret-name | Secret containing OCI registry credentials and Codecov token. | coverport-secrets | ❌ |
 
 ## Results
 
@@ -59,7 +59,8 @@ spec:
           value: "quay.io/org/test-artifacts:tag"
         - name: cluster-access-secret-name
           value: "test-cluster-kubeconfig"
+        - name: credentials-secret-name  # Optional: override default secret name
+          value: "my-custom-secret"
 ```
 
 ### Suitable for upstream communities
-

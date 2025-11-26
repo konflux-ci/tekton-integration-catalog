@@ -22,6 +22,7 @@ More information: https://github.com/konflux-ci/coverport
 |workspace-path|Working directory for coverage processing|/workspace/coverport-process|false|
 |keep-workspace|Keep workspace directory after processing (for debugging)|false|false|
 |verbose|Enable verbose logging|false|false|
+|credentials-secret-name|Name of the Secret containing the Codecov token and OCI registry credentials|coverport-secrets|false|
 
 ## Results
 
@@ -33,14 +34,14 @@ More information: https://github.com/konflux-ci/coverport
 
 ## Environment Variables
 
-Requires `CODECOV_TOKEN` to be set via a secret:
+Requires `CODECOV_TOKEN` to be set via a secret. The secret name is configurable via the `credentials-secret-name` parameter (defaults to `coverport-secrets`):
 
 ```yaml
 env:
   - name: CODECOV_TOKEN
     valueFrom:
       secretKeyRef:
-        name: coverport-secrets
+        name: $(params.credentials-secret-name)
         key: codecov-token
 ```
 
@@ -64,6 +65,8 @@ env:
       value: "true"
     - name: codecov-flags
       value: "e2e-tests,integration"
+    - name: credentials-secret-name  # Optional: override default secret name
+      value: "my-custom-secret"
 ```
 
 ### Suitable for upstream communities

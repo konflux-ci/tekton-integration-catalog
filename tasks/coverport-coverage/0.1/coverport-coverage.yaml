@@ -73,8 +73,8 @@ spec:
 
     - name: credentials-secret-name
       description: |
-        Secret containing OCI registry credentials for pushing artifacts.
-        Required for secure-push-oci step.
+        Secret containing OCI registry credentials for pushing artifacts and Codecov token for uploading coverage.
+        Required for both secure-push-oci and coverport-upload steps.
       type: string
       default: "coverport-secrets"
 
@@ -92,10 +92,6 @@ spec:
     - name: cluster-credentials
       secret:
         secretName: $(params.cluster-access-secret-name)
-        optional: true
-    - name: coverage-secrets-volume
-      secret:
-        secretName: coverport-secrets
         optional: true
     - name: oci-credentials-volume
       secret:
@@ -181,5 +177,7 @@ spec:
           value: "true"
         - name: codecov-flags
           value: $(params.codecov-flags)
+        - name: credentials-secret-name
+          value: $(params.credentials-secret-name)
         - name: verbose
           value: "false"
