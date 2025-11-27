@@ -195,7 +195,7 @@ spec:
         - name: cluster-info
           mountPath: /opt/cluster-info
       script: |
-        #!/bin/sh
+        #!/bin/bash
         set -euo pipefail
         if [[ $(params.debug) == "true" ]]; then set -xeuo pipefail; fi
 
