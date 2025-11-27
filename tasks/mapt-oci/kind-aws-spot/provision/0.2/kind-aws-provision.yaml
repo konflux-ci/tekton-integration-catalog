@@ -86,6 +86,10 @@ spec:
       description: |
         The amount of memory (in GiB) to allocate to the virtual machine.
       default: '64'
+    - name: compute-sizes
+      description: |
+        Comma-separated list of compute sizes, e.g.: `m5a.large,m6a.large` (takes presendence over `arch`, `cpus` and `memory`)
+      default: ''
     - name: nested-virt
       description: |
         Enables nested virtualization if set to `true`. Useful for running Kind inside a VM.
