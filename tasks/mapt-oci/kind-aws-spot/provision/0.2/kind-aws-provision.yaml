@@ -86,6 +86,10 @@ spec:
       description: |
         The amount of memory (in GiB) to allocate to the virtual machine.
       default: '64'
+    - name: compute-sizes
+      description: |
+        Comma-separated list of compute sizes, e.g.: `m5a.large,m6a.large` (takes presendence over `arch`, `cpus` and `memory`)
+      default: ''
     - name: nested-virt
       description: |
         Enables nested virtualization if set to `true`. Useful for running Kind inside a VM.
@@ -195,7 +199,7 @@ spec:
         - name: cluster-info
           mountPath: /opt/cluster-info
       script: |
-        #!/bin/sh
+        #!/bin/bash
         set -euo pipefail
         if [[ $(params.debug) == "true" ]]; then set -xeuo pipefail; fi
 
@@ -208,9 +212,13 @@ spec:
         cmd+="--project-name kind-$(params.id) "
         cmd+="--backed-url s3://${BUCKET}/mapt/kind/$(params.id) "
         cmd+="--conn-details-output /opt/cluster-info "
-        cmd+="--arch $(params.arch) "
-        cmd+="--cpus $(params.cpus) "
-        cmd+="--memory $(params.memory) "
+        if [[ "$(params.compute-sizes)" != "" ]]; then
+          cmd+="--compute-sizes $(params.compute-sizes) "
+        else
+          cmd+="--arch $(params.arch) "
+          cmd+="--cpus $(params.cpus) "
+          cmd+="--memory $(params.memory) "
+        fi
         if [[ "$(params.extra-port-mappings)" != "" ]]; then cmd+="--extra-port-mappings $(params.extra-port-mappings) "; fi
         if [[ $(params.nested-virt) == "true" ]]; then cmd+="--nested-virt "; fi
         if [[ $(params.version) != "" ]]; then cmd+="--version $(params.version) "; fi
