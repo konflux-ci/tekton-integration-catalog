@@ -53,8 +53,7 @@ spec:
 
         CMD="kubectl"
 
-        # Fetch logs by TaskRun and get the Pod name
-        ${CMD} get pr "${PR_NAME}" -o json -n "${PR_NAMESPACE}" | jq -r '.status.childReferences[].name' | while read taskrun; do
+        ${CMD} get pr "${PR_NAME}" -o json -n "${PR_NAMESPACE}" | jq -r '.status.childReferences[].name' | while read -r taskrun; do
             POD_NAME=$(${CMD} get tr "${taskrun}" -o json -n "${PR_NAMESPACE}" | jq -r '.status.podName // empty')
 
             if [ -n "$POD_NAME" ]; then
@@ -66,7 +65,8 @@ spec:
         # Archive and set result if logs exist
         if [ -s "${LOG_FILENAME}" ]; then
             tar -czf "${ARCHIVE_FILENAME}" "${LOG_FILENAME}"
-            echo -n "${IMAGE_TAG}" > $(results.LOG_ARTIFACT_TAG.path)
+            # Fix SC2046: Quoted command substitution to prevent word splitting.
+            echo -n "${IMAGE_TAG}" > "$(results.LOG_ARTIFACT_TAG.path)"
         else
             exit 0
         fi
@@ -81,7 +81,7 @@ spec:
         #!/bin/bash
         set -euo pipefail
 
-        IMAGE_TAG=$(cat $(results.LOG_ARTIFACT_TAG.path))
+        IMAGE_TAG=$(cat "$(results.LOG_ARTIFACT_TAG.path)")
 
         REPO_NAME_ONLY="${OCI_REFERENCE_BASE%:*}"
         FULL_OCI_REF="${REPO_NAME_ONLY}:${IMAGE_TAG}"
