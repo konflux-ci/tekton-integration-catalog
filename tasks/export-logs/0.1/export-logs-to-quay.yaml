@@ -49,7 +49,6 @@ spec:
         LOG_FILENAME="all-logs.txt"
         ARCHIVE_FILENAME="logs.tar.gz"
 
-        REPO_NAME_ONLY="${OCI_REPO_WITH_TAG%:*}"
         IMAGE_TAG="${PR_NAME}-$(date +%Y%m%d%H%M%S)-logs"
 
         CMD="kubectl"
@@ -102,5 +101,5 @@ spec:
           --artifact-type "application/vnd.logs.tar+gzip" \
           "${FULL_OCI_REF}" \
           "logs.tar.gz:application/vnd.logs.tar+gzip"
-          
+
         echo "Successfully pushed log artifact to ${FULL_OCI_REF}"
