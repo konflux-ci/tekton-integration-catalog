@@ -49,6 +49,7 @@ spec:
         LOG_FILENAME="all-logs.txt"
         ARCHIVE_FILENAME="logs.tar.gz"
 
+        # shellcheck disable=SC2153
         IMAGE_TAG="${PR_NAME}-$(date +%Y%m%d%H%M%S)-logs"
 
         CMD="kubectl"
