@@ -12,7 +12,7 @@ metadata:
     tekton.dev/tags: infrastructure, aws, kind
     tekton.dev/displayName: "Kind Cloud Single Node - Create"
     tekton.dev/platforms: "linux/amd64, linux/arm64"
-    mapt/version: "v0.9.5"
+    mapt/version: "v0.9.9"
 spec:
   description: |
     Creates a single-node Kubernetes cluster using Kind on AWS, powered by the Mapt CLI.
@@ -192,7 +192,7 @@ spec:
 
     - name: provisioner
       onError: continue
-      image: quay.io/redhat-developer/mapt:v0.9.7
+      image: quay.io/redhat-developer/mapt:v0.9.9
       volumeMounts:
         - name: aws-credentials
           mountPath: /opt/aws-credentials
