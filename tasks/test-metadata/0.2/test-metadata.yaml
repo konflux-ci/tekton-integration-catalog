@@ -92,7 +92,7 @@ spec:
             "konflux_component": "$KONFLUX_COMPONENT_NAME",
             "snapshot": $SNAPSHOT,
             "git": {
-                "pull_request_number": $PULL_REQUEST_NUMBER,
+                "pull_request_number": "$PULL_REQUEST_NUMBER",
                 "pull_request_author": "$PR_AUTHOR",
                 "org": "$GIT_ORGANIZATION",
                 "repo": "$GIT_REPOSITORY",
