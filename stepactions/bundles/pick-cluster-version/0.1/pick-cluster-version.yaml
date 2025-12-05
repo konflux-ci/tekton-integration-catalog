@@ -55,8 +55,21 @@ spec:
       echo "$ocp_version" > "$(step.results.ocpVersion.path)"
       echo "OCP version '$ocp_version' is in the cluster supported versions list."
     else
-      echo "OCP version '$ocp_version' is NOT in the list of cluster supported versions: ${CLUSTER_VERSIONS[*]}. Exiting as a no-op."
-      echo -n "" > "$(step.results.ocpVersion.path)"
+      echo "OCP version '$ocp_version' is NOT in the list of cluster supported versions: ${CLUSTER_VERSIONS[*]}."
+
+      # Find the highest version in the list
+      highest_version=$(printf "%s\n" "${CLUSTER_VERSIONS[@]}" | sort -V | tail -n1)
+      echo "Highest available version in the list: $highest_version"
+
+      # Compare ocp_version with the highest version
+      # If ocp_version is greater than highest_version, use highest_version
+      if [ "$(printf '%s\n%s\n' "$ocp_version" "$highest_version" | sort -V | tail -n1)" = "$ocp_version" ] && [ "$ocp_version" != "$highest_version" ]; then
+        echo "OCP version '$ocp_version' is higher than the highest available version '$highest_version'. Using '$highest_version'."
+        echo "$highest_version" > "$(step.results.ocpVersion.path)"
+      else
+        echo "OCP version '$ocp_version' is not higher than the highest available version. Exiting as a no-op."
+        echo -n "" > "$(step.results.ocpVersion.path)"
+      fi
       exit 0
     fi
   args:
