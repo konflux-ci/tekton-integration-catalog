@@ -135,7 +135,6 @@ spec:
         {
             "container_image": "$COMPONENT_CONTAINER_IMAGE",
             "konflux_component": "$KONFLUX_COMPONENT_NAME",
-            "snapshot": $SNAPSHOT,
             "git": {
                 "pull_request_number": $PULL_REQUEST_NUMBER,
                 "pull_request_author": "$PR_AUTHOR",
