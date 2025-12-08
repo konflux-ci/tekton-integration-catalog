@@ -73,14 +73,13 @@ The task produces the following results, combining both individual outputs (from
 ### Consolidated Results (0.2 approach)
 
 13. **job-spec**: The Konflux CI job spec metadata generated.
-    - **Description**: This result contains a JSON object with comprehensive details about the job specification, including container image, component name, git information, and event type. It encapsulates all the relevant metadata for the CI job in a structured format, aiding in documentation and analysis.
+    - **Description**: This result contains a JSON object with comprehensive details about the job specification, including container image, component name, git information, and event type. It encapsulates all the relevant metadata for the CI job in a structured format, aiding in documentation and analysis. Note: The snapshot data is excluded from this result to avoid size limitations and is available via the SNAPSHOT parameter.
 
     The job-spec contains the following structure:
     ```json
     {
         "container_image": "quay.io/example/component:latest",
         "konflux_component": "component-name",
-        "snapshot": { /* full snapshot JSON */ },
         "git": {
             "pull_request_number": "123",
             "pull_request_author": "username",
