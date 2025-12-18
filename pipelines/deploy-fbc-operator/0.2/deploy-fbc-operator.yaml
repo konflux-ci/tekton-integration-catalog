@@ -274,7 +274,7 @@ spec:
               - name: channelName
                 value: $(params.CHANNEL_NAME)
           - name: process-image-mirror-set
-            image: quay.io/konflux-ci/konflux-test:v1.4.31@sha256:a7cae9e96663e277a3904d0c78630508ddb6cc8eebaa912a840bd20f68dcaad1
+            image: quay.io/konflux-ci/konflux-test:v1.4.44@sha256:00d5ba3ac4fadb315da2199e931c1167f2b45884d2990de39104dfa9b78117d4
             computeResources:
               limits:
                 memory: 512Mi
@@ -321,7 +321,7 @@ spec:
               reg_and_repo=$(get_image_registry_and_repository "${BUNDLE_IMAGE}")
 
               #  Look up mirrors for this upstream image
-              mirrors=$(jq -r --arg source "${reg_and_repo}" '.[$source][]?' /tekton/home/mirror-map.txt)
+              mirrors=$(get_image_mirror_list "${reg_and_repo}" "$(cat /tekton/home/mirror-map.txt)")
 
               if [[ -n "$mirrors" ]]; then
                 echo "Found mirrors for $reg_and_repo:"
