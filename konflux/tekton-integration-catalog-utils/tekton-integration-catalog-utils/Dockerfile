@@ -3,26 +3,15 @@ FROM registry.redhat.io/ubi9/go-toolset@sha256:e0ad156b08e0b50ad509d79513e13e8a3
 
 USER root
 
-# renovate: datasource=repology depName=homebrew/openshift-cli
 ARG OC_VERSION=4.15.9
-# renovate: datasource=github-releases depName=openshift/rosa
 ARG ROSA_VERSION=v1.2.56
-# renovate: datasource=github-releases depName=openshift-online/ocm-cli
 ARG OCM_VERSION=v1.0.3
-# renovate: datasource=github-releases depName=stedolan/jq
 ARG JQ_VERSION=1.6
-# renovate: datasource=github-releases depName=mikefarah/yq
 ARG YQ_VERSION=4.43.1
-# renovate: datasource=github-releases depName=sigstore/cosign
 ARG COSIGN_VERSION=v2.4.1
-
 ARG ORAS_VERSION=1.2.0
-
-ARG SHELLCHECK_VERSION=stable
-
-# renovate: datasource=github-releases depName=golangci/golangci-lint
+ARG SHELLCHECK_VERSION=v0.10.0
 ARG GOLANGCI_LINT_VERSION="v1.59.0"
-
 ARG LEAKTK_VERSION="0.0.16"
 
 RUN curl -L "https://github.com/sigstore/cosign/releases/download/${COSIGN_VERSION}/cosign-linux-amd64" -o /usr/local/bin/cosign && \
