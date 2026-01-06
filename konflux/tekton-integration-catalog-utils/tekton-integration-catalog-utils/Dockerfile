@@ -4,19 +4,19 @@ FROM registry.redhat.io/ubi9/go-toolset@sha256:e0ad156b08e0b50ad509d79513e13e8a3
 USER root
 
 # renovate: datasource=repology depName=homebrew/openshift-cli
-ARG OC_VERSION=4.15.9
+ARG OC_VERSION=4.20.8
 # renovate: datasource=github-releases depName=openshift/rosa
-ARG ROSA_VERSION=v1.2.56
+ARG ROSA_VERSION=v1.2.59
 # renovate: datasource=github-releases depName=openshift-online/ocm-cli
-ARG OCM_VERSION=v1.0.3
+ARG OCM_VERSION=v1.0.10
 # renovate: datasource=github-releases depName=stedolan/jq
 ARG JQ_VERSION=1.6
 # renovate: datasource=github-releases depName=mikefarah/yq
 ARG YQ_VERSION=4.43.1
 # renovate: datasource=github-releases depName=sigstore/cosign
-ARG COSIGN_VERSION=v2.4.1
+ARG COSIGN_VERSION=v3.0.3
 
-ARG ORAS_VERSION=1.2.0
+ARG ORAS_VERSION=1.3.0
 
 ARG SHELLCHECK_VERSION=stable
 
