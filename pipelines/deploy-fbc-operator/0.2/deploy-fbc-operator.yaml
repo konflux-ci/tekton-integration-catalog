@@ -671,15 +671,6 @@ spec:
 
               echo "[$(date --utc +%FT%T.%3NZ)] OperatorGroup name is \"$OPERATORGROUP\""
 
-              # Update the image digest with the 0th manifest digest
-              if updated_fbc_image=$(resolve_to_0th_manifest_digest "$FBC_FRAGMENT"); then
-                  echo "Updating FBC fragment image from $FBC_FRAGMENT to $updated_fbc_image"
-                  FBC_FRAGMENT="$updated_fbc_image"
-              else
-                  echo "Failed to resolve 0th manifest digest" >&2
-                  exit 1
-              fi
-
               CS_NAMESTANZA="generateName: oo-"
 
               CS_MANIFEST=$(cat <<EOF
