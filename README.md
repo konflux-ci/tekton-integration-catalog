@@ -6,6 +6,22 @@ Welcome to the **Tekton Integration Catalog**! This repository contains a collec
 
 With prebuilt Tekton Tasks and StepActions, this catalog provides reusable components that help integrate and validate application components. By leveraging these resources, teams can streamline their testing processes and focus on delivering high-quality software.
 
+## Testing
+
+This repository includes functional tests for Tekton tasks. Tests run automatically in CI for modified tasks.
+
+See [docs/TESTING.md](docs/TESTING.md) for details on writing and running tests.
+
+### Quick Start
+
+Run tests for a specific task:
+
+```bash
+.github/scripts/test_tekton_tasks.sh tasks/linters/hadolint/0.1
+```
+
+Tests require a kind cluster with Konflux CI installed.
+
 ## 📁 Structure
 
 This repository is organized into several key directories, each serving a specific purpose for Tekton-related resources.

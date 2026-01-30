@@ -1,0 +1,72 @@
+---
+apiVersion: tekton.dev/v1
+kind: Pipeline
+metadata:
+  name: test-yamllint-pass
+spec:
+  description: |
+    Test that the yaml-lint task succeeds when given valid YAML files.
+  tasks:
+    - name: setup-test-repo
+      taskSpec:
+        volumes:
+          - name: git-repos
+            persistentVolumeClaim:
+              claimName: git-repos
+        steps:
+          - name: create-test-repo
+            image: quay.io/konflux-qe-incubator/konflux-qe-tools:latest
+            volumeMounts:
+              - name: git-repos
+                mountPath: /git-repos
+            script: |
+              #!/bin/bash
+              set -e
+
+              # Clean up any existing test repo
+              rm -rf /git-repos/test-repo
+
+              # Create test directory in the PVC
+              mkdir -p /git-repos/test-repo
+              cd /git-repos/test-repo
+
+              # Create valid YAML file
+              cat > valid.yaml <<'EOF'
+              ---
+              apiVersion: v1
+              kind: ConfigMap
+              metadata:
+                name: test-config
+              data:
+                key1: value1
+                key2: value2
+              EOF
+
+              # Initialize git repo
+              git init
+              git config user.email "test@example.com"
+              git config user.name "Test User"
+              git add valid.yaml
+              git commit -m "Add valid YAML"
+              git branch -M main
+
+              echo "Test repository created at /git-repos/test-repo"
+
+              # Signal to git-daemon that repos are ready
+              mkdir -p /git-repos/.initialized
+              echo "Repos initialized" > /git-repos/.initialized/marker
+
+              # Wait for git-daemon to start serving (needs time to install git-daemon package)
+              echo "Waiting for git-daemon to start..."
+              sleep 15
+
+    - name: run-yamllint
+      runAfter:
+        - setup-test-repo
+      taskRef:
+        name: yaml-lint
+      params:
+        - name: git-url
+          value: "git://git-daemon.yaml-lint-0-1.svc.cluster.local:9418/test-repo"
+        - name: git-revision
+          value: "main"
