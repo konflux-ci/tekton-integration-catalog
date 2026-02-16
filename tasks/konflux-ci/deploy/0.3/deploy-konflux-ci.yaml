@@ -65,6 +65,13 @@ spec:
       type: string
       description: |
         A name of the secret containing credentials for deploying image-controller, smee.io and GitHub application used for building application using Konflux
+    - name: harden-kyverno
+      description: |
+        Set to 'true' to harden Kyverno for high-throughput E2E workloads.
+        Scales admission-controller to 3 replicas with increased resources,
+        background-controller to 2 replicas, and disables the reports-controller
+        to reduce etcd write churn.
+      default: 'false'
 
   volumes:
     - name: cluster-credentials
@@ -138,7 +145,7 @@ spec:
         {
           echo "[INFO] Fetching and executing solve-pr-pairing.sh..."
           curl -sSfL https://raw.githubusercontent.com/konflux-ci/tekton-integration-catalog/main/scripts/konflux-ci-deploy/solve-pr-pairing.sh | bash
-        } 2>&1 | tee -a $LOG_FILENAME
+        } 2>&1 | tee -a "$LOG_FILENAME"
     - name: update-kustomization
       image: quay.io/konflux-ci/tekton-integration-catalog/utils:latest
       onError: continue
@@ -295,6 +302,73 @@ spec:
         {
         echo "[INFO] Creating Test Resources..."
         ./deploy-test-resources.sh
+        } 2>&1 | tee -a $LOG_FILENAME
+
+    - name: harden-kyverno
+      image: quay.io/konflux-ci/tekton-integration-catalog/utils:latest
+      onError: continue
+      workingDir: /var/workdir
+      env:
+        - name: HARDEN_KYVERNO
+          value: "$(params.harden-kyverno)"
+      script: |
+        #!/bin/bash
+        set -euo pipefail
+
+        if [[ "${HARDEN_KYVERNO}" != "true" ]]; then
+          echo "[INFO] Kyverno hardening is disabled (harden-kyverno=${HARDEN_KYVERNO}). Skipping."
+          exit 0
+        fi
+
+        {
+          echo "[INFO] Hardening Kyverno for high-throughput E2E workloads..."
+
+          # ── Wait for Kyverno to be available ──────────────────────────
+          echo "[INFO] Waiting for kyverno-admission-controller deployment..."
+          if ! kubectl -n kyverno wait --for=condition=Available deployment/kyverno-admission-controller --timeout=180s 2>/dev/null; then
+            echo "[WARNING] kyverno-admission-controller not found or not available. Skipping Kyverno hardening."
+            exit 0
+          fi
+
+          # ── Scale admission-controller to 3 replicas with increased resources ──
+          echo "[INFO] Scaling kyverno-admission-controller to 3 replicas with increased resources..."
+          kubectl -n kyverno patch deployment kyverno-admission-controller --type=strategic -p '{
+            "spec": {
+              "replicas": 3,
+              "template": {
+                "spec": {
+                  "containers": [{
+                    "name": "kyverno",
+                    "resources": {
+                      "requests": {"memory": "512Mi", "cpu": "200m"},
+                      "limits":   {"memory": "4Gi"}
+                    }
+                  }]
+                }
+              }
+            }
+          }'
+
+          # ── Scale background-controller to 2 replicas ──────────────
+          echo "[INFO] Scaling kyverno-background-controller to 2 replicas..."
+          kubectl -n kyverno patch deployment kyverno-background-controller --type=strategic -p '{
+            "spec": {"replicas": 2}
+          }' 2>/dev/null || echo "[WARNING] kyverno-background-controller not found, skipping."
+
+          # ── Disable reports-controller to reduce etcd write churn ──
+          echo "[INFO] Scaling kyverno-reports-controller to 0 replicas to reduce etcd churn..."
+          kubectl -n kyverno scale deployment kyverno-reports-controller --replicas=0 2>/dev/null \
+            || echo "[WARNING] kyverno-reports-controller not found, skipping."
+
+          # ── Wait for rollout ───────────────────────────────────────
+          echo "[INFO] Waiting for kyverno-admission-controller rollout..."
+          kubectl -n kyverno rollout status deployment/kyverno-admission-controller --timeout=120s || true
+
+          echo "[INFO] Waiting for kyverno-background-controller rollout..."
+          kubectl -n kyverno rollout status deployment/kyverno-background-controller --timeout=120s 2>/dev/null || true
+
+          echo "[INFO] Kyverno hardening complete."
+          kubectl -n kyverno get pods
         } 2>&1 | tee -a $LOG_FILENAME
 
     - name: secure-push-oci
