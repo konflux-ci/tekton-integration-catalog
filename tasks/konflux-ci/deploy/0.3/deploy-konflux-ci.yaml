@@ -223,8 +223,17 @@ spec:
           sed -i "s|localhost|${server_ip}|g" dependencies/pipelines-as-code/custom-console-patch.yaml
           sed -i "s|localhost|${server_ip}|g" konflux-ci/ui/core/proxy/proxy.yaml
 
-          sed -i "s|http://pipelines-as-code-controller.*:|http://${server_ip}:|g" konflux-ci/build-service/core/build-service-env-patch.yaml
           sed -i "s|http://pipelines-as-code-controller.*:|http://${server_ip}:|g" dependencies/smee/smee-client.yaml
+
+          # Configure build-service PAC_WEBHOOK_URL to use smee channel for Codeberg/GitLab webhook support
+          if [ -f /build-credentials/smee-channel ]; then
+            SMEE_CHANNEL=$(< /build-credentials/smee-channel)
+            echo "[INFO] Configuring PAC_WEBHOOK_URL to use smee channel: ${SMEE_CHANNEL}"
+            sed -i "s|http://pipelines-as-code-controller.pipelines-as-code.svc.cluster.local:8180|${SMEE_CHANNEL}|g" konflux-ci/build-service/core/build-service-env-patch.yaml
+          else
+            echo "[INFO] No smee-channel found, using server IP for PAC_WEBHOOK_URL"
+            sed -i "s|http://pipelines-as-code-controller.*:|http://${server_ip}:|g" konflux-ci/build-service/core/build-service-env-patch.yaml
+          fi
 
           kubectl cluster-info
 
