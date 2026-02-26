@@ -62,6 +62,9 @@ spec:
         The secret name containing credentials for container registry where the artifacts will be stored.
         The secret should contain `data.oci-storage-dockerconfigjson: <dockerconfigjson-content>`
       default: "konflux-test-infra"
+    - name: skip-quay
+      description: 'Whether to skip Quay deployment. Set to "false" to deploy a self-hosted Quay instance.'
+      default: 'true'
 
   volumes:
     - name: credentials
@@ -182,6 +185,11 @@ spec:
       image: quay.io/konflux-ci/tekton-integration-catalog/utils:latest
       onError: continue
       workingDir: /var/workdir
+      env:
+        - name: SKIP_QUAY
+          value: "$(params.skip-quay)"
+        - name: SKIP_QUAY_ADMIN_INIT
+          value: "true"
       script: |
         #!/bin/bash
         set -euo pipefail
