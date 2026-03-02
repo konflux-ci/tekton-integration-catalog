@@ -1,0 +1,15 @@
+name: Install Tekton CLI
+description: Install the Tekton CLI (tkn) tool
+
+runs:
+  using: composite
+  steps:
+    - name: Install tkn
+      shell: bash
+      run: |
+        set -e
+        TKN_VERSION=0.37.0
+        curl -LO https://github.com/tektoncd/cli/releases/download/v${TKN_VERSION}/tkn_${TKN_VERSION}_Linux_x86_64.tar.gz
+        sudo tar xvzf tkn_${TKN_VERSION}_Linux_x86_64.tar.gz -C /usr/local/bin/ tkn
+        rm tkn_${TKN_VERSION}_Linux_x86_64.tar.gz
+        tkn version
