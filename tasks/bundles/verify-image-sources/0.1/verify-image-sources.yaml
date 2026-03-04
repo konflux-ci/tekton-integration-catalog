@@ -25,7 +25,7 @@ spec:
       default: ""
   steps:
     - name: verify-image-sources
-      image: quay.io/konflux-ci/konflux-test:v1.4.20@sha256:f9db697d8a45870b862252de61b3c29d9d6f79272ef8bf61ecb645f8bca27705
+      image: quay.io/konflux-ci/konflux-test:v1.4.48@sha256:9b815268fb2bf10b5d745518da1c6568944f15816efe51adc192972b42a6e74d
       env:
         - name: PULLED_IMAGES
           value: $(params.imagesPulledAfterDeploymentStart)

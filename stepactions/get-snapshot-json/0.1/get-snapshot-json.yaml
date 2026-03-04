@@ -1,0 +1,29 @@
+apiVersion: tekton.dev/v1alpha1
+kind: StepAction
+metadata:
+  name: get-snapshot-json
+  labels:
+    upstream-usable: "true"
+spec:
+  description: |
+    This StepAction takes the name of the Snapshot custom resource that's present in the namespace on the cluster that the
+    pipeline is running in and stores its JSON representation in the workspace to be used by other steps in the task.
+  image: quay.io/konflux-ci/konflux-test:latest
+  params:
+    - name: snapshot
+      description: Name of the Snapshot custom resource that's present in the namespace of this pipelineRun.
+      type: string
+    - name: output_filename
+      description: Output filename where the JSON representation of the Snapshot will be stored.
+      type: string
+      default: "workspace/snapshot.json"
+  env:
+    - name: SNAPSHOT
+      value: $(params.snapshot)
+    - name: OUTPUT_FILENAME
+      value: $(params.output_filename)
+  script: |
+    #!/bin/bash
+    set -e
+
+    oc get snapshot/"${SNAPSHOT}" -o json | jq .spec > "${OUTPUT_FILENAME}"
