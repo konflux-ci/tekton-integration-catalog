@@ -1,0 +1,263 @@
+---
+apiVersion: tekton.dev/v1
+kind: Task
+metadata:
+  name: init-quay
+  labels:
+    konflux-ci/kind: "true"
+    app.kubernetes.io/version: "0.1"
+    upstream-usable: "true"
+  annotations:
+    tekton.dev/pipelines.minVersion: "0.44.x"
+    tekton.dev/tags: konflux
+spec:
+  description: |
+    Initializes a self-hosted Quay instance deployed on a Kind cluster.
+    Creates an admin user, organization, robot account, stores credentials
+    as K8s secrets, and copies source images into the local Quay registry.
+  params:
+    - name: cluster-access-secret
+      description: Name of the K8s Secret containing the kubeconfig for the target cluster.
+    - name: source-image
+      description: Source image to copy into the self-hosted Quay (e.g. quay.io/org/repo).
+      default: "quay.io/hacbs-release-tests/dcmetromap"
+    - name: org-name
+      description: Quay organization to create.
+      default: "test-org"
+    - name: robot-name
+      description: Robot account name to create within the organization.
+      default: "release-bot"
+    - name: oci-ref
+      type: string
+      description: OCI artifact reference for storing logs.
+    - name: credentials-secret-name
+      type: string
+      description: Secret name containing OCI registry credentials for log storage.
+  results:
+    - name: image-digest
+      description: The digest of the image copied into Quay.
+    - name: quay-internal-host
+      description: The in-cluster hostname of the Quay registry.
+  volumes:
+    - name: credentials
+      secret:
+        secretName: $(params.cluster-access-secret)
+    - name: logs
+      emptyDir: {}
+    - name: oci-credentials
+      secret:
+        secretName: $(params.credentials-secret-name)
+  stepTemplate:
+    env:
+      - name: KUBECONFIG
+        value: '/credentials/kubeconfig'
+      - name: LOG_FILENAME
+        value: '/var/log-dir/init-quay.log'
+    volumeMounts:
+      - name: credentials
+        mountPath: /credentials
+      - name: logs
+        mountPath: /var/log-dir/
+  steps:
+    - name: init-quay
+      image: quay.io/konflux-ci/tekton-integration-catalog/utils:latest
+      onError: continue
+      script: |
+        #!/usr/bin/env bash
+        set -euo pipefail
+
+        {
+
+        QUAY_INTERNAL_HOST="quay-service.quay"
+        ADMIN_USER="quayadmin"
+        ADMIN_PASSWORD="quayadmin123"  # gitleaks:allow -- throwaway ephemeral Kind cluster credential
+        ADMIN_EMAIL="admin@local.dev"
+        ORG_NAME="$(params.org-name)"
+        ROBOT_NAME="$(params.robot-name)"
+        SOURCE_IMAGE="$(params.source-image)"
+        DEST_REPO="${ORG_NAME}/$(basename "${SOURCE_IMAGE}")"
+
+        log()  { echo "[+] $*"; }
+        warn() { echo "[!] $*"; }
+        err()  { echo "[x] $*"; exit 1; }
+
+        # Wait for Quay pods to be ready
+        log "Waiting for Quay pods..."
+        kubectl wait --for=condition=Ready --timeout=300s -n quay -l app=quay pod
+
+        # Use kubectl port-forward to reach Quay API from this step
+        kubectl port-forward -n quay svc/quay-service 8443:443 &
+        PF_PID=$!
+        sleep 3
+
+        QUAY_HOST_URL="https://localhost:8443"
+
+        log "Waiting for Quay API to become healthy..."
+        for i in $(seq 1 60); do
+            if curl -4 -sk "${QUAY_HOST_URL}/health/instance" 2>/dev/null \
+                | grep -q '"status_code":200'; then
+                log "Quay is healthy"
+                break
+            fi
+            if [ "$i" -eq 60 ]; then
+                err "Quay did not become healthy within 120s"
+            fi
+            sleep 2
+        done
+
+        # Create admin user
+        log "Creating admin user '${ADMIN_USER}'..."
+        INIT_RESPONSE=$(curl -4 -sk -X POST "${QUAY_HOST_URL}/api/v1/user/initialize" \
+            -H "Content-Type: application/json" \
+            -d "{
+                \"username\": \"${ADMIN_USER}\",
+                \"password\": \"${ADMIN_PASSWORD}\",
+                \"email\": \"${ADMIN_EMAIL}\",
+                \"access_token\": true
+            }")
+
+        if echo "$INIT_RESPONSE" | jq -e '.access_token' &>/dev/null; then
+            TOKEN=$(echo "$INIT_RESPONSE" | jq -r '.access_token')
+            log "Admin user created"
+        else
+            err "Failed to create admin: $(echo "$INIT_RESPONSE" | jq -r '.message // "unknown"')"
+        fi
+
+        auth_header() { echo "Authorization: Bearer ${TOKEN}"; }
+
+        # Create organization
+        log "Creating organization '${ORG_NAME}'..."
+        ORG_RESPONSE=$(curl -4 -sk -X POST "${QUAY_HOST_URL}/api/v1/organization/" \
+            -H "$(auth_header)" \
+            -H "Content-Type: application/json" \
+            -d "{\"name\": \"${ORG_NAME}\", \"email\": \"org@local.dev\"}")
+
+        if [ "$ORG_RESPONSE" != '"Created"' ]; then
+            err "Failed to create organization: $ORG_RESPONSE"
+        fi
+        log "Organization created"
+
+        # Create robot account
+        log "Creating robot '${ORG_NAME}+${ROBOT_NAME}'..."
+        ROBOT_RESPONSE=$(curl -4 -sk -X PUT \
+            "${QUAY_HOST_URL}/api/v1/organization/${ORG_NAME}/robots/${ROBOT_NAME}" \
+            -H "$(auth_header)" \
+            -H "Content-Type: application/json" \
+            -d "{\"description\": \"Robot account for release pipeline\"}")
+
+        ROBOT_TOKEN=$(echo "$ROBOT_RESPONSE" | jq -r '.token // empty')
+        if [ -z "$ROBOT_TOKEN" ]; then
+            err "Failed to create robot account: $ROBOT_RESPONSE"
+        fi
+        log "Robot account created"
+
+        # Add robot to owners team
+        TEAM_RESPONSE=$(curl -4 -sk -X PUT \
+            "${QUAY_HOST_URL}/api/v1/organization/${ORG_NAME}/team/owners/members/${ORG_NAME}+${ROBOT_NAME}" \
+            -H "$(auth_header)" \
+            -H "Content-Type: application/json") \
+            || err "Failed to add robot to owners team: $TEAM_RESPONSE"
+        log "Robot added to owners team"
+
+        ROBOT_USER="${ORG_NAME}+${ROBOT_NAME}"
+
+        # Store robot credentials in quay namespace for the Go test to consume
+        log "Storing robot credentials in quay namespace..."
+        kubectl create secret generic quay-robot-credentials --namespace=quay \
+            --from-literal=username="${ROBOT_USER}" \
+            --from-literal=password="${ROBOT_TOKEN}" \
+            --from-literal=host="${QUAY_INTERNAL_HOST}"
+
+        # Store admin token in quay namespace
+        log "Saving admin token..."
+        kubectl create secret generic quay-admin-token --namespace=quay \
+            --from-literal=token="${TOKEN}"
+
+        # Copy image + cosign signatures/attestations into Quay via in-cluster cosign pod
+        log "Copying ${SOURCE_IMAGE} to ${QUAY_INTERNAL_HOST}/${DEST_REPO}..."
+
+        DOCKER_AUTH=$(printf '%s' "${ROBOT_USER}:${ROBOT_TOKEN}" | base64 -w0)
+        kubectl create secret generic cosign-docker-config --namespace=default \
+            --from-literal=config.json="$(printf '{"auths":{"%s":{"auth":"%s"}}}' \
+                "${QUAY_INTERNAL_HOST}" "${DOCKER_AUTH}")" \
+            --dry-run=client -o yaml | kubectl apply -f -
+
+        COPY_OUTPUT=$(kubectl run copy-images --rm -i --restart=Never --namespace=default \
+            --image=quay.io/konflux-ci/tekton-integration-catalog/utils:latest \
+            --override-type=strategic \
+            --overrides="$(jq -n \
+                --arg source "${SOURCE_IMAGE}" \
+                --arg dest "${QUAY_INTERNAL_HOST}/${DEST_REPO}" \
+                '{
+                    spec: {
+                        containers: [{
+                            name: "copy-images",
+                            image: "quay.io/konflux-ci/tekton-integration-catalog/utils:latest",
+                            command: ["cosign", "copy", "--allow-insecure-registry"],
+                            args: [$source, $dest],
+                            env: [{name: "DOCKER_CONFIG", value: "/docker-config"}],
+                            volumeMounts: [{name: "docker-config", mountPath: "/docker-config", readOnly: true}]
+                        }],
+                        volumes: [{
+                            name: "docker-config",
+                            secret: {secretName: "cosign-docker-config"}
+                        }]
+                    }
+                }')" 2>&1) || warn "Image copy may have partially failed"
+        log "Copy output: $COPY_OUTPUT"
+
+        kubectl delete secret cosign-docker-config --namespace=default --ignore-not-found &>/dev/null
+
+        log "Querying Quay API for image digest..."
+        TAG_RESPONSE=$(curl -4 -sk "${QUAY_HOST_URL}/api/v1/repository/${DEST_REPO}/tag/" \
+            -H "$(auth_header)")
+        log "Tag response: $TAG_RESPONSE"
+        DIGEST=$(echo "$TAG_RESPONSE" | grep -o 'sha256:[a-f0-9]*' | head -1)
+        if [[ "${DIGEST}" != sha256:* ]]; then
+            err "Failed to determine image digest from Quay API"
+        fi
+        log "Image digest: ${DIGEST}"
+
+        # Store digest and image info in a ConfigMap for the Go test
+        kubectl create configmap quay-test-config --namespace=quay \
+            --from-literal=image-digest="${DIGEST}" \
+            --from-literal=dest-repo="${DEST_REPO}" \
+            --from-literal=quay-internal-host="${QUAY_INTERNAL_HOST}"
+
+        kill $PF_PID 2>/dev/null || true
+
+        log "Quay initialization complete!"
+        log "  Internal host: ${QUAY_INTERNAL_HOST}"
+        log "  Image:         ${QUAY_INTERNAL_HOST}/${DEST_REPO}@${DIGEST}"
+
+        printf "%s" "${DIGEST}" > "$(results.image-digest.path)"
+        printf "%s" "${QUAY_INTERNAL_HOST}" > "$(results.quay-internal-host.path)"
+
+        } 2>&1 | tee -a "$LOG_FILENAME"
+    - name: secure-push-oci
+      ref:
+        resolver: git
+        params:
+          - name: url
+            value: https://github.com/konflux-ci/tekton-integration-catalog.git
+          - name: revision
+            value: main
+          - name: pathInRepo
+            value: stepactions/secure-push-oci/0.1/secure-push-oci.yaml
+      params:
+        - name: workdir-path
+          value: /var/log-dir/
+        - name: oci-ref
+          value: $(params.oci-ref)
+        - name: credentials-volume-name
+          value: oci-credentials
+    - name: fail-if-any-step-failed
+      ref:
+        resolver: git
+        params:
+          - name: url
+            value: https://github.com/konflux-ci/tekton-integration-catalog.git
+          - name: revision
+            value: main
+          - name: pathInRepo
+            value: stepactions/fail-if-any-step-failed/0.1/fail-if-any-step-failed.yaml
