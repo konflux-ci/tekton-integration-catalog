@@ -313,6 +313,53 @@ spec:
         ./deploy-test-resources.sh
         } 2>&1 | tee -a $LOG_FILENAME
 
+    - name: create-cluster-config
+      image: quay.io/konflux-ci/tekton-integration-catalog/utils:latest
+      onError: continue
+      workingDir: /var/workdir
+      script: |
+        #!/bin/bash
+        set -euo pipefail
+
+        {
+          echo "[INFO] Creating cluster-config ConfigMap in konflux-info namespace..."
+
+          if kubectl get configmap cluster-config -n konflux-info &>/dev/null; then
+            echo "[INFO] cluster-config already exists, skipping."
+          else
+            kubectl create configmap cluster-config -n konflux-info \
+              --from-literal=cluster-type=kind
+            echo "[INFO] cluster-config ConfigMap created."
+          fi
+
+          echo "[INFO] Creating ClusterRole and ClusterRoleBinding for cluster-config read access..."
+          kubectl apply -f - <<EOF
+        apiVersion: rbac.authorization.k8s.io/v1
+        kind: ClusterRole
+        metadata:
+          name: read-cluster-config
+        rules:
+          - apiGroups: [""]
+            resources: ["configmaps"]
+            resourceNames: ["cluster-config"]
+            verbs: ["get"]
+        ---
+        apiVersion: rbac.authorization.k8s.io/v1
+        kind: ClusterRoleBinding
+        metadata:
+          name: read-cluster-config
+        roleRef:
+          apiGroup: rbac.authorization.k8s.io
+          kind: ClusterRole
+          name: read-cluster-config
+        subjects:
+          - kind: Group
+            name: system:serviceaccounts
+            apiGroup: rbac.authorization.k8s.io
+        EOF
+          echo "[INFO] RBAC for cluster-config created."
+        } 2>&1 | tee -a $LOG_FILENAME
+
     - name: harden-kyverno
       image: quay.io/konflux-ci/tekton-integration-catalog/utils:latest
       onError: continue
