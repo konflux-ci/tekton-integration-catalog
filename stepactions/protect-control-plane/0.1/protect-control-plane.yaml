@@ -237,7 +237,31 @@ spec:
     Environment=GOMEMLIMIT=12GiB
     EOF
 
+    # Tune containerd for high concurrency to prevent socket connection resets
+    CTRD_CFG="/etc/containerd/config.toml"
+    if [ -f "$CTRD_CFG" ]; then
+      # Increase max concurrent downloads
+      if grep -q 'max_concurrent_downloads' "$CTRD_CFG"; then
+        sed -i 's/max_concurrent_downloads.*/max_concurrent_downloads = 50/' "$CTRD_CFG"
+      else
+        sed -i '/\[plugins."io.containerd.grpc.v1.cri"\]/a\    max_concurrent_downloads = 50' "$CTRD_CFG"
+      fi
+      # Increase max recv/send message sizes for gRPC
+      if ! grep -q 'max_recv_message_size' "$CTRD_CFG"; then
+        sed -i '/\[grpc\]/a\  max_recv_message_size = 67108864\n  max_send_message_size = 67108864' "$CTRD_CFG" 2>/dev/null || true
+      fi
+    fi
+
     systemctl daemon-reload
+    systemctl restart containerd
+    # Wait for containerd to stabilize before restarting kubelet
+    for ATTEMPT in 1 2 3 4 5 6 7 8 9 10; do
+      if crictl info 1>/dev/null 2>/dev/null; then
+        echo "containerd healthy after attempt ${ATTEMPT}"
+        break
+      fi
+      sleep 1
+    done
     systemctl restart kubelet
     echo "DONE: kubelet + containerd hardened"
     INNER
