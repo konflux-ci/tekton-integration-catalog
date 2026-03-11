@@ -1,5 +1,6 @@
 {
   "$schema": "https://docs.renovatebot.com/renovate-schema.json",
+  "extends": ["config:recommended"],
   "customManagers": [
     {
       "customType": "regex",
@@ -20,9 +21,96 @@
       "datasourceTemplate": "pypi",
       "depNameTemplate": "sealights-python-agent",
       "versioningTemplate": "semver"
+    },
+    {
+      "customType": "regex",
+      "fileMatch": ["Containerfile$", "Dockerfile$"],
+      "matchStrings": [
+        "ARG OC_VERSION=(?<currentValue>\\d+\\.\\d+\\.\\d+)"
+      ],
+      "depNameTemplate": "homebrew/openshift-cli",
+      "datasourceTemplate": "repology"
+    },
+    {
+      "customType": "regex",
+      "fileMatch": ["Containerfile$", "Dockerfile$"],
+      "matchStrings": [
+        "ARG ROSA_VERSION=v?(?<currentValue>\\d+\\.\\d+\\.\\d+)"
+      ],
+      "depNameTemplate": "openshift/rosa",
+      "datasourceTemplate": "github-releases"
+    },
+    {
+      "customType": "regex",
+      "fileMatch": ["Containerfile$", "Dockerfile$"],
+      "matchStrings": [
+        "ARG OCM_VERSION=v?(?<currentValue>\\d+\\.\\d+\\.\\d+)"
+      ],
+      "depNameTemplate": "openshift-online/ocm-cli",
+      "datasourceTemplate": "github-releases"
+    },
+    {
+      "customType": "regex",
+      "fileMatch": ["Containerfile$", "Dockerfile$"],
+      "matchStrings": [
+        "ARG JQ_VERSION=(?<currentValue>\\d+\\.\\d+)"
+      ],
+      "depNameTemplate": "jqlang/jq",
+      "datasourceTemplate": "github-releases"
+    },
+    {
+      "customType": "regex",
+      "fileMatch": ["Containerfile$", "Dockerfile$"],
+      "matchStrings": [
+        "ARG YQ_VERSION=(?<currentValue>\\d+\\.\\d+\\.\\d+)"
+      ],
+      "depNameTemplate": "mikefarah/yq",
+      "datasourceTemplate": "github-releases"
+    },
+    {
+      "customType": "regex",
+      "fileMatch": ["Containerfile$", "Dockerfile$"],
+      "matchStrings": [
+        "ARG COSIGN_VERSION=v?(?<currentValue>\\d+\\.\\d+\\.\\d+)"
+      ],
+      "depNameTemplate": "sigstore/cosign",
+      "datasourceTemplate": "github-releases"
+    },
+    {
+      "customType": "regex",
+      "fileMatch": ["Containerfile$", "Dockerfile$"],
+      "matchStrings": [
+        "ARG ORAS_VERSION=(?<currentValue>\\d+\\.\\d+\\.\\d+)"
+      ],
+      "depNameTemplate": "oras-project/oras",
+      "datasourceTemplate": "github-releases"
+    },
+    {
+      "customType": "regex",
+      "fileMatch": ["Containerfile$", "Dockerfile$"],
+      "matchStrings": [
+        "ARG SHELLCHECK_VERSION=v?(?<currentValue>\\d+\\.\\d+\\.\\d+)"
+      ],
+      "depNameTemplate": "koalaman/shellcheck",
+      "datasourceTemplate": "github-releases"
+    },
+    {
+      "customType": "regex",
+      "fileMatch": ["Containerfile$", "Dockerfile$"],
+      "matchStrings": [
+        "ARG GOLANGCI_LINT_VERSION=\"?v?(?<currentValue>\\d+\\.\\d+\\.\\d+)\"?"
+      ],
+      "depNameTemplate": "golangci/golangci-lint",
+      "datasourceTemplate": "github-releases"
+    },
+    {
+      "customType": "regex",
+      "fileMatch": ["Containerfile$", "Dockerfile$"],
+      "matchStrings": [
+        "ARG LEAKTK_VERSION=\"?(?<currentValue>\\d+\\.\\d+\\.\\d+)\"?"
+      ],
+      "depNameTemplate": "leaktk/scanner",
+      "datasourceTemplate": "github-releases"
     }
-  ],
-  "extends": [
-    "config:recommended"
   ]
 }
