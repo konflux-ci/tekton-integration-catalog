@@ -60,6 +60,13 @@ spec:
       description: |
         (Optional) The name to assign to the Kubernetes Secret that will store
         the kubeconfig for the created cluster. If not specified, a name will be auto-generated.
+    - name: ssh-credentials-secret-name
+      type: string
+      default: ""
+      description: |
+        (Optional) The name to assign to the Kubernetes Secret that will store
+        the SSH credentials (host, username, id_rsa) for the created VM.
+        If left empty, no SSH credentials secret will be created.
     - name: ownerKind
       type: string
       default: PipelineRun
@@ -140,6 +147,8 @@ spec:
   results:
     - name: cluster-access-secret
       description: Secret with kubeconfig
+    - name: ssh-credentials-secret
+      description: Secret with SSH credentials (host, username, id_rsa). Empty if not requested.
 
   stepTemplate:
     env:
@@ -189,6 +198,53 @@ spec:
 
         # Export secret name to result
         echo -n "${KUBECONFIG_SECRET_NAME}" | tee $(results.cluster-access-secret.path)
+
+    - name: create-ssh-credentials-secret
+      image: registry.redhat.io/openshift4/ose-cli:4.13@sha256:e70eb2be867f1236b19f5cbfeb8e0625737ce0ec1369e32a4f9f146aaaf68d49
+      env:
+        - name: NAMESPACE
+          value: $(context.taskRun.namespace)
+        - name: OWNER_KIND
+          value: $(params.ownerKind)
+        - name: OWNER_NAME
+          value: $(params.ownerName)
+        - name: OWNER_UID
+          value: $(params.ownerUid)
+        - name: SSH_SECRET_NAME
+          value: $(params.ssh-credentials-secret-name)
+      script: |
+        #!/bin/bash
+        set -eo pipefail
+
+        # Skip if no secret name provided
+        if [[ -z "$SSH_SECRET_NAME" ]]; then
+          echo "[INFO] No SSH credentials secret requested, skipping."
+          echo -n "" | tee "$(results.ssh-credentials-secret.path)"
+          exit 0
+        fi
+
+        echo "[INFO] Creating SSH credentials secret: $SSH_SECRET_NAME"
+
+        cat <<EOF | oc create -f -
+        apiVersion: v1
+        kind: Secret
+        metadata:
+          name: ${SSH_SECRET_NAME}
+          namespace: ${NAMESPACE}
+          ownerReferences:
+          - apiVersion: tekton.dev/v1
+            kind: ${OWNER_KIND}
+            name: ${OWNER_NAME}
+            uid: ${OWNER_UID}
+        type: Opaque
+        data:
+          host: ""
+          username: ""
+          id_rsa: ""
+        EOF
+
+        echo "[INFO] Successfully created secret: $SSH_SECRET_NAME"
+        echo -n "${SSH_SECRET_NAME}" | tee "$(results.ssh-credentials-secret.path)"
 
     - name: provisioner
       onError: continue
@@ -260,6 +316,38 @@ spec:
         oc patch secret "${KUBECONFIG_SECRET_NAME}" -n "${NAMESPACE}" --type='merge' -p='{"data":{"kubeconfig":"'$(cat /opt/cluster-info/kubeconfig | base64 -w0)'"}}'
 
         echo "[INFO] Updated secret ${KUBECONFIG_SECRET_NAME} with kubeconfig."
+
+    - name: update-ssh-credentials-secret
+      onError: continue
+      image: registry.redhat.io/openshift4/ose-cli:4.13@sha256:e70eb2be867f1236b19f5cbfeb8e0625737ce0ec1369e32a4f9f146aaaf68d49
+      env:
+        - name: NAMESPACE
+          value: $(context.taskRun.namespace)
+        - name: SSH_SECRET_NAME
+          value: $(params.ssh-credentials-secret-name)
+      volumeMounts:
+        - name: cluster-info
+          mountPath: /opt/cluster-info
+      script: |
+        #!/bin/bash
+        set -eo pipefail
+
+        # Skip if no secret name provided
+        if [[ -z "$SSH_SECRET_NAME" ]]; then
+          echo "[INFO] No SSH credentials secret requested, skipping update."
+          exit 0
+        fi
+
+        # Read the cluster info files
+        HOST=$(base64 -w0 < /opt/cluster-info/host)
+        USERNAME=$(base64 -w0 < /opt/cluster-info/username)
+        ID_RSA=$(base64 -w0 < /opt/cluster-info/id_rsa)
+
+        # Patch the secret with SSH credentials
+        oc patch secret "${SSH_SECRET_NAME}" -n "${NAMESPACE}" --type='merge' \
+          -p='{"data":{"host":"'"${HOST}"'","username":"'"${USERNAME}"'","id_rsa":"'"${ID_RSA}"'"}}'
+
+        echo "[INFO] Updated secret ${SSH_SECRET_NAME} with SSH credentials."
 
     - name: secure-push-oci
       ref:
