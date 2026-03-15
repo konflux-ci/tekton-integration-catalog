@@ -144,6 +144,19 @@ spec:
         Additional port mappings for the Kind cluster. Value should be a JSON array of objects with containerPort, hostPort, and protocol properties.
         Example: '[{\"containerPort\":30012,\"hostPort\":8180,\"protocol\":\"TCP\"}, {\"containerPort\":30013,\"hostPort\":8280,\"protocol\":\"TCP\"}]'
       default: ""
+
+    - name: harden-control-plane
+      type: string
+      description: |
+        Enable control-plane hardening for the Kind cluster.
+        When set to `true`, the provisioned cluster's scheduler, controller-manager,
+        apiserver and etcd are patched with increased resource limits and tuned flags
+        suitable for burst E2E workloads.
+
+        **Important:** This is only recommended for big machines (>= 32 vCPUs, >= 64 GiB RAM).
+        Enabling it on smaller instances will over-commit resources and destabilize the cluster.
+      default: 'false'
+
   results:
     - name: cluster-access-secret
       description: Secret with kubeconfig
@@ -296,6 +309,26 @@ spec:
         limits:
           memory: "600Mi"
           cpu: "300m"
+
+
+    - name: protect-control-plane
+      onError: continue
+      ref:
+        resolver: git
+        params:
+          - name: url
+            value: https://github.com/konflux-ci/tekton-integration-catalog.git
+          - name: revision
+            value: main
+          - name: pathInRepo
+            value: stepactions/protect-control-plane/0.1/protect-control-plane.yaml
+      params:
+        - name: harden-control-plane
+          value: $(params.harden-control-plane)
+        - name: kubeconfig-dir
+          value: /opt/cluster-info
+        - name: kubeconfig-volume-name
+          value: cluster-info
 
     - name: update-kubeconfig-secret
       onError: continue
