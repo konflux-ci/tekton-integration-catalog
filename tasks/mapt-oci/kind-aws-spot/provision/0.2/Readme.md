@@ -17,7 +17,7 @@ This task is ideal for managing **ephemeral clusters** in Tekton-based CI/CD wor
 
 ## 📘 Overview
 
-This task provisions a single-node Kubernetes cluster on AWS using Mapt. It outputs a `kubeconfig` as a Kubernetes Secret for use in later pipeline steps.
+This task provisions a single-node Kubernetes cluster on AWS using Mapt. It outputs a `kubeconfig` as a Kubernetes Secret for use in later pipeline steps. Optionally, it can also create a Secret with SSH credentials (host, username, id_rsa) for the provisioned VM.
 
 ### Supported Features
 
@@ -26,6 +26,7 @@ This task provisions a single-node Kubernetes cluster on AWS using Mapt. It outp
 - Customizable CPU, memory, and architecture
 - Optional timeout for auto-destroy
 - Owner-referenced Secret creation for lifecycle management
+- Optional SSH credentials Secret (host, username, id_rsa) for VM access
 
 ---
 
@@ -36,6 +37,7 @@ This task provisions a single-node Kubernetes cluster on AWS using Mapt. It outp
 | `secret-aws-credentials`      | Kubernetes Secret with AWS credentials (`access-key`, `secret-key`, etc.)  | —           | ✅       |
 | `id`                          | Unique identifier for the Kind cluster environment                         | —           | ✅       |
 | `cluster-access-secret-name` | Optional: name for the output kubeconfig Secret                             | `''`        | ❌       |
+| `ssh-credentials-secret-name`| Optional: name for the Secret that will store SSH credentials (host, username, id_rsa) for the created VM. If empty, no SSH credentials secret is created. | `''`        | ❌       |
 | `ownerKind`                   | Type of resource owning the Secret (`PipelineRun`, `TaskRun`)               | `PipelineRun`| ❌       |
 | `ownerName`                   | Name of the owning resource                                                 | —           | ✅       |
 | `ownerUid`                    | UID of the owning resource                                                  | —           | ✅       |
@@ -56,13 +58,14 @@ This task provisions a single-node Kubernetes cluster on AWS using Mapt. It outp
 
 ---
 
-## 📤 Result
+## 📤 Results
 
-| Result                   | Description                                                   |
-|--------------------------|---------------------------------------------------------------|
-| `cluster-access-secret` | Name of the generated Kubernetes Secret containing kubeconfig  |
+| Result                    | Description                                                                 |
+|---------------------------|-----------------------------------------------------------------------------|
+| `cluster-access-secret`   | Name of the generated Kubernetes Secret containing kubeconfig               |
+| `ssh-credentials-secret`  | Name of the Secret containing SSH credentials (host, username, id_rsa). Empty if not requested. |
 
-### Example output Secret
+### Example output Secret (kubeconfig)
 
 ```yaml
 apiVersion: v1
@@ -72,6 +75,22 @@ metadata:
 type: Opaque
 data:
   kubeconfig: <base64-encoded>
+```
+
+### Example output Secret (SSH credentials)
+
+When `ssh-credentials-secret-name` is set, the task creates/updates a Secret with the VM SSH access data:
+
+```yaml
+apiVersion: v1
+kind: Secret
+metadata:
+  name: <specified-name>
+type: Opaque
+data:
+  host: <base64-encoded>
+  username: <base64-encoded>
+  id_rsa: <base64-encoded>
 ```
 
 ---
