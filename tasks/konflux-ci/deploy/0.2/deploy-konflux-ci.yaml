@@ -219,9 +219,6 @@ spec:
         set -euo pipefail
 
         {
-        echo "[INFO] Applying Kyverno to reduce resources for testing"
-        kubectl apply -f ./dependencies/kyverno/policy/e2e-reduce-resources.yaml
-
         echo "[INFO] Creating Test Resources..."
         ./deploy-test-resources.sh
         } 2>&1 | tee -a $LOG_FILENAME
