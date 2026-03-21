@@ -1,0 +1,102 @@
+name: Sanity Check Tests
+
+"on":
+  pull_request:
+    branches: [main]
+    paths:
+      - 'tasks/**/sanity-check/*.bats'
+      - 'stepactions/**/sanity-check/*.bats'
+      - 'pipelines/**/sanity-check/*.bats'
+      - 'pipelineruns/**/sanity-check/*.bats'
+      - 'tasks/**/*.yaml'
+      - 'stepactions/**/*.yaml'
+      - 'pipelines/**/*.yaml'
+      - 'pipelineruns/**/*.yaml'
+  merge_group:
+    types: [checks_requested]
+
+jobs:
+  sanity-check:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Install BATS
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq bats
+
+      - name: Get changed files
+        id: changed
+        uses: tj-actions/changed-files@v45
+        with:
+          files: |
+            tasks/**
+            stepactions/**
+            pipelines/**
+            pipelineruns/**
+          dir_names: "true"
+          dir_names_max_depth: "4"
+
+      - name: Find and run BATS tests for changed resources
+        if: steps.changed.outputs.any_changed == 'true'
+        env:
+          CHANGED_DIRS: ${{ steps.changed.outputs.all_changed_files }}
+        run: |
+          BATS_FILES=()
+
+          for DIR in ${CHANGED_DIRS}; do
+            # If the change is inside sanity-check/, go up one level to find the resource dir
+            if [[ "$DIR" == */sanity-check* ]]; then
+              DIR=$(dirname "$DIR")
+              # Handle case where dir_names already stripped sanity-check
+              if [[ "$DIR" == */sanity-check ]]; then
+                DIR=$(dirname "$DIR")
+              fi
+            fi
+
+            # Look for sanity-check/*.bats in this dir and parent dirs up to 4 levels
+            SEARCH_DIR="$DIR"
+            for _ in 1 2 3 4; do
+              if [ -d "${SEARCH_DIR}/sanity-check" ]; then
+                for BATS_FILE in "${SEARCH_DIR}"/sanity-check/*.bats; do
+                  if [ -f "$BATS_FILE" ]; then
+                    BATS_FILES+=("$BATS_FILE")
+                  fi
+                done
+                break
+              fi
+              SEARCH_DIR=$(dirname "$SEARCH_DIR")
+            done
+          done
+
+          # Deduplicate
+          UNIQUE_FILES=($(printf '%s\n' "${BATS_FILES[@]}" | sort -u))
+
+          if [ ${#UNIQUE_FILES[@]} -eq 0 ]; then
+            echo "No BATS test files found for changed resources."
+            exit 0
+          fi
+
+          echo "Running ${#UNIQUE_FILES[@]} BATS test file(s):"
+          printf '  %s\n' "${UNIQUE_FILES[@]}"
+          echo ""
+
+          FAILED=0
+          for BATS_FILE in "${UNIQUE_FILES[@]}"; do
+            echo "━━━ ${BATS_FILE} ━━━"
+            if ! bats "$BATS_FILE"; then
+              FAILED=1
+            fi
+            echo ""
+          done
+
+          if [ "$FAILED" -ne 0 ]; then
+            echo "Some BATS tests failed."
+            exit 1
+          fi
+
+          echo "All BATS tests passed."
