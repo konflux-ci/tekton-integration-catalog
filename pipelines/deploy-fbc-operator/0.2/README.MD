@@ -80,6 +80,8 @@ The pipeline consists of the following tasks:
 |REPO_TOKEN| Name of the Kubernetes Secret that contains the access token for a private GitHub or GitLab repository| ""| false|
 |REPO_KEY| Key within the Secret's "data" field that holds the GitHub/GitLab access token| ""| false|
 |PATH_TO_MIRROR_SET| Path to where the image digest mirror set is saved in the repository| ".tekton/images-mirror-set.yaml"| false|
+|SLACK_SECRET_NAME| Name of the secret containing the Slack webhook URL. Leave empty to disable Slack notifications| ""| false|
+|SLACK_KEY_NAME| Key name within the secret that contains the Slack webhook URL| "webhook_url"| false|
 
 ## Pipeline Usage Guide
 
@@ -99,6 +101,8 @@ Open a merge request (MR) to your [tenants-config](https://gitlab.cee.redhat.com
 - `spec.params[4].value`  -> REPO_TOKEN (Optional)
 - `spec.params[5].value`  -> REPO_KEY (Optional)
 - `spec.params[6].value`  -> PATH_TO_MIRROR_SET (Optional)
+- `spec.params[7].value`  -> SLACK_SECRET_NAME (Optional)
+- `spec.params[8].value`  -> SLACK_KEY_NAME (Optional)
 
 ```yaml
 apiVersion: appstudio.redhat.com/v1beta2
@@ -128,6 +132,10 @@ spec:
       value: "git-auth-key"
     - name: PATH_TO_MIRROR_SET
       value: "config/imageDigestMirrorSet.yaml"
+    - name: SLACK_SECRET_NAME
+      value: "slack-webhook-secret"
+    - name: SLACK_KEY_NAME
+      value: "webhook_url"
   resolverRef:
     resourceKind: pipelinerun
     params:
@@ -200,6 +208,31 @@ In the example above, the `REPO_KEY` value should be `gitlab-auth-token`.
 #### PATH_TO_MIRROR_SET (Optional)
 
 Path to where the image digest mirror set is saved in the repository.
+
+#### SLACK_SECRET_NAME (Optional)
+
+Name of the secret containing the Slack webhook URL. Leave this parameter empty to disable Slack notifications.
+
+When a Slack webhook secret is provided, the pipeline will send a notification to the configured Slack channel if the pipeline fails.
+
+Example:
+
+```yaml
+apiVersion: v1
+kind: Secret
+metadata:
+  name: slack-webhook-secret
+  namespace: sample-tenant
+type: Opaque
+data:
+  webhook_url: <BASE64_ENCODED_WEBHOOK_URL>
+```
+
+#### SLACK_KEY_NAME (Optional)
+
+Key name within the secret that contains the Slack webhook URL. Defaults to `webhook_url`.
+
+This parameter specifies which key in the secret contains the actual Slack webhook URL. In the example above, the `SLACK_KEY_NAME` value should be `webhook_url`.
 
 ### What Happens Next
 
