@@ -1,0 +1,126 @@
+---
+apiVersion: tekton.dev/v1
+kind: Task
+metadata:
+  name: pre-pull-images
+  labels:
+    app.kubernetes.io/version: "0.1"
+    upstream-usable: "true"
+  annotations:
+    tekton.dev/pipelines.minVersion: "0.44.x"
+    tekton.dev/categories: infrastructure
+    tekton.dev/tags: infrastructure, kind, caching
+    tekton.dev/displayName: "Pre-pull Build Pipeline Images"
+spec:
+  description: |
+    Dynamically resolves container images used by the Konflux build pipeline
+    and creates a Kubernetes Job to pre-pull them onto the cluster node.
+
+    The task reads the build-pipeline-config ConfigMap, resolves the default
+    docker-build-oci-ta pipeline bundle and all its task bundles in parallel
+    using tkn, then creates a Job with one container per image. The Job runs
+    in the background and the task exits immediately without waiting.
+
+    If any step fails, the task exits 0 to avoid blocking the pipeline.
+
+  params:
+    - name: cluster-access-secret-name
+      type: string
+      default: ""
+      description: "The name of the secret containing the kubeconfig to access the target cluster."
+    - name: node-name
+      type: string
+      default: "kind-mapt-control-plane"
+      description: "Name of the node where the pre-pull Job should schedule pods."
+    - name: pipeline-name
+      type: string
+      default: "docker-build-oci-ta"
+      description: "Name of the pipeline to resolve from the build-pipeline-config ConfigMap."
+    - name: extra-images
+      type: string
+      default: "quay.io/konflux-ci/mintmaker-renovate-image:latest quay.io/redhat-appstudio/konflux-test:latest registry.access.redhat.com/ubi9/ubi:latest"
+      description: "Space-separated list of extra images to pre-pull that are not part of the build pipeline bundles."
+
+  volumes:
+    - name: cluster-secret-volume
+      secret:
+        optional: true
+        secretName: $(params.cluster-access-secret-name)
+
+  steps:
+    - name: create-job
+      image: quay.io/konflux-ci/tekton-integration-catalog/utils:latest
+      env:
+        - name: KUBECONFIG
+          value: /tmp/kubeconfig
+        - name: NODE_NAME
+          value: $(params.node-name)
+        - name: PIPELINE_NAME
+          value: $(params.pipeline-name)
+        - name: EXTRA_IMAGES
+          value: $(params.extra-images)
+      volumeMounts:
+        - name: cluster-secret-volume
+          mountPath: /tmp/kubeconfig
+          subPath: kubeconfig
+      script: |
+        #!/usr/bin/env bash
+        set -uo pipefail
+        trap 'echo "[WARN] Pre-pull failed but continuing (non-blocking)"; exit 0' ERR
+
+        echo "==> Resolving step images from build pipeline bundles..."
+
+        BUILD_BUNDLE=$(kubectl get configmap build-pipeline-config -n build-service \
+          -o jsonpath='{.data.config\.yaml}' 2>/dev/null \
+          | yq e ".pipelines[] | select(.name == \"${PIPELINE_NAME}\") | .bundle" -)
+
+        if [ -z "$BUILD_BUNDLE" ]; then
+          echo "[WARN] Could not resolve pipeline bundle for '${PIPELINE_NAME}', skipping"
+          exit 0
+        fi
+        echo "  Pipeline: ${BUILD_BUNDLE##*/}"
+
+        TASK_BUNDLES=$(tkn bundle list "$BUILD_BUNDLE" -o yaml 2>/dev/null \
+          | grep 'value:.*quay.io/konflux-ci/tekton-catalog/task' \
+          | sed 's/.*value: //')
+        echo "  $(echo "$TASK_BUNDLES" | wc -l | tr -d ' ') task bundles, resolving in parallel..."
+
+        STEP_IMAGES=$(echo "$TASK_BUNDLES" \
+          | xargs -P10 -I{} sh -c 'tkn bundle list "{}" -o yaml 2>/dev/null | grep "^\s*image:" | sed "s/.*image: //"' \
+          | sed 's/@sha256:[a-f0-9]*//' | sort -u \
+          | grep ':' | grep -v 'redhat-services-prod')
+
+        EXTRA_LIST=$(echo "$EXTRA_IMAGES" | tr ' ' '\n')
+
+        ALL_IMAGES=$(echo -e "$STEP_IMAGES\n$EXTRA_LIST" | sed 's/^ *//' | sort -u | grep -v '^$')
+        COUNT=$(echo "$ALL_IMAGES" | wc -l | tr -d ' ')
+        echo "  $COUNT images to pre-pull"
+
+        CONTAINERS=""
+        IDX=0
+        while IFS= read -r img; do
+          CONTAINERS="${CONTAINERS}
+              - name: pull-${IDX}
+                image: ${img}
+                command: ['echo']"
+          IDX=$((IDX + 1))
+        done <<< "$ALL_IMAGES"
+
+        cat <<JOBEOF | kubectl apply -f -
+        apiVersion: batch/v1
+        kind: Job
+        metadata:
+          name: pre-pull-images
+          namespace: default
+        spec:
+          backoffLimit: 0
+          activeDeadlineSeconds: 600
+          ttlSecondsAfterFinished: 60
+          template:
+            spec:
+              nodeName: ${NODE_NAME}
+              restartPolicy: Never
+              containers:${CONTAINERS}
+        JOBEOF
+
+        echo "==> Pre-pull Job created with $IDX containers"
