@@ -69,6 +69,14 @@ spec:
       name: PATH_TO_MIRROR_SET
       default: ".tekton/images-mirror-set.yaml"
       type: string
+    - description: Name of the secret containing the Slack webhook URL. Leave empty to disable Slack notifications.
+      name: SLACK_SECRET_NAME
+      default: ""
+      type: string
+    - description: Key name within the secret that contains the Slack webhook URL
+      name: SLACK_KEY_NAME
+      default: "webhook_url"
+      type: string
   workspaces:
     - name: shared-data
   tasks:
@@ -924,3 +932,28 @@ spec:
           value: "$(tasks.get-unreleased-bundle.results.unreleasedBundle)"
         - name: scorecardConfigImages
           value: "$(tasks.fetch-config-files.results.scorecardConfigImages)"
+  finally:
+    - name: slack-webhook-notification
+      params:
+        - name: message
+          value: PipelineRun $(context.pipelineRun.name) failed
+        - name: secret-name
+          value: $(params.SLACK_SECRET_NAME)
+        - name: key-name
+          value: $(params.SLACK_KEY_NAME)
+      taskRef:
+        params:
+          - name: bundle
+            value: quay.io/konflux-ci/tekton-catalog/task-slack-webhook-notification:0.1
+          - name: name
+            value: slack-webhook-notification
+          - name: kind
+            value: Task
+        resolver: bundles
+      when:
+        - input: $(tasks.status)
+          operator: in
+          values: ["Failed"]
+        - input: $(params.SLACK_SECRET_NAME)
+          operator: notin
+          values: [""]
