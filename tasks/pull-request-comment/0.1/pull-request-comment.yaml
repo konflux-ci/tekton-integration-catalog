@@ -99,6 +99,10 @@ spec:
           valueFrom:
             fieldRef:
               fieldPath: metadata.annotations['pac.test.appstudio.openshift.io/log-url']
+        - name: SCENARIO_NAME
+          valueFrom:
+            fieldRef:
+              fieldPath: metadata.labels['test.appstudio.openshift.io/scenario']
       workingDir: /workspace
       image: quay.io/konflux-qe-incubator/konflux-qe-tools:latest
       volumeMounts:
@@ -141,15 +145,17 @@ spec:
         COMMENTS=$(curl -s -H "Authorization: token $GITHUB_TOKEN" \
             "https://api.github.com/repos/$GIT_ORG/$GIT_REPO/issues/$PR_NUMBER/comments")
 
-        # Find and delete any existing comments by the authenticated user
-        COMMENT_IDS=$(echo "$COMMENTS" | jq -r --arg USER_LOGIN "$USER_LOGIN" '.[] | select(.user.login == $USER_LOGIN) | .id')
+        # Find and delete only comments by the authenticated user that match this scenario
+        SCENARIO_MARKER="<!-- scenario: ${SCENARIO_NAME} -->"
+        COMMENT_IDS=$(echo "$COMMENTS" | jq -r --arg USER_LOGIN "$USER_LOGIN" --arg MARKER "$SCENARIO_MARKER" \
+            '.[] | select(.user.login == $USER_LOGIN and (.body | contains($MARKER))) | .id')
         for COMMENT_ID in $COMMENT_IDS; do
             DELETE_RESPONSE=$(curl -s -H "Authorization: token $GITHUB_TOKEN" \
                 -X DELETE \
                 "https://api.github.com/repos/$GIT_ORG/$GIT_REPO/issues/comments/$COMMENT_ID")
 
             if [ -z "$DELETE_RESPONSE" ]; then
-                echo "[INFO] Existing comment with ID $COMMENT_ID by $USER_LOGIN deleted successfully."
+                echo "[INFO] Existing comment with ID $COMMENT_ID for scenario $SCENARIO_NAME deleted successfully."
             else
                 echo "[ERROR] Failed to delete comment with ID $COMMENT_ID. Response: $DELETE_RESPONSE"
             fi
@@ -184,6 +190,8 @@ spec:
         fi
 
         PR_COMMENT=$(cat <<EOF
+        ${SCENARIO_MARKER}
+        **Scenario: ${SCENARIO_NAME}**
         @${PR_AUTHOR}: The following test has ${PIPELINE_RUN_AGGREGATE_STATUS}, say **/retest** to rerun failed tests.
 
         | PipelineRun Name | Status | Rerun command | Build Log | Test Log |
