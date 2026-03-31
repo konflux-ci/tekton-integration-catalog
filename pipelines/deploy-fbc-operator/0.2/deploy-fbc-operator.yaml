@@ -77,6 +77,17 @@ spec:
       name: SLACK_KEY_NAME
       default: "webhook_url"
       type: string
+    - description: |
+        Custom message for Slack notifications. If empty, a default failure message will be used.
+      name: SLACK_MESSAGE
+      default: ""
+      type: string
+    - description: |
+        Base URL of the Konflux UI for constructing log links.
+        Example: https://konflux-ui.apps.stone-prd-rh01.pg1f.p1.openshiftapps.com
+      name: KONFLUX_UI_URL
+      default: "https://konflux-ui.apps.stone-prd-rh01.pg1f.p1.openshiftapps.com"
+      type: string
   workspaces:
     - name: shared-data
   tasks:
@@ -936,7 +947,10 @@ spec:
     - name: slack-webhook-notification
       params:
         - name: message
-          value: PipelineRun $(context.pipelineRun.name) failed
+          value: |
+            ❌ $(params.SLACK_MESSAGE)PipelineRun $(context.pipelineRun.name) failed
+
+            View logs: $(params.KONFLUX_UI_URL)/ns/$(context.pipelineRun.namespace)/applications/$(tasks.parse-metadata.results.application-name)/pipelineruns/$(context.pipelineRun.name)
         - name: secret-name
           value: $(params.SLACK_SECRET_NAME)
         - name: key-name

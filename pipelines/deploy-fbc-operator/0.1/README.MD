@@ -66,6 +66,8 @@ The pipeline consists of the following tasks:
 |PATH_TO_MIRROR_SET| Path to where the image digest mirror set is saved in the repository| ".tekton/images-mirror-set.yaml"| false|
 |SLACK_SECRET_NAME| Name of the secret containing the Slack webhook URL. Leave empty to disable Slack notifications| ""| false|
 |SLACK_KEY_NAME| Key name within the secret that contains the Slack webhook URL| "webhook_url"| false|
+|SLACK_MESSAGE| Custom message for Slack notifications. If empty, a default failure message will be used| ""| false|
+|KONFLUX_UI_URL| Base URL of the Konflux UI for constructing log links| "https://konflux-ui.apps.stone-prd-rh01.pg1f.p1.openshiftapps.com"| false|
 
 ## Pipeline Usage Guide
 
@@ -87,6 +89,8 @@ Open a merge request (MR) to your [tenants-config](https://gitlab.cee.redhat.com
 - `spec.params[6].value`  -> PATH_TO_MIRROR_SET (Optional)
 - `spec.params[7].value`  -> SLACK_SECRET_NAME (Optional)
 - `spec.params[8].value`  -> SLACK_KEY_NAME (Optional)
+- `spec.params[9].value`  -> SLACK_MESSAGE (Optional)
+- `spec.params[10].value` -> KONFLUX_UI_URL (Optional)
 
 ```yaml
 apiVersion: appstudio.redhat.com/v1beta2
@@ -120,6 +124,10 @@ spec:
       value: "slack-webhook-secret"
     - name: SLACK_KEY_NAME
       value: "webhook_url"
+    - name: SLACK_MESSAGE
+      value: "Production deployment "
+    - name: KONFLUX_UI_URL
+      value: "https://konflux-ui.apps.stone-prd-rh01.pg1f.p1.openshiftapps.com"
   resolverRef:
     params:
       - name: url
@@ -216,6 +224,25 @@ data:
 Key name within the secret that contains the Slack webhook URL. Defaults to `webhook_url`.
 
 This parameter specifies which key in the secret contains the actual Slack webhook URL. In the example above, the `SLACK_KEY_NAME` value should be `webhook_url`.
+
+#### SLACK_MESSAGE (Optional)
+
+Custom message for Slack notifications. If empty, a default failure message will be used.
+
+This parameter allows you to add a custom message prefix to the Slack notification. The message will be displayed before the default "PipelineRun failed" text.
+
+Example: If you set `SLACK_MESSAGE` to "Production deployment ", the notification will read:
+```
+❌ Production deployment PipelineRun <name> failed
+```
+
+#### KONFLUX_UI_URL (Optional)
+
+Base URL of the Konflux UI for constructing log links. Defaults to `https://konflux-ui.apps.stone-prd-rh01.pg1f.p1.openshiftapps.com`.
+
+This parameter is used to construct a direct link to the pipeline run logs in the Konflux UI. The notification will include a "View logs" link that directs users to the full pipeline run details.
+
+If your Konflux instance is hosted at a different URL, update this parameter accordingly.
 
 ### What Happens Next
 
