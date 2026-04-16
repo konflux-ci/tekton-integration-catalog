@@ -45,9 +45,11 @@ spec:
         - name: APPLICATION
           value: $(params.application)
         - name: TESTS_NAMES
-          value: $(params.tests-names[*])
+          value:
+            - $(params.tests-names[*])
         - name: TESTS_TIMES
-          value: $(params.tests-times[*])
+          value:
+            - $(params.tests-times[*])
         - name: STAKEHOLDER-EMAILS
           value: $(params.stakeholder-emails)
         - name: SUBJECT
@@ -70,7 +72,7 @@ spec:
           - name: KONFLUX_CLUSTER
         steps:
           - name: get-tests-info-and-send-email
-            image: registry.redhat.io/ubi9/ubi:latest
+            image: registry.redhat.io/ubi9/ubi@sha256:9db17fd5d0bbf8797d65d42c039f3a20ce9621d989cc173e3c616fa5e8588115
             env:
               - name: NAMESPACE
                 value: $(params.NAMESPACE)
@@ -121,11 +123,11 @@ spec:
               done
               echo "---" >&2
               dnf -y install jq wget s-nail
-              wget --no-verbose -O oc.tar.gz https://mirror.openshift.com/pub/openshift-v4/x86_64/clients/ocp/latest/openshift-client-linux.tar.gz \
+              wget --no-verbose -O oc.tar.gz https://mirror.openshift.com/pub/openshift-v4/x86_64/clients/ocp/stable-4.21/openshift-client-linux.tar.gz \
                   && tar -xvzf oc.tar.gz \
                   && chmod +x kubectl oc \
                   && mv oc kubectl /usr/local/bin/
-              curl -LO https://github.com/kubearchive/kubearchive/releases/latest/download/kubectl-ka-linux-amd64 \
+              curl -LO https://github.com/kubearchive/kubearchive/releases/download/v1.21.3/kubectl-ka-linux-amd64 \
                   && chmod +x kubectl-ka-* \
                   && mv kubectl-ka-linux-amd64 /usr/local/bin/kubectl-ka
 
@@ -244,7 +246,7 @@ spec:
 
               echo "========================================================" >&2
 
-              echo "=== Starting Email Report Generation ===" >&2Expand commentComment on line R241Resolved
+              echo "=== Starting Email Report Generation ===" >&2
               echo "Stakeholders: $STAKEHOLDER_EMAILS" >&2
 
               echo "Preparing email report for stakeholders: $STAKEHOLDER_EMAILS" >&2
