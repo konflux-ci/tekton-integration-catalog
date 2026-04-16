@@ -24,7 +24,7 @@ spec:
       default: https://github.com/konflux-ci/konflux-ci.git
     - name: repo-branch
       description: Git branch to check out when cloning the repository.
-      default: main
+      default: legacy
     - name: create-test-resources
       description: 'Indicates if a set of test resources should be installed'
       default: 'true'
