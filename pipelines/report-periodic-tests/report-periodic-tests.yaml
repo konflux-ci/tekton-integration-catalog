@@ -14,15 +14,13 @@ spec:
       description: 'Name of application where the tests run'
       default: ''
     - name: tests-names
-      type: array
-      description: 'List of test names to check (e.g., pf5, pf6)'
-      default:
-        - ''
+      type: string
+      description: 'Comma-separated list of test names to check (e.g., pf5,pf6)'
+      default: ''
     - name: tests-times
-      type: array
-      description: 'List of scheduled run times for the tests (corresponding to tests-names)'
-      default:
-        - ''
+      type: string
+      description: 'Comma-separated list of scheduled run times for the tests (corresponding to tests-names)'
+      default: ''
     - name: stakeholder-emails
       description: 'Comma-separated list of email addresses to send the report to'
       default: ''
@@ -44,10 +42,10 @@ spec:
           value: $(params.namespace)
         - name: APPLICATION
           value: $(params.application)
-        - name: TESTS_NAMES
-          value: $(params.tests-names[*])
-        - name: TESTS_TIMES
-          value: $(params.tests-times[*])
+        - name: TEST_NAME
+          value: $(params.tests-names)
+        - name: TEST_TIME
+          value: $(params.tests-times)
         - name: STAKEHOLDER-EMAILS
           value: $(params.stakeholder-emails)
         - name: SUBJECT
@@ -60,22 +58,24 @@ spec:
         params:
           - name: NAMESPACE
           - name: APPLICATION
-          - name: TESTS_NAMES
-            type: array
-          - name: TESTS_TIMES
-            type: array
+          - name: TEST_NAME
+          - name: TEST_TIME
           - name: STAKEHOLDER-EMAILS
           - name: SUBJECT
           - name: SMTP_SERVER
           - name: KONFLUX_CLUSTER
         steps:
           - name: get-tests-info-and-send-email
-            image: registry.redhat.io/ubi9/ubi:latest
+            image: registry.redhat.io/ubi9/ubi@sha256:9db17fd5d0bbf8797d65d42c039f3a20ce9621d989cc173e3c616fa5e8588115
             env:
               - name: NAMESPACE
                 value: $(params.NAMESPACE)
               - name: APPLICATION
                 value: $(params.APPLICATION)
+              - name: TEST_NAME
+                value: $(params.TEST_NAME)
+              - name: TEST_TIME
+                value: $(params.TEST_TIME)
               - name: REPORT_TOKEN
                 valueFrom:
                   secretKeyRef:
@@ -99,21 +99,15 @@ spec:
                   secretKeyRef:
                     name: gwsa-email-account
                     key: password
-            args:
-              - $(params.TESTS_NAMES[*])
-              - $(params.TESTS_TIMES[*])
             script: |
               #!/bin/bash
               set -euo pipefail
               echo "Checking PipelineRuns in namespace: $NAMESPACE" >&2
 
-              # Read arguments - first half are test names, second half are test times
-              ALL_ARGS=("$@")
-              NUM_TESTS=$((${#ALL_ARGS[@]} / 2))
-
-              # Split args into names and times arrays
-              NAMES_ARRAY=("${ALL_ARGS[@]:0:$NUM_TESTS}")
-              TIMES_ARRAY=("${ALL_ARGS[@]:$NUM_TESTS:$NUM_TESTS}")
+              # Unpack comma-separated strings into arrays
+              IFS=',' read -r -a NAMES_ARRAY <<< "$TEST_NAME"
+              IFS=',' read -r -a TIMES_ARRAY <<< "$TEST_TIME"
+              NUM_TESTS=${#NAMES_ARRAY[@]}
 
               echo "Tests to check:" >&2
               for i in "${!NAMES_ARRAY[@]}"; do
@@ -121,11 +115,11 @@ spec:
               done
               echo "---" >&2
               dnf -y install jq wget s-nail
-              wget --no-verbose -O oc.tar.gz https://mirror.openshift.com/pub/openshift-v4/x86_64/clients/ocp/latest/openshift-client-linux.tar.gz \
+              wget --no-verbose -O oc.tar.gz https://mirror.openshift.com/pub/openshift-v4/x86_64/clients/ocp/stable-4.21/openshift-client-linux.tar.gz \
                   && tar -xvzf oc.tar.gz \
                   && chmod +x kubectl oc \
                   && mv oc kubectl /usr/local/bin/
-              curl -LO https://github.com/kubearchive/kubearchive/releases/latest/download/kubectl-ka-linux-amd64 \
+              curl -LO https://github.com/kubearchive/kubearchive/releases/download/v1.21.3/kubectl-ka-linux-amd64 \
                   && chmod +x kubectl-ka-* \
                   && mv kubectl-ka-linux-amd64 /usr/local/bin/kubectl-ka
 
@@ -244,7 +238,7 @@ spec:
 
               echo "========================================================" >&2
 
-              echo "=== Starting Email Report Generation ===" >&2Expand commentComment on line R241Resolved
+              echo "=== Starting Email Report Generation ===" >&2
               echo "Stakeholders: $STAKEHOLDER_EMAILS" >&2
 
               echo "Preparing email report for stakeholders: $STAKEHOLDER_EMAILS" >&2

@@ -19,8 +19,8 @@ The pipeline consists of the following task:
 |---|---|---|---|
 |namespace| Namespace where the pipelineRuns are run| ""| false|
 |application| Name of application where the tests run| ""| false|
-|tests-names| List of test names to check (e.g., e2e-periodic-tests)| []| false|
-|tests-times| List of scheduled run times for the tests (corresponding to tests-names)| []| false|
+|tests-names| Comma-separated list of test names to check (e.g., e2e-periodic-tests)| ""| false|
+|tests-times| Comma-separated list of scheduled run times for the tests (corresponding to tests-names)| ""| false|
 |stakeholder-emails| Comma-separated list of email addresses to send the report to| ""| false|
 |subject| Subject of the email| "Weekly konflux test reporting"| false|
 |SMTP_SERVER| SMTP server to be used for sending the email| "smtp.gmail.com:587"| false|
@@ -59,13 +59,9 @@ spec:
     - name: application
       value: "cnv-fbc-v4-17"
     - name: tests-names
-      value:
-        - "e2e-tests-periodic"
-        - "e2e-tests-periodic-later"
+      value: "e2e-tests-periodic,e2e-tests-periodic-later"
     - name: tests-times
-      value:
-        - "0:00 AM"
-        - "3:00 AM"
+      value: "0:00 AM,3:00 AM"
     - name: stakeholder-emails
       value: "team@example"
     - name: subject
@@ -102,29 +98,25 @@ Name of the application where the tests run. This is used to construct links to 
 
 #### tests-names
 
-List of test name prefixes to check. The pipeline will search for PipelineRuns whose names start with these prefixes.
+Comma-separated list of test name prefixes to check. The pipeline will search for PipelineRuns whose names start with these prefixes.
 
 Example:
 ```yaml
-tests-names:
-  - "e2e-tests-periodic"
-  - "e2e-tests-periodic-later"
+tests-names: "e2e-tests-periodic,e2e-tests-periodic-later"
 ```
 
 #### tests-times
 
-List of scheduled run times corresponding to each test in `tests-names`. The pipeline uses these times to filter PipelineRuns that ran at approximately the scheduled time (±2 minutes).
+Comma-separated list of scheduled run times corresponding to each test in `tests-names`. The pipeline uses these times to filter PipelineRuns that ran at approximately the scheduled time (±2 minutes).
 
 Times should be in 12-hour format (e.g., "3:00 AM", "11:30 PM").
 
 Example:
 ```yaml
-tests-times:
-  - "0:00 AM"
-  - "3:00 AM"
+tests-times: "0:00 AM,3:00 AM"
 ```
 
-**NOTE**: The arrays `tests-names` and `tests-times` must have the same length, with each index corresponding to a specific test.
+**NOTE**: The comma-separated lists `tests-names` and `tests-times` must have the same number of entries, with each position corresponding to a specific test.
 
 #### stakeholder-emails
 
