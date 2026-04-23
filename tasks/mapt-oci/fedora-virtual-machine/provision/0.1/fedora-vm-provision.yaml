@@ -1,0 +1,295 @@
+---
+apiVersion: tekton.dev/v1
+kind: Task
+metadata:
+  name: fedora-vm-provision
+  labels:
+    app.kubernetes.io/version: "0.1"
+    upstream-usable: "true"
+  annotations:
+    tekton.dev/pipelines.minVersion: "0.44.x"
+    tekton.dev/categories: infrastructure
+    tekton.dev/tags: infrastructure, aws, fedora
+    tekton.dev/displayName: "Create Fedora VM"
+    tekton.dev/platforms: "linux/amd64, linux/arm64"
+    mapt/version: "v1.0.0-dev"
+spec:
+  description: |
+    Creates a fedora virtual machine on AWS, powered by the Mapt CLI.
+    This task is ideal for creating fedora VM for testing in CI/CD workflows.
+
+    It supports:
+      - Spot instance provisioning
+      - Custom CPU, memory, and architecture configurations
+      - Automatic virtual machine removal via timeout
+      - Securely exposes the credentials as a Kubernetes Secret
+
+  volumes:
+    - name: aws-credentials
+      secret:
+        secretName: $(params.secret-aws-credentials)
+    - name: host-info
+      emptyDir: {}
+
+  params:
+    # input credentials
+    - name: secret-aws-credentials
+      description: |
+        K8S secret holding the aws credentials. Secret should be accessible to this task.
+
+        ---
+        apiVersion: v1
+        kind: Secret
+        metadata:
+          name: aws-${name}
+        type: Opaque
+        data:
+          access-key: ${access_key}
+          secret-key: ${secret_key}
+          region: ${region}
+          bucket: ${bucket}
+    # mapt params
+    - name: id
+      description: identifier for the provisioned environment
+    # resulting secret name
+    - name: host-access-secret-name
+      type: string
+      default: ""
+      description: |
+        (Optional) Once the target is provisioned the config to connect is addded to a secret
+        check resutls. If this param is set the secret will be created with the name set
+        otherwise if left empty, no secret will be created.
+    # ownership
+    - name: ownerKind
+      type: string
+      default: "PipelineRun"
+      description: |
+        (Optional) The type of resource that should own the generated Secret.
+        Deletion of this resource will trigger deletion of the Secret.
+        Supported values: `PipelineRun`, `TaskRun`.
+    - name: ownerName
+      type: string
+      default: ""
+      description: |
+        (Optional) The name of the resource that should own the generated Secret.
+        This should either be passed the value of `$(context.pipelineRun.name)`
+        or `$(context.taskRun.name)` depending on the value of `ownerKind`.
+    - name: ownerUid
+      type: string
+      default: ""
+      description: |
+        (Optional) The uid of the resource that should own the generated Secret.
+        This should either be passed the value of `$(context.pipelineRun.uid)`
+        or `$(context.taskRun.uid)` depending on the value of `ownerKind`.
+    # VM type params
+    - name: arch
+      description: Architecture for the machine. Allowed x86_64 or arm64 (default "x86_64")
+      default: "x86_64"
+    - name: cpus
+      description: Number of CPUs for the cloud instance (default 4)
+      default: "4"
+    - name: memory
+      description: Amount of RAM for the cloud instance in GiB (default 16)
+      default: "16"
+    - name: compute-sizes
+      description: |
+        Comma seperated list of sizes for the machines to be requested, e.g. `m5a.large,m6a.large`
+        If set this takes precedence over compute by args
+      default: ""
+    - name: gpu-manufacturer
+      description: Manufacturer company name for GPU. (i.e. NVIDIA)
+      default: ""
+    - name: gpus
+      description: Number of GPUs for the cloud instance (default 0)
+      default: "0"
+    - name: nested-virt
+      description: Use cloud instance that has nested virtualization support
+      default: "false"
+    - name: spot
+      description: Check best spot option to spin the machine and will create resources on that region.
+      default: "true"
+    - name: spot-eviction-tolerance
+      description: |
+        If spot is enabled we can define the minimum tolerance level of eviction.
+        Allowed value are: lowest, low, medium, high or highest
+      default: "lowest"
+    - name: spot-excluded-regions
+      description: Comma-separated list of zone IDs to exclude from spot selection
+      default: ""
+    - name: spot-increase-rate
+      description: Percentage to be added on top of the current calculated spot price to increase chances to get the machine.
+      default: "20"
+    # fedora params
+    - name: version
+      description: Version of the Fedora OS to use (default 42)
+      default: "42"
+    # metadata params
+    - name: tags
+      description: Tags for the resources created on the providers
+      default: ""
+    # control params
+    - name: debug
+      description: |
+        Warning setting this param to true exposes partially masked credentials
+
+        The parameter is intended to add verbosity on the task execution and also print masked credentials
+        (showing first and last character with *** in the middle) on stdout to help with debugging
+      default: "false"
+    # cleanup params
+    - name: timeout
+      description: Auto-destroy timeout
+      default: "''"
+  results:
+    - name: host-access-secret
+      description: |
+        kubernetes secret holding the information to connect with the target machine.
+
+          ---
+          apiVersion: v1
+          kind: Secret
+          metadata:
+            name: ${name}
+          type: Opaque
+          data:
+            host: ${host}
+            username: ${username}
+            id_rsa: ${id_rsa}
+  steps:
+    - name: provisioner
+      image: quay.io/redhat-developer/mapt:v0.9.9
+      imagePullPolicy: Always
+      env:
+        - name: HOME
+          value: /opt/mapt/run
+      volumeMounts:
+        - name: aws-credentials
+          mountPath: /opt/aws-credentials
+        - name: host-info
+          mountPath: /opt/host-info
+      script: |
+        #!/bin/bash
+
+        set -euo pipefail
+
+        # Function to mask credentials (show first and last char, hide middle)
+        mask_credential() {
+          local cred="$1"
+          if [ "${#cred}" -le 2 ]; then
+            echo "***"
+          else
+            echo "${cred:0:1}***${cred: -1}"
+          fi
+        }
+
+        # Credentials - set these BEFORE enabling debug mode
+        AWS_ACCESS_KEY_ID="$(cat /opt/aws-credentials/access-key)"
+        export AWS_ACCESS_KEY_ID
+        AWS_SECRET_ACCESS_KEY="$(cat /opt/aws-credentials/secret-key)"
+        export AWS_SECRET_ACCESS_KEY
+        AWS_DEFAULT_REGION="$(cat /opt/aws-credentials/region)"
+        export AWS_DEFAULT_REGION
+        BUCKET=$(cat /opt/aws-credentials/bucket)
+
+        # If debug add verbosity and print masked credentials
+        if [[ "$(params.debug)" == "true" ]]; then
+          echo "AWS_ACCESS_KEY_ID=$(mask_credential "$AWS_ACCESS_KEY_ID")"
+          echo "AWS_SECRET_ACCESS_KEY=$(mask_credential "$AWS_SECRET_ACCESS_KEY")"
+          echo "AWS_DEFAULT_REGION=$AWS_DEFAULT_REGION"
+          echo "BUCKET=$BUCKET"
+          set -xeuo pipefail
+        fi
+
+        # Run mapt
+        cmd="mapt aws fedora create "
+        cmd+="--project-name mapt-fedora-$(params.id) "
+        cmd+="--backed-url s3://${BUCKET}/mapt/fedora/$(params.id) "
+        cmd+="--conn-details-output /opt/host-info "
+        cmd+="--tags '$(params.tags)' "
+
+        if [[ "$(params.debug)" == "true" ]]; then
+          cmd+="--debug "
+        fi
+
+        if [[ "$(params.compute-sizes)" != "" ]]; then
+          cmd+="--compute-sizes '$(params.compute-sizes)' "
+        else
+          cmd+="--cpus '$(params.cpus)' "
+          cmd+="--memory '$(params.memory)' "
+          cmd+="--gpus '$(params.gpus)' "
+          cmd+="--gpu-manufacturer '$(params.gpu-manufacturer)' "
+        fi
+
+        if [[ "$(params.nested-virt)" == "true" ]]; then
+          cmd+="--nested-virt "
+        fi
+
+        cmd+="--arch '$(params.arch)' "
+        cmd+="--version '$(params.version)' "
+
+        if [[ "$(params.spot)" == "true" ]]; then
+          cmd+="--spot "
+          cmd+="--spot-increase-rate '$(params.spot-increase-rate)' "
+          cmd+="--spot-eviction-tolerance '$(params.spot-eviction-tolerance)' "
+          cmd+="--spot-excluded-regions '$(params.spot-excluded-regions)' "
+        fi
+
+        if [[ $(params.timeout) != "" ]]; then
+          cmd+="--timeout $(params.timeout) "
+        fi
+
+        eval "${cmd}"
+
+      computeResources:
+        requests:
+          memory: "1Gi"
+          cpu: "100m"
+        limits:
+          memory: "2Gi"
+          cpu: "300m"
+
+    - name: create-host-info-secret
+      image: registry.redhat.io/openshift4/ose-cli:4.13@sha256:e70eb2be867f1236b19f5cbfeb8e0625737ce0ec1369e32a4f9f146aaaf68d49
+      env:
+        - name: NAMESPACE
+          value: $(context.taskRun.namespace)
+        - name: OWNER_KIND
+          value: $(params.ownerKind)
+        - name: OWNER_NAME
+          value: $(params.ownerName)
+        - name: OWNER_UID
+          value: $(params.ownerUid)
+      volumeMounts:
+        - name: host-info
+          mountPath: /opt/host-info
+      workingDir: /opt/host-info
+      script: |
+        #!/bin/bash
+        set -eo pipefail
+
+        SECRET_NAME=$(params.host-access-secret-name)
+        if [[ "${SECRET_NAME}" == "" ]]; then
+          echo "[INFO] No host credentials secret requested, skipping."
+          echo -n "" | tee "$(results.host-access-secret.path)"
+          exit 0
+        fi
+
+        cat <<EOF | oc create -f -
+        apiVersion: v1
+        kind: Secret
+        metadata:
+          name: ${SECRET_NAME}
+          namespace: ${NAMESPACE}
+          ownerReferences:
+          - apiVersion: tekton.dev/v1
+            kind: ${OWNER_KIND}
+            name: ${OWNER_NAME}
+            uid: ${OWNER_UID}
+        type: Opaque
+        data:
+          host: $(base64 -w0 < /opt/host-info/host)
+          username: $(base64 -w0 < /opt/host-info/username)
+          id_rsa: $(base64 -w0 < /opt/host-info/id_rsa)
+        EOF
+
+        echo "[INFO] Successfully created secret: ${SECRET_NAME}"
+        echo -n "${SECRET_NAME}" | tee "$(results.host-access-secret.path)"
