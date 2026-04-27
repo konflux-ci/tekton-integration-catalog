@@ -325,6 +325,8 @@ spec:
         {
           echo "[INFO] Creating cluster-config ConfigMap in konflux-info namespace..."
 
+          kubectl create namespace konflux-info --dry-run=client -o yaml | kubectl apply -f -
+
           if kubectl get configmap cluster-config -n konflux-info &>/dev/null; then
             echo "[INFO] cluster-config already exists, skipping."
           else
