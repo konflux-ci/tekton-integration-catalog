@@ -26,7 +26,8 @@ spec:
       description: The specific tag generated for the log artifact.
   workspaces:
     - name: shared-data
-      description: Workspace for log archiving and OCI artifact creation files.
+      optional: true
+      description: Workspace for log archiving and OCI artifact creation files. Defaults to /tmp when empty (for cases where we can't define the PipelineRun)
   volumes:
     - name: credentials-volume
       secret:
