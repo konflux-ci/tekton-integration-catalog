@@ -65,7 +65,7 @@ spec:
 
             if [ -n "$POD_NAME" ]; then
                 echo "--- LOGS FOR ${taskrun} (Pod: ${POD_NAME}) ---" >> "${LOG_FILENAME}" 2>&1
-                ${CMD} logs --namespace "${PR_NAMESPACE}" pod/"${POD_NAME}" >> "${LOG_FILENAME}" 2>&1 || true
+                ${CMD} logs --namespace "${PR_NAMESPACE}" --all-containers --ignore-errors pod/"${POD_NAME}" >> "${LOG_FILENAME}" 2>&1 || true
             fi
         done
 
@@ -84,6 +84,8 @@ spec:
       volumeMounts:
         - name: log-staging
           mountPath: /staging
+        - name: credentials-volume
+          mountPath: /etc/oci-credentials
       env:
         - name: OCI_REFERENCE_BASE
           value: $(params.quay-repo)
@@ -104,7 +106,7 @@ spec:
         FULL_OCI_REF="${REPO_NAME_ONLY}:${IMAGE_TAG}"
 
         # Setup authentication
-        AUTH_DIR="/tekton/volumes/credentials-volume"
+        AUTH_DIR="/etc/oci-credentials"
         AUTH_PATH="$AUTH_DIR/.dockerconfigjson"
 
         if [ -f "$AUTH_PATH" ]; then
