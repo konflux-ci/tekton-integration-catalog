@@ -60,6 +60,9 @@ spec:
 
         CMD="kubectl"
 
+        # Get the pod name of the current task so we can skip it (avoid streaming our own running logs, which hangs)
+        SELF_POD="${HOSTNAME}"
+
         ${CMD} get pr "${PR_NAME}" -o json -n "${PR_NAMESPACE}" | jq -r '.status.childReferences[].name' | while read -r taskrun; do
             POD_NAME=$(${CMD} get tr "${taskrun}" -o json -n "${PR_NAMESPACE}" | jq -r '.status.podName // empty')
 
@@ -67,6 +70,15 @@ spec:
                 echo "--- LOGS FOR ${taskrun} (Pod: ${POD_NAME}) ---" >> "${LOG_FILENAME}" 2>&1
                 ${CMD} logs --namespace "${PR_NAMESPACE}" --all-containers --ignore-errors pod/"${POD_NAME}" >> "${LOG_FILENAME}" 2>&1 || true
             fi
+
+            # Skip our own pod to avoid hanging on streaming logs from a running container
+            if [ "$POD_NAME" = "$SELF_POD" ]; then
+                echo "--- SKIPPING ${taskrun} (Pod: ${POD_NAME}) - current task ---" >> "${LOG_FILENAME}" 2>&1
+                continue
+            fi
+
+            echo "--- LOGS FOR ${taskrun} (Pod: ${POD_NAME}) ---" >> "${LOG_FILENAME}" 2>&1
+            ${CMD} logs --all-containers --namespace "${PR_NAMESPACE}" pod/"${POD_NAME}" >> "${LOG_FILENAME}" 2>&1 || true
         done
 
         # Archive and set result if logs exist
