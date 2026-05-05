@@ -1,0 +1,372 @@
+---
+apiVersion: tekton.dev/v1beta1
+kind: Pipeline
+metadata:
+  name: weekly-tests-reporting
+spec:
+  description: |
+    This pipeline is run weekly to gather the results of the periodic console test runs and email them to stakeholders.
+  params:
+    - name: namespace
+      description: 'Namespace where the pipelineRuns are run'
+      default: ''
+    - name: application
+      description: 'Name of application where the tests run'
+      default: ''
+    - name: tests-names
+      type: string
+      description: 'Comma-separated list of test names to check (e.g., pf5,pf6)'
+      default: ''
+    - name: tests-times
+      type: string
+      description: 'Comma-separated list of scheduled run times for the tests (corresponding to tests-names)'
+      default: ''
+    - name: stakeholder-emails
+      description: 'Comma-separated list of email addresses to send the report to'
+      default: ''
+    - name: subject
+      description: 'Subject of the email'
+      type: string
+      default: 'Weekly konflux test reporting'
+    - name: SMTP_SERVER
+      description: 'SMTP server to be used for sending the email'
+      default: 'smtp.gmail.com:587'
+    - name: KONFLUX_CLUSTER
+      description: 'Konflux cluster API server URL'
+      default: 'https://api.stone-prd-rh01.pg1f.p1.openshiftapps.com:6443'
+  tasks:
+    - name: extract-tests-info-and-send-email
+      description: Check PipelineRuns for configured tests and gather results
+      params:
+        - name: NAMESPACE
+          value: $(params.namespace)
+        - name: APPLICATION
+          value: $(params.application)
+        - name: TEST_NAME
+          value: $(params.tests-names)
+        - name: TEST_TIME
+          value: $(params.tests-times)
+        - name: STAKEHOLDER-EMAILS
+          value: $(params.stakeholder-emails)
+        - name: SUBJECT
+          value: $(params.subject)
+        - name: SMTP_SERVER
+          value: $(params.SMTP_SERVER)
+        - name: KONFLUX_CLUSTER
+          value: $(params.KONFLUX_CLUSTER)
+      taskSpec:
+        params:
+          - name: NAMESPACE
+          - name: APPLICATION
+          - name: TEST_NAME
+          - name: TEST_TIME
+          - name: STAKEHOLDER-EMAILS
+          - name: SUBJECT
+          - name: SMTP_SERVER
+          - name: KONFLUX_CLUSTER
+        steps:
+          - name: get-tests-info-and-send-email
+            image: registry.redhat.io/ubi9/ubi@sha256:9db17fd5d0bbf8797d65d42c039f3a20ce9621d989cc173e3c616fa5e8588115
+            env:
+              - name: NAMESPACE
+                value: $(params.NAMESPACE)
+              - name: APPLICATION
+                value: $(params.APPLICATION)
+              - name: TEST_NAME
+                value: $(params.TEST_NAME)
+              - name: TEST_TIME
+                value: $(params.TEST_TIME)
+              - name: REPORT_TOKEN
+                valueFrom:
+                  secretKeyRef:
+                    name: report-token
+                    key: report-token
+              - name: STAKEHOLDER_EMAILS
+                value: $(params.STAKEHOLDER-EMAILS)
+              - name: INITIAL_SUBJECT
+                value: $(params.SUBJECT)
+              - name: SMTP_SERVER
+                value: $(params.SMTP_SERVER)
+              - name: KONFLUX_CLUSTER
+                value: $(params.KONFLUX_CLUSTER)
+              - name: USERNAME
+                valueFrom:
+                  secretKeyRef:
+                    name: gwsa-email-account
+                    key: username
+              - name: PASSWORD
+                valueFrom:
+                  secretKeyRef:
+                    name: gwsa-email-account
+                    key: password
+            script: |
+              #!/bin/bash
+              set -euo pipefail
+              echo "Checking PipelineRuns in namespace: $NAMESPACE" >&2
+
+              # Unpack comma-separated strings into arrays
+              IFS=',' read -r -a NAMES_ARRAY <<< "$TEST_NAME"
+              IFS=',' read -r -a TIMES_ARRAY <<< "$TEST_TIME"
+              NUM_TESTS=${#NAMES_ARRAY[@]}
+
+              echo "Tests to check:" >&2
+              for i in "${!NAMES_ARRAY[@]}"; do
+                echo "  - ${NAMES_ARRAY[$i]} (scheduled at ${TIMES_ARRAY[$i]})"
+              done
+              echo "---" >&2
+              dnf -y install jq wget s-nail
+              wget --no-verbose -O oc.tar.gz https://mirror.openshift.com/pub/openshift-v4/x86_64/clients/ocp/stable-4.21/openshift-client-linux.tar.gz \
+                  && tar -xvzf oc.tar.gz \
+                  && chmod +x kubectl oc \
+                  && mv oc kubectl /usr/local/bin/
+              curl -LO https://github.com/kubearchive/kubearchive/releases/download/v1.21.3/kubectl-ka-linux-amd64 \
+                  && chmod +x kubectl-ka-* \
+                  && mv kubectl-ka-linux-amd64 /usr/local/bin/kubectl-ka
+
+              echo "Logging into cluster with sa token and configuring host for kubearchive" >&2
+              # Extract cluster domain from server URL (e.g., https://api.CLUSTER:PORT -> CLUSTER)
+              CLUSTER_DOMAIN=$(echo "${KONFLUX_CLUSTER}" | sed 's|https://api\.||' | sed 's|:.*||')
+              KUBEARCHIVE_HOST="https://kubearchive-api-server-product-kubearchive.apps.${CLUSTER_DOMAIN}"
+              KONFLUX_UI_URL="https://konflux-ui.apps.${CLUSTER_DOMAIN}"
+              echo "Using cluster server: ${KONFLUX_CLUSTER}" >&2
+              echo "Derived konflux UI URL: ${KONFLUX_UI_URL}" >&2
+              echo "Derived kubearchive host: ${KUBEARCHIVE_HOST}" >&2
+              oc login --token="${REPORT_TOKEN}" --server="${KONFLUX_CLUSTER}"
+              kubectl ka config set host "${KUBEARCHIVE_HOST}"
+
+              # Function to check PipelineRuns for a given prefix
+              check_pipelineruns() {
+                local prefix=$1
+                local scheduled_time=$2
+                local test_name=$3
+
+                echo "Checking PipelineRuns from kubearchive for prefix: $prefix" >&2
+
+                # Parse the scheduled time (e.g., "3:00 AM" -> 03:00 in 24h format)
+                local scheduled_hour
+                local scheduled_minute
+                local scheduled_minutes_total
+                scheduled_hour=$(date -d "$scheduled_time" +%H 2>/dev/null || echo "00")
+                scheduled_minute=$(date -d "$scheduled_time" +%M 2>/dev/null || echo "00")
+                scheduled_minutes_total=$((10#$scheduled_hour * 60 + 10#$scheduled_minute))
+
+                echo "Looking for runs at approximately $scheduled_time (${scheduled_hour}:${scheduled_minute} UTC, +/- 2 minutes)" >&2
+
+                # Get the most recent PipelineRuns matching the prefix (last 7 days) from kubearchive
+                # Query each day separately to avoid the 100 result limit
+                local all_pipelineruns=""
+
+                # Query pipelineruns for each of the last 7 days at 6AM
+                for day_offset in {0..6}; do
+                  # Calculate the timestamp for 6AM on this day
+                  local before_timestamp
+                  before_timestamp=$(date -u -d "${day_offset} days ago 06:00:00" +"%Y-%m-%dT06:00:00.000000000Z")
+
+                  echo "Querying pipelineruns before: $before_timestamp (day -$day_offset)" >&2
+
+                  local day_pipelineruns
+                  day_pipelineruns=$(kubectl ka get pipelinerun -n "$NAMESPACE" \
+                    --before "$before_timestamp" \
+                    --archived \
+                    -o json | jq -c --arg prefix "$prefix" \
+                    --argjson target_minutes "$scheduled_minutes_total" \
+                    'limit(1; .items[] | select(.metadata.name | startswith($prefix)) |
+                    . as $item |
+                    ($item.metadata.creationTimestamp[11:16] | split(":") | (.[0] | tonumber) * 60 + (.[1] | tonumber)) as $run_minutes |
+                    (if ($run_minutes - $target_minutes) < 0 then ($target_minutes - $run_minutes) else ($run_minutes - $target_minutes) end) as $diff |
+                    select($diff <= 2) |
+                    {name: .metadata.name,
+                     status: (.status.conditions[0].status // "Unknown"),
+                     reason: (.status.conditions[0].reason // "Unknown"),
+                     creationTime: .metadata.creationTimestamp})')
+
+                  # Append to all_pipelineruns if not empty
+                  if [ -n "$day_pipelineruns" ]; then
+                    all_pipelineruns="${all_pipelineruns}${day_pipelineruns}"$'\n'
+                  fi
+                done
+
+                echo "$all_pipelineruns" >&2
+                if [ -z "$all_pipelineruns" ]; then
+                  echo "No recent PipelineRuns found for $prefix" >&2
+                  echo "{\"test\": \"$test_name\", \"scheduled_time\": \"$scheduled_time\", \"status\": \"NOT_FOUND\", \"runs\": []}"
+                  return
+                fi
+
+                # Process all PipelineRuns in a single jq command (more efficient than looping)
+                local results
+                results=$(echo "$all_pipelineruns" | jq -s --arg namespace "$NAMESPACE" --arg app "$APPLICATION" --arg ui_url "$KONFLUX_UI_URL" '
+                  [.[] | select(length > 0) |
+                  {
+                    name: .name,
+                    status: (if (.status == "True" and .reason == "Succeeded") then "SUCCEEDED"
+                             elif (.status == "False" and .reason == "Failed") then "FAILED"
+                             elif (.reason == "Running" or .reason == "Started") then "RUNNING"
+                             else "UNKNOWN" end),
+                    created: .creationTime,
+                    log_link: "\($ui_url)/ns/\($namespace)/applications/\($app)/pipelineruns/\(.name)"
+                  }]')
+
+                # Output debug info to stderr
+                echo "$results" | jq -r '.[] | "  - \(.name): \(.status) (Created: \(.created))\n    Logs: \(.log_link)"' >&2
+
+                # Return summary
+                echo "$results" | jq --arg test "$test_name" \
+                  --arg time "$scheduled_time" \
+                  '{test: $test, scheduled_time: $time, runs: .}'
+                echo "---" >&2
+              }
+
+              # Check all test runs and collect results
+              TEST_RESULTS="[]"
+              for i in "${!NAMES_ARRAY[@]}"; do
+                TEST_NAME="${NAMES_ARRAY[$i]}"
+                TEST_TIME="${TIMES_ARRAY[$i]}"
+                TEST_LABEL="Test-$((i+1))"
+
+                echo "=== $TEST_LABEL Results ($TEST_NAME) ===" >&2
+                RESULT=$(check_pipelineruns "$TEST_NAME" "$TEST_TIME" "$TEST_NAME")
+
+                # Add result to array
+                TEST_RESULTS=$(echo "$TEST_RESULTS" | jq --argjson result "$RESULT" '. += [$result]')
+              done
+
+              # Write combined results to task result
+              echo "$TEST_RESULTS" | jq -c '.'
+
+              echo "Report generation complete" >&2
+
+              echo "========================================================" >&2
+
+              echo "=== Starting Email Report Generation ===" >&2
+              echo "Stakeholders: $STAKEHOLDER_EMAILS" >&2
+
+              echo "Preparing email report for stakeholders: $STAKEHOLDER_EMAILS" >&2
+
+              # Parse results
+              echo "Parsing test results..." >&2
+              echo "Test Results Data (length: ${#TEST_RESULTS} chars):" >&2
+              echo "$TEST_RESULTS" | jq '.' >&2 || echo "Failed to parse test results JSON" >&2
+
+              # Get the number of test results
+              NUM_TESTS=$(echo "$TEST_RESULTS" | jq 'length // 0')
+              echo "Number of test results: $NUM_TESTS" >&2
+
+              # Function to format test results as HTML
+              format_results_html() {
+                local data="$1"
+                local test_name
+                local scheduled_time
+                local runs_count
+                test_name=$(echo "$data" | jq -r '.test // "Unknown"')
+                scheduled_time=$(echo "$data" | jq -r '.scheduled_time // "Unknown"')
+                runs_count=$(echo "$data" | jq '.runs | length // 0')
+
+                echo "<h2>$test_name Tests (Scheduled at $scheduled_time)</h2>"
+                if [ "${runs_count:-0}" -eq 0 ]; then
+                  echo "<p style='color: orange;'><strong>No recent test runs found</strong></p>"
+                  return
+                fi
+
+                echo "<table border='1' cellpadding='8' cellspacing='0' style='border-collapse: collapse; width: 100%;'>"
+                echo "<thead style='background-color: #f0f0f0;'>"
+                echo "<tr><th>Pipeline Run</th><th>Status</th><th>Created</th><th>Logs</th></tr>"
+                echo "</thead>"
+                echo "<tbody>"
+
+                echo "$data" | jq -c '.runs[]' | while read -r run; do
+                  local name
+                  local status
+                  local created
+                  local log_link
+                  name=$(echo "$run" | jq -r '.name')
+                  status=$(echo "$run" | jq -r '.status')
+                  created=$(echo "$run" | jq -r '.created')
+                  log_link=$(echo "$run" | jq -r '.log_link')
+
+                  # Color code status
+                  local status_color="black"
+                  case "$status" in
+                    SUCCEEDED) status_color="green" ;;
+                    FAILED) status_color="red" ;;
+                    RUNNING) status_color="blue" ;;
+                    *) status_color="gray" ;;
+                  esac
+
+                  echo "<tr>"
+                  echo "<td>$name</td>"
+                  echo "<td style='color: $status_color; font-weight: bold;'>$status</td>"
+                  echo "<td>$created</td>"
+                  echo "<td><a href='$log_link'>View Logs</a></td>"
+                  echo "</tr>"
+                done
+
+                echo "</tbody>"
+                echo "</table>"
+                echo "<br/>"
+              }
+
+              # Generate email subject
+              SUBJECT="${INITIAL_SUBJECT} - $(date '+%Y-%m-%d')"
+              echo "Email subject: $SUBJECT" >&2
+
+              # Generate HTML email body
+              echo "Generating HTML email body..." >&2
+
+              # Build HTML content for all test results
+              HTML_TEST_RESULTS=""
+              for i in $(seq 0 $((NUM_TESTS - 1))); do
+                TEST_DATA=$(echo "$TEST_RESULTS" | jq -c ".[$i]")
+                HTML_TEST_RESULTS+=$(format_results_html "$TEST_DATA")
+              done
+
+              cat > /tmp/email_body.html <<EMAILEOF
+              <!DOCTYPE html>
+              <html>
+              <head>
+                <style>
+                  body { font-family: Arial, sans-serif; }
+                  h1 { color: #333; }
+                  table { margin-top: 10px; margin-bottom: 20px; }
+                </style>
+              </head>
+              <body>
+                <h1>Weekly Test Report</h1>
+                <p>This report summarizes the results of the periodic console tests.</p>
+                <hr/>
+                $HTML_TEST_RESULTS
+                <hr/>
+                <p style='color: #666; font-size: 12px;'>
+                  Generated automatically by the report-periodic-tests pipeline on $(date)
+                </p>
+              </body>
+              </html>
+              EMAILEOF
+
+              echo "HTML email body generated" >&2
+
+              # Send email
+              echo "Sending email to: $STAKEHOLDER_EMAILS" >&2
+              echo "Using sender: noreply@redhat.com" >&2
+              echo "Using SMTP server: $SMTP_SERVER" >&2
+
+              # Use s-nail to send HTML email
+              # Create full MIME message with headers
+              echo "Executing s-nail command..." >&2
+              if s-nail \
+                -S mta="smtp://${SMTP_SERVER}" \
+                -S smtp-use-starttls \
+                -S smtp-auth=login \
+                -S smtp-auth-user="${USERNAME}" \
+                -S smtp-auth-password="${PASSWORD}" \
+                -S from="noreply@redhat.com" \
+                -s "$SUBJECT" \
+                -M "text/html" \
+                "$STAKEHOLDER_EMAILS" < /tmp/email_body.html; then
+                echo "Email sent successfully!" >&2
+              else
+                echo "ERROR: Failed to send email (exit code: $?)" >&2
+                echo "SMTP server was: $SMTP_SERVER" >&2
+              fi
+
+              echo "=== Email Report Generation Complete ===" >&2
