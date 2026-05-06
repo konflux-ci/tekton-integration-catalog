@@ -1,0 +1,101 @@
+apiVersion: tekton.dev/v1alpha1
+kind: StepAction
+metadata:
+  name: secure-push-oci
+  labels:
+    upstream-usable: "true"
+spec:
+  description: |
+    This StepAction scans specified directory (workingDir) using [leaktk-scanner CLI](https://github.com/leaktk/scanner)
+    and deletes files containing sensitive information (credentials, certificates) that shouldn't be exposed to public.
+    Then it pushes the working directory contents to a specified OCI artifact repository tag.
+    If the tag exists, it will update the existing content with the content of the working directory.
+  image: quay.io/konflux-qe-incubator/konflux-qe-tools:latest
+  params:
+    - name: workdir-path
+      type: string
+      description: Path to the workdir that is about to be uploaded to OCI artifact
+    - name: oci-ref
+      type: string
+      description: Full OCI artifact reference in a format "quay.io/org/repo:tag"
+    - name: credentials-volume-name
+      type: string
+      description: Name of the volume that mounts the Kubernetes secret containing registry credentials
+    - name: credentials-volume-key
+      type: string
+      default: oci-storage-dockerconfigjson
+      description: Key within the secret that holds the registry credentials in .dockerconfigjson format
+    - name: oci-tag-expiration
+      type: string
+      default: 1y
+      description: OCI artifact tag expiration
+    - name: always-pass
+      type: string
+      default: "true"
+      description: Even if execution of the stepaction's script fails, do not fail the step
+  volumeMounts:
+  - name: $(params.credentials-volume-name)
+    mountPath: /home/tool-box/.docker/config.json
+    subPath: $(params.credentials-volume-key)
+  workingDir: $(params.workdir-path)
+  env:
+    - name: OCI_ARTIFACT_REFERENCE
+      value: "$(params.oci-ref)"
+    - name: OCI_TAG_EXPIRATION
+      value: "$(params.oci-tag-expiration)"
+    - name: ALWAYS_PASS
+      value: "$(params.always-pass)"
+  script: |
+    #!/bin/bash
+    set -e
+
+    main() {
+      IMAGE_REF_REGEX='^[a-zA-Z0-9_:\]?quay\.io/[a-zA-Z0-9_-]+(/[a-zA-Z0-9_-]+)+:[a-zA-Z0-9._-]+$'
+
+      if [[ ! $OCI_ARTIFACT_REFERENCE =~ $IMAGE_REF_REGEX ]]; then
+          echo -e "[ERROR]: provided OCI artifact reference '$OCI_ARTIFACT_REFERENCE' is not in correct format 'quay.io/org/repo:tag'"
+          exit 1
+      fi
+
+      TAG="${OCI_ARTIFACT_REFERENCE##*:}"
+
+      TEMP_ANNOTATION_FILE="$(mktemp)"
+
+      # Fetch the manifest annotations for the container
+      MANIFESTS_ANNOTATIONS=$(oras manifest fetch "$OCI_ARTIFACT_REFERENCE" 2>> /dev/null | jq .annotations) || true
+
+      if [ "$MANIFESTS_ANNOTATIONS" == "" ]; then
+          # Create the annotations file, because it does not exist in the OCI artifact
+          echo -e "[INFO]: provided OCI artifact tag '$OCI_ARTIFACT_REFERENCE' does not exist - will create it"
+          jq -n --arg exp "$OCI_TAG_EXPIRATION" --arg title "Artifact storage for pipelinerun: $TAG" \
+              '{"$manifest": {"quay.expires-after": $exp, "org.opencontainers.image.title": $title}}' > "${TEMP_ANNOTATION_FILE}"
+      else
+          echo -e "[INFO]: going to update existing content in '$OCI_ARTIFACT_REFERENCE'"
+          # Keep the existing annotations file for further use
+          jq -n --argjson manifest "$MANIFESTS_ANNOTATIONS" '{ "$manifest": $manifest }' > "${TEMP_ANNOTATION_FILE}"
+          oras pull "$OCI_ARTIFACT_REFERENCE"
+      fi
+
+      # Scan the working directory using leaktk-scanner and remove problematic files
+      log_filename="leaktk-scan-$(date +%s).log"
+      leaktk-scanner scan --kind Files --resource . 2>> $log_filename | leaktk-remove-files . &>> $log_filename
+
+      # Push the content to remote artifact storage
+      attempt=1
+      while ! oras push "$OCI_ARTIFACT_REFERENCE" --annotation-file "${TEMP_ANNOTATION_FILE}" ./:application/vnd.acme.rocket.docs.layer.v1+tar; do
+          if [[ $attempt -ge 5 ]]; then
+              echo -e "[ERROR]: oras push failed after $attempt attempts."
+              rm -f "${TEMP_ANNOTATION_FILE}"
+              exit 1
+          fi
+          echo -e "[WARNING]: oras push failed (attempt $attempt). Retrying in 5 seconds..."
+          sleep 5
+          ((attempt++))
+      done
+    }
+
+    if [ "$ALWAYS_PASS" == "true" ]; then
+      main || true
+    else
+      main
+    fi
