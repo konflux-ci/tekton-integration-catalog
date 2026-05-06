@@ -1,0 +1,262 @@
+apiVersion: tekton.dev/v1
+kind: Task
+metadata:
+  name: rosa-hcp-provision
+  labels:
+    app.kubernetes.io/version: "0.3"
+    upstream-usable: "false"
+  annotations:
+    tekton.dev/pipelines.minVersion: 0.12.1
+    tekton.dev/tags: konflux
+spec:
+  description: |
+    The `rosa-hcp-provision` task automates the creation and provisioning of an ephemeral OpenShift cluster using Red Hat OpenShift on AWS (ROSA) with Hosted Control Planes (HCP).
+    The task takes several parameters, including the OpenShift version, AWS machine type, and cluster name, to configure and deploy the cluster on AWS.
+    It uses credentials stored in a Kubernetes secret for authentication and configuration of AWS and ROSA.
+    Once the cluster is provisioned, the task outputs a login command to access the newly created cluster, which can be used in subsequent pipeline steps.
+    The logs from cluster provisioning are than scanned for leaked credentials and pushed to specified OCI artifact
+  results:
+    - name: ocp-login-command
+      description: Command to log in to the newly ephemeral OpenShift cluster.
+    - name: oidc-config-id
+      description: The ID of the managed OIDC config created for this cluster. Must be passed to the deprovision task for cleanup.
+  params:
+    - name: ocp-version
+      type: string
+      description: The version of the OpenShift Container Platform (OCP) to deploy. This will be used to fetch the corresponding HCP version for deployment.
+    - name: cluster-name
+      type: string
+      description: The unique name of the OpenShift cluster to be created.
+    - name: machine-type
+      type: string
+      description: The AWS EC2 instance type to be used for the worker nodes of the OpenShift cluster (e.g., m5.xlarge).
+    - name: replicas
+      type: string
+      description: The number of worker nodes to provision in the cluster. Defaults to 3 worker nodes.
+      default: '3'
+    - name: konflux-test-infra-secret
+      type: string
+      description: The name of the Kubernetes secret that contains AWS and ROSA configuration credentials needed for cluster provisioning.
+    - name: cloud-credential-key
+      type: string
+      description: The key within the secret where AWS ROSA configurations (e.g., credentials, roles) are stored.
+    - name: oci-container
+      type: string
+      description: The ORAS container registry URI where artifacts will be stored.
+    - name: oci-credentials-secret
+      type: string
+      description: Name of the Kubernetes Secret containing OCI registry credentials for pushing artifacts.
+    - name: oci-credentials-secret-key
+      type: string
+      default: .dockerconfigjson
+      description: Key within the OCI credentials secret that holds the registry credentials in .dockerconfigjson format.
+  volumes:
+    - name: konflux-test-infra-volume
+      secret:
+        secretName: "$(params.konflux-test-infra-secret)"
+    - name: oci-credentials-volume
+      secret:
+        secretName: "$(params.oci-credentials-secret)"
+  steps:
+    - name: provision
+      image: quay.io/konflux-ci/tekton-integration-catalog/utils:latest
+      onError: continue
+      volumeMounts:
+        - name: konflux-test-infra-volume
+          mountPath: /usr/local/konflux-test-infra
+      workingDir: /workspace/cluster-provision
+      env:
+        - name: CLUSTER_NAME
+          value: "$(params.cluster-name)"
+        - name: OCP_VERSION
+          value: "$(params.ocp-version)"
+        - name: MACHINE_TYPE
+          value: "$(params.machine-type)"
+      script: |
+        set -euo pipefail
+
+        export ROSA_TOKEN AWS_ACCESS_KEY_ID AWS_SECRET_ACCESS_KEY BILLING_ACCOUNT_ID \
+              SUBNET_IDS REGION OIDC_CONFIG_ID OPERATOR_ROLES_PREFIX
+
+        ROSA_TOKEN=$(jq -r '.aws["rosa-hcp"]["rosa-token"]' /usr/local/konflux-test-infra/$(params.cloud-credential-key))
+        AWS_ACCESS_KEY_ID=$(jq -r '.aws["access-key-id"]' /usr/local/konflux-test-infra/$(params.cloud-credential-key))
+        AWS_SECRET_ACCESS_KEY=$(jq -r '.aws["access-key-secret"]' /usr/local/konflux-test-infra/$(params.cloud-credential-key))
+        BILLING_ACCOUNT_ID=$(jq -r '.aws["aws-account-id"]' /usr/local/konflux-test-infra/$(params.cloud-credential-key))
+        SUBNET_IDS=$(jq -r '.aws["rosa-hcp"]["subnets-ids"]' /usr/local/konflux-test-infra/$(params.cloud-credential-key))
+        REGION=$(jq -r '.aws["region"]' /usr/local/konflux-test-infra/$(params.cloud-credential-key))
+        OPERATOR_ROLES_PREFIX="$CLUSTER_NAME"
+
+        main() {
+          config_aws_creds() {
+              printf "INFO: Configure AWS Credentials...\n"
+              aws configure set aws_access_key_id "$AWS_ACCESS_KEY_ID"
+              aws configure set aws_secret_access_key "$AWS_SECRET_ACCESS_KEY"
+              aws configure set region "$REGION"
+          }
+
+          print_debug_info() {
+              printf "INFO: Print debug info......\n"
+              rosa --region "$REGION" describe cluster --cluster="$CLUSTER_NAME"
+          }
+
+          wait_for() {
+              local command="${1}"
+              local description="${2}"
+              local timeout="${3}"
+              local interval="${4}"
+
+              printf "Waiting for %s for %s...\n" "${description}" "${timeout}"
+              timeout --foreground "${timeout}" bash -c "
+              until ${command}
+              do
+                  printf \"Waiting for %s... Trying again in ${interval}s\n\" \"${description}\"
+                  sleep ${interval}
+              done
+              " || return 1
+              printf "%s finished!\n" "${description}"
+          }
+
+          # Even the cluster is shown ready on ocm side, and the cluster operators are available, some of the cluster operators are still progressing.
+          check_clusteroperators() {
+              wait_for "kubectl get clusteroperators -A" "cluster operators to be accessible" "2m" "10"
+              echo "[INFO] Cluster operators are accessible."
+          }
+
+          get_hcp_full_version() {
+              rosa_output=$(rosa list version --channel-group stable --region "$REGION" --hosted-cp -o json)
+              raw_id=$(echo "$rosa_output" | jq -r "[.[].raw_id | select(startswith(\"$OCP_VERSION\"))] | max")
+              HCP_FULL_VERSION="$raw_id"
+              if [ -z "$HCP_FULL_VERSION" ]; then
+                  echo "Failed to get the HCP full version of $OCP_VERSION" >&2
+                  exit 1
+              fi
+          }
+
+          check_cluster_health_endpoint() {
+              cluster_id=$(ocm get clusters --parameter search="name like '$CLUSTER_NAME'" | jq -r '.items[].id')
+              # 1. Wait for cluster to be reported as healthy
+              # 2. If the attempt fails, print out the list of cluster operators, which should provide a better overview about the current status of the cluster
+              wait_for "ocm get subs --parameter search=\"cluster_id = '$cluster_id'\" | jq -r '.items[0].metrics[0].health_state' | grep -E ^healthy || (kubectl get clusteroperators -A && false)" \
+                  "cluster to be reported as healthy" "60m" "60"
+          }
+
+          create_oidc_config() {
+              printf "INFO: Creating managed OIDC config...\n"
+              rosa create oidc-config --managed --mode=auto --region "$REGION" -y
+              OIDC_CONFIG_ID=$(rosa list oidc-config --region "$REGION" -o json | jq -r 'sort_by(.creation_timestamp) | last | .id')
+              if [ -z "$OIDC_CONFIG_ID" ] || [ "$OIDC_CONFIG_ID" = "null" ]; then
+                  echo "ERROR: Failed to get OIDC config ID after creation" >&2
+                  exit 1
+              fi
+              printf "INFO: Created OIDC config with ID: %s\n" "$OIDC_CONFIG_ID"
+              echo -n "$OIDC_CONFIG_ID" > $(results.oidc-config-id.path)
+          }
+
+          create_operator_roles() {
+              printf "INFO: Creating operator roles with prefix [%s] for OIDC config [%s]...\n" "$OPERATOR_ROLES_PREFIX" "$OIDC_CONFIG_ID"
+              INSTALL_ROLE_ARN=$(rosa list account-roles --region "$REGION" -o json | jq -r '[.[] | select(.role_type == "Installer")] | first | .role_arn')
+              if [ -z "$INSTALL_ROLE_ARN" ] || [ "$INSTALL_ROLE_ARN" = "null" ]; then
+                  echo "ERROR: Failed to discover installer account role" >&2
+                  exit 1
+              fi
+              rosa create operator-roles \
+                  --oidc-config-id "$OIDC_CONFIG_ID" \
+                  --prefix "$OPERATOR_ROLES_PREFIX" \
+                  --role-arn "$INSTALL_ROLE_ARN" \
+                  --region "$REGION" \
+                  --hosted-cp \
+                  --mode=auto -y
+          }
+
+          deploy_cluster() {
+              printf "INFO: Log in to your Red Hat account...\n"
+              config_aws_creds
+              rosa login --token="$ROSA_TOKEN"
+
+              create_oidc_config
+              create_operator_roles
+
+              printf "INFO: Create ROSA with HCP cluster...\n"
+              get_hcp_full_version
+              rosa create cluster --cluster-name "$CLUSTER_NAME" \
+                  --sts --mode=auto --oidc-config-id "$OIDC_CONFIG_ID" \
+                  --operator-roles-prefix "$OPERATOR_ROLES_PREFIX" --region "$REGION" --version "$HCP_FULL_VERSION" \
+                  --compute-machine-type "$MACHINE_TYPE" \
+                  --subnet-ids="$SUBNET_IDS" \
+                  --billing-account "$BILLING_ACCOUNT_ID" \
+                  --replicas $(params.replicas) \
+                  --tags konflux-ci:true,creation-date:$(date -u +"%Y-%m-%d"),cluster-type:rosa-hcp \
+                  --hosted-cp -y
+
+              printf "INFO: Track the progress of the cluster creation...\n"
+              rosa logs install --cluster="$CLUSTER_NAME" --region "$REGION" --watch
+
+              printf "INFO: ROSA with HCP cluster is ready, create a cluster admin account for accessing the cluster\n"
+              admin_output="$(rosa create admin --region "$REGION" --cluster="$CLUSTER_NAME")"
+
+              # Get the admin account credentials and API server URL
+              admin_user="$(echo "$admin_output" | grep -oP '(?<=--username ).*(?= --password)')"
+              admin_pass="$(echo "$admin_output" | grep -oP '(?<=--password ).*')"
+              api_url="$(echo "$admin_output" | grep -oP '(?<=oc login ).*(?= --username)')"
+
+              printf "INFO: Storing login command...\n"
+              echo "oc login $api_url --username $admin_user --password $admin_pass" > $(results.ocp-login-command.path)
+
+              # Use the admin account to login to the cluster in a loop until the account is active.
+              printf "INFO: Check if it's able to login to OCP cluster...\n"
+              max_retries=10
+              retries=0
+
+              while ! oc login "$api_url" --username "$admin_user" --password "$admin_pass" >/dev/null 2>&1; do
+                  if [ "$retries" -eq "$max_retries" ]; then
+                      echo "ERROR: Failed to login the cluster." >&2
+                      print_debug_info
+                      exit 1
+                  fi
+                  sleep 60
+                  retries=$((retries + 1))
+                  echo "Retried $retries times..."
+              done
+
+              #Workaround: Check if apiserver is ready by calling kubectl get nodes
+              printf "INFO: Check if apiserver is ready...\n"
+              if ! timeout 300s bash -c "while ! kubectl get nodes >/dev/null 2>/dev/null; do printf '.'; sleep 10; done"; then
+                  echo "ERROR: API server is not ready" >&2
+                  exit 1
+              fi
+              check_clusteroperators
+              check_cluster_health_endpoint
+          }
+
+          deploy_cluster
+        }
+        main 2>&1 | tee cluster-provision.log
+    - name: secure-push-oci
+      ref:
+        resolver: git
+        params:
+          - name: url
+            value: https://github.com/PabloHiro/tekton-integration-catalog.git
+          - name: revision
+            value: feature/rosa-hcp-provision-separate-oci-secret
+          - name: pathInRepo
+            value: stepactions/secure-push-oci/0.2/secure-push-oci.yaml
+      params:
+        - name: workdir-path
+          value: /workspace/cluster-provision
+        - name: oci-ref
+          value: $(params.oci-container)
+        - name: credentials-volume-name
+          value: oci-credentials-volume
+        - name: credentials-volume-key
+          value: $(params.oci-credentials-secret-key)
+    - name: fail-if-any-step-failed
+      ref:
+        resolver: git
+        params:
+          - name: url
+            value: https://github.com/konflux-ci/tekton-integration-catalog.git
+          - name: revision
+            value: main
+          - name: pathInRepo
+            value: stepactions/fail-if-any-step-failed/0.1/fail-if-any-step-failed.yaml
