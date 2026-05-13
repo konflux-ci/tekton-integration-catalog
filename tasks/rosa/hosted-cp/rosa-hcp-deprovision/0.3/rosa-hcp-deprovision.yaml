@@ -1,0 +1,204 @@
+apiVersion: tekton.dev/v1
+kind: Task
+metadata:
+  name: collect-artifacts-deprovision-rosa
+  labels:
+    app.kubernetes.io/version: "0.3"
+    upstream-usable: "false"
+  annotations:
+    tekton.dev/pipelines.minVersion: 0.12.1
+    tekton.dev/tags: konflux
+spec:
+  description: |
+    This Tekton Task handles the collection of test artifacts and deprovisions the OpenShift cluster. The task performs the following steps:
+    1. **Collect Artifacts**: Gathers artifacts if the pipeline did not succeed.
+    2. **Inspect and Upload Artifacts**: Checks for sensitive information in the artifacts and uploads them to the OCI container registry.
+    3. **Deprovision ROSA Cluster**: Deletes the OpenShift cluster if specified.
+    4. **Delete OIDC Config**: Removes the managed OIDC config created during provisioning.
+    5. **Remove Tags from Subnets**: Cleans up tags from AWS subnets associated with the cluster.
+  params:
+    - name: test-name
+      type: string
+      description: The name of the test being executed.
+    - name: ocp-login-command
+      type: string
+      description: Command to log in to the OpenShift cluster.
+    - name: oci-container
+      type: string
+      description: The ORAS container registry URI where artifacts will be stored.
+    - name: cluster-name
+      type: string
+      description: The name of the OpenShift cluster that is to be deleted.
+    - name: oidc-config-id
+      type: string
+      description: The ID of the managed OIDC config created during provisioning to be deleted.
+      default: ""
+    - name: konflux-test-infra-secret
+      type: string
+      description: The name of the secret containing credentials for testing infrastructure.
+    - name: cloud-credential-key
+      type: string
+      description: The key within the konflux-test-infra secret where AWS ROSA configuration details are stored.
+    - name: oci-credentials-secret
+      type: string
+      description: Name of the Kubernetes Secret containing OCI registry credentials for pushing artifacts.
+    - name: oci-credentials-secret-key
+      type: string
+      default: .dockerconfigjson
+      description: Key within the OCI credentials secret that holds the registry credentials in .dockerconfigjson format.
+    - name: pipeline-aggregate-status
+      type: string
+      description: The status of the pipeline (e.g., Succeeded, Failed, Completed, None).
+      default: None
+  volumes:
+    - name: konflux-test-infra-volume
+      secret:
+        secretName: "$(params.konflux-test-infra-secret)"
+    - name: oci-credentials-volume
+      secret:
+        secretName: "$(params.oci-credentials-secret)"
+  steps:
+    - name: collect-artifacts
+      workingDir: /workspace/cluster-artifacts
+      onError: continue
+      image: quay.io/konflux-qe-incubator/konflux-qe-tools:latest
+      script: |
+        #!/bin/sh
+        $(params.ocp-login-command)
+
+        curl -sSL https://raw.githubusercontent.com/konflux-ci/konflux-qe-definitions/main/scripts/gather-extra.sh | bash
+      when:
+        - input: $(params.pipeline-aggregate-status)
+          operator: notin
+          values: ["Succeeded"]
+    - name: secure-push-oci
+      onError: continue
+      ref:
+        resolver: git
+        params:
+          - name: url
+            value: https://github.com/PabloHiro/tekton-integration-catalog.git
+          - name: revision
+            value: feature/rosa-hcp-provision-separate-oci-secret
+          - name: pathInRepo
+            value: stepactions/secure-push-oci/0.2/secure-push-oci.yaml
+      params:
+        - name: workdir-path
+          value: /workspace
+        - name: oci-ref
+          value: $(params.oci-container)
+        - name: credentials-volume-name
+          value: oci-credentials-volume
+        - name: credentials-volume-key
+          value: $(params.oci-credentials-secret-key)
+      when:
+        - input: $(params.pipeline-aggregate-status)
+          operator: notin
+          values: ["Succeeded"]
+    - name: deprovision-rosa
+      image: quay.io/konflux-qe-incubator/konflux-qe-tools:latest
+      onError: continue
+      volumeMounts:
+        - name: konflux-test-infra-volume
+          mountPath: /usr/local/konflux-test-infra
+      script: |
+        #!/bin/bash
+        set -euo pipefail
+
+        export CLUSTER_NAME REGION AWS_ACCESS_KEY_ID AWS_SECRET_ACCESS_KEY ROSA_TOKEN OIDC_CONFIG_ID OPERATOR_ROLES_PREFIX
+
+        CLUSTER_NAME=$(params.cluster-name)
+        OIDC_CONFIG_ID=$(params.oidc-config-id)
+        OPERATOR_ROLES_PREFIX="$CLUSTER_NAME"
+        REGION=$(jq -r '.aws["region"]' /usr/local/konflux-test-infra/$(params.cloud-credential-key))
+        AWS_ACCESS_KEY_ID=$(jq -r '.aws["access-key-id"]' /usr/local/konflux-test-infra/$(params.cloud-credential-key))
+        AWS_SECRET_ACCESS_KEY=$(jq -r '.aws["access-key-secret"]' /usr/local/konflux-test-infra/$(params.cloud-credential-key))
+        ROSA_TOKEN=$(jq -r '.aws["rosa-hcp"]["rosa-token"]' /usr/local/konflux-test-infra/$(params.cloud-credential-key))
+
+        try() {
+            local rc
+            "$@" && rc=0 || rc=$?
+            if [[ $rc -ne 0 ]]; then
+                printf "WARN: Command failed (exit %d): %s\n" "$rc" "$*" >&2
+            fi
+            return 0
+        }
+
+        config_aws_creds() {
+            aws configure set aws_access_key_id "$AWS_ACCESS_KEY_ID"
+            aws configure set aws_secret_access_key "$AWS_SECRET_ACCESS_KEY"
+            aws configure set region "$REGION"
+        }
+
+        echo "INFO: [$(date +"%Y/%m/%d %H:%M:%S")] Started to destroy cluster [$CLUSTER_NAME]..."
+
+        printf "INFO: Logging in to your Red Hat account...\n"
+        config_aws_creds
+        rosa login --token="$ROSA_TOKEN"
+
+        try rosa delete cluster --region "$REGION" --cluster="$CLUSTER_NAME" -y
+
+        if [[ -n "$OIDC_CONFIG_ID" ]]; then
+            printf "INFO: Waiting for cluster deletion before removing operator roles and OIDC config...\n"
+            try rosa logs uninstall --cluster="$CLUSTER_NAME" --region "$REGION" --watch
+
+            printf "INFO: Deleting operator roles with prefix [%s]...\n" "$OPERATOR_ROLES_PREFIX"
+            try rosa delete operator-roles --prefix "$OPERATOR_ROLES_PREFIX" --region "$REGION" --mode=auto -y
+
+            printf "INFO: Deleting OIDC provider [%s]...\n" "$OIDC_CONFIG_ID"
+            try rosa delete oidc-provider --oidc-config-id "$OIDC_CONFIG_ID" --region "$REGION" --mode=auto -y
+
+            printf "INFO: Deleting managed OIDC config [%s]...\n" "$OIDC_CONFIG_ID"
+            try rosa delete oidc-config --oidc-config-id "$OIDC_CONFIG_ID" --region "$REGION" --mode=auto -y
+        else
+            printf "WARN: OIDC_CONFIG_ID not set, skipping operator roles and OIDC config deletion.\n"
+        fi
+
+        echo "INFO: [$(date +"%Y/%m/%d %H:%M:%S")] Done"
+    - name: remove-tag-from-subnets
+      image: quay.io/konflux-qe-incubator/konflux-qe-tools:latest
+      onError: continue
+      volumeMounts:
+        - name: konflux-test-infra-volume
+          mountPath: /usr/local/konflux-test-infra
+      script: |
+        #!/bin/bash
+        set -euo pipefail
+
+        try() {
+            local rc
+            "$@" && rc=0 || rc=$?
+            if [[ $rc -ne 0 ]]; then
+                printf "WARN: Command failed (exit %d): %s\n" "$rc" "$*" >&2
+            fi
+            return 0
+        }
+
+        CLUSTER_NAME=$(params.cluster-name)
+        REGION=$(jq -r '.aws["region"]' /usr/local/konflux-test-infra/$(params.cloud-credential-key))
+        AWS_ACCESS_KEY_ID=$(jq -r '.aws["access-key-id"]' /usr/local/konflux-test-infra/$(params.cloud-credential-key))
+        AWS_SECRET_ACCESS_KEY=$(jq -r '.aws["access-key-secret"]' /usr/local/konflux-test-infra/$(params.cloud-credential-key))
+        ROSA_TOKEN=$(jq -r '.aws["rosa-hcp"]["rosa-token"]' /usr/local/konflux-test-infra/$(params.cloud-credential-key))
+        SUBNET_IDS=$(jq -r '.aws["rosa-hcp"]["subnets-ids"]' /usr/local/konflux-test-infra/$(params.cloud-credential-key))
+
+        aws configure set aws_access_key_id "$AWS_ACCESS_KEY_ID"
+        aws configure set aws_secret_access_key "$AWS_SECRET_ACCESS_KEY"
+        aws configure set region "$REGION"
+
+        echo "INFO: [$(date +"%Y/%m/%d %H:%M:%S")] Started to remove tags of cluster [$CLUSTER_NAME]..."
+
+        printf "INFO: Logging in to your Red Hat account...\n"
+        rosa login --token="$ROSA_TOKEN"
+
+        cluster_id=$(rosa --region "$REGION" describe cluster --cluster="$CLUSTER_NAME" -o json 2>/dev/null | jq -r .id)
+        if [[ -z "$cluster_id" || "$cluster_id" == "null" ]]; then
+            printf "WARN: Could not find cluster ID for [%s], skipping subnet tag removal.\n" "$CLUSTER_NAME"
+            exit 0
+        fi
+        echo "INFO: Cluster ID: $cluster_id"
+
+        echo "INFO: Removing tag from subnets [$SUBNET_IDS]..."
+        read -ra subnet_array <<< "${SUBNET_IDS//,/ }"
+        try aws --region "$REGION" ec2 delete-tags --resources "${subnet_array[@]}" --tags Key="kubernetes.io/cluster/${cluster_id}"
+
+        echo "INFO: [$(date +"%Y/%m/%d %H:%M:%S")] Done"
