@@ -77,9 +77,9 @@ spec:
         resolver: git
         params:
           - name: url
-            value: https://github.com/PabloHiro/tekton-integration-catalog.git
+            value: https://github.com/konflux-ci/tekton-integration-catalog.git
           - name: revision
-            value: feature/rosa-hcp-provision-separate-oci-secret
+            value: main
           - name: pathInRepo
             value: stepactions/secure-push-oci/0.2/secure-push-oci.yaml
       params:
