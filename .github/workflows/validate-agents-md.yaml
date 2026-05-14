@@ -1,0 +1,25 @@
+name: Validate AGENTS.md line limit
+
+"on":
+  pull_request:
+    paths:
+      - AGENTS.md
+  merge_group:
+    types: [checks_requested]
+
+jobs:
+  check-line-limit:
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v5
+
+      - name: Check AGENTS.md is under 60 lines
+        run: |
+          MAX_LINES=60
+          ACTUAL=$(grep -c '' AGENTS.md)
+          echo "AGENTS.md has $ACTUAL lines (limit: under $MAX_LINES)"
+          if [ "$ACTUAL" -ge "$MAX_LINES" ]; then
+            echo "ERROR: AGENTS.md has $ACTUAL lines (must be under $MAX_LINES). Trim it down."
+            exit 1
+          fi
