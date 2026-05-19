@@ -136,7 +136,25 @@ spec:
         config_aws_creds
         rosa login --token="$ROSA_TOKEN"
 
+        SUBNET_IDS=$(jq -r '.aws["rosa-hcp"]["subnets-ids"]' /usr/local/konflux-test-infra/$(params.cloud-credential-key))
+
+        cluster_id="$(
+          rosa --region "$REGION" describe cluster --cluster="$CLUSTER_NAME" -o json 2>/dev/null \
+            | jq -r '.id // empty' 2>/dev/null \
+            || true
+        )"
+
         try rosa delete cluster --region "$REGION" --cluster="$CLUSTER_NAME" -y
+
+        if [[ -n "$cluster_id" && "$cluster_id" != "null" ]]; then
+            echo "INFO: [$(date +"%Y/%m/%d %H:%M:%S")] Started to remove tags of cluster [$CLUSTER_NAME]..."
+            echo "INFO: Cluster ID: $cluster_id"
+            read -ra subnet_array <<< "${SUBNET_IDS//,/ }"
+            try aws --region "$REGION" ec2 delete-tags --resources "${subnet_array[@]}" --tags Key="kubernetes.io/cluster/${cluster_id}"
+            echo "INFO: [$(date +"%Y/%m/%d %H:%M:%S")] Subnet tags removed."
+        else
+            printf "WARN: Could not find cluster ID for [%s], skipping subnet tag removal.\n" "$CLUSTER_NAME"
+        fi
 
         if [[ -n "$OIDC_CONFIG_ID" ]]; then
             printf "INFO: Waiting for cluster deletion before removing operator roles and OIDC config...\n"
@@ -153,52 +171,5 @@ spec:
         else
             printf "WARN: OIDC_CONFIG_ID not set, skipping operator roles and OIDC config deletion.\n"
         fi
-
-        echo "INFO: [$(date +"%Y/%m/%d %H:%M:%S")] Done"
-    - name: remove-tag-from-subnets
-      image: quay.io/konflux-qe-incubator/konflux-qe-tools:latest
-      onError: continue
-      volumeMounts:
-        - name: konflux-test-infra-volume
-          mountPath: /usr/local/konflux-test-infra
-      script: |
-        #!/bin/bash
-        set -euo pipefail
-
-        try() {
-            local rc
-            "$@" && rc=0 || rc=$?
-            if [[ $rc -ne 0 ]]; then
-                printf "WARN: Command failed (exit %d): %s\n" "$rc" "$*" >&2
-            fi
-            return 0
-        }
-
-        CLUSTER_NAME=$(params.cluster-name)
-        REGION=$(jq -r '.aws["region"]' /usr/local/konflux-test-infra/$(params.cloud-credential-key))
-        AWS_ACCESS_KEY_ID=$(jq -r '.aws["access-key-id"]' /usr/local/konflux-test-infra/$(params.cloud-credential-key))
-        AWS_SECRET_ACCESS_KEY=$(jq -r '.aws["access-key-secret"]' /usr/local/konflux-test-infra/$(params.cloud-credential-key))
-        ROSA_TOKEN=$(jq -r '.aws["rosa-hcp"]["rosa-token"]' /usr/local/konflux-test-infra/$(params.cloud-credential-key))
-        SUBNET_IDS=$(jq -r '.aws["rosa-hcp"]["subnets-ids"]' /usr/local/konflux-test-infra/$(params.cloud-credential-key))
-
-        aws configure set aws_access_key_id "$AWS_ACCESS_KEY_ID"
-        aws configure set aws_secret_access_key "$AWS_SECRET_ACCESS_KEY"
-        aws configure set region "$REGION"
-
-        echo "INFO: [$(date +"%Y/%m/%d %H:%M:%S")] Started to remove tags of cluster [$CLUSTER_NAME]..."
-
-        printf "INFO: Logging in to your Red Hat account...\n"
-        rosa login --token="$ROSA_TOKEN"
-
-        cluster_id=$(rosa --region "$REGION" describe cluster --cluster="$CLUSTER_NAME" -o json 2>/dev/null | jq -r .id)
-        if [[ -z "$cluster_id" || "$cluster_id" == "null" ]]; then
-            printf "WARN: Could not find cluster ID for [%s], skipping subnet tag removal.\n" "$CLUSTER_NAME"
-            exit 0
-        fi
-        echo "INFO: Cluster ID: $cluster_id"
-
-        echo "INFO: Removing tag from subnets [$SUBNET_IDS]..."
-        read -ra subnet_array <<< "${SUBNET_IDS//,/ }"
-        try aws --region "$REGION" ec2 delete-tags --resources "${subnet_array[@]}" --tags Key="kubernetes.io/cluster/${cluster_id}"
 
         echo "INFO: [$(date +"%Y/%m/%d %H:%M:%S")] Done"
