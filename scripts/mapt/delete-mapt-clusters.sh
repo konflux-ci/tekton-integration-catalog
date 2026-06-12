@@ -214,6 +214,7 @@ for region in $regions; do
   regional_carriers=0
   regional_lgw_assoc=0
   regional_lbs=0
+  orphan_project_names=""
 
   # -----------------------------------------------------------------
   # TOP priority: Delete EC2 instances
@@ -476,7 +477,6 @@ for region in $regions; do
             --output text 2>/dev/null
       )
       if [ -n "$terminated_data" ]; then
-          # Use the most recent LaunchTime among terminated instances
           skip_vpc=false
           for launch_time in $terminated_data; do
               age_seconds=$(get_age_seconds "$launch_time")
@@ -488,9 +488,25 @@ for region in $regions; do
           if $skip_vpc; then
               continue
           fi
+      else
+          # No instances at all — use CloudTrail CreateVpc event for age check
+          vpc_create_time=$(
+              aws cloudtrail lookup-events \
+                --region "$region" \
+                --lookup-attributes "AttributeKey=ResourceName,AttributeValue=$vpc_id" \
+                --query "Events[?EventName=='CreateVpc'].EventTime | [0]" \
+                --output text 2>/dev/null
+          )
+          if [ -n "$vpc_create_time" ] && [ "$vpc_create_time" != "None" ]; then
+              age_seconds=$(get_age_seconds "$vpc_create_time")
+              if [ "$age_seconds" -le "$AGE_LIMIT_SECONDS" ]; then
+                  echo "  ⏳ Skipping VPC $vpc_id — created $((age_seconds / 3600))h ago (< ${AGE_LIMIT_SECONDS}s limit, from CloudTrail)"
+                  continue
+              fi
+          else
+              echo "  ℹ️  No CloudTrail CreateVpc event for VPC $vpc_id — older than 90d retention, proceeding with deletion"
+          fi
       fi
-      # No instances at all (purged from API >1h after termination) or
-      # only terminated instances older than the age limit — VPC is orphaned.
 
       project_name=$(
           aws ec2 describe-vpcs \
@@ -509,6 +525,7 @@ for region in $regions; do
       regional_vpc_count=$((regional_vpc_count + 1))
       regional_vpcs_to_delete="$regional_vpcs_to_delete $vpc_id"
       counted_vpcs_string="${counted_vpcs_string}${vpc_id}|"
+      orphan_project_names="${orphan_project_names}|${project_name}|"
 
       VPC_FILTER="Name=vpc-id,Values=$vpc_id"
 
@@ -546,57 +563,49 @@ for region in $regions; do
           regional_enis=$((regional_enis + 1))
       done <<< "$enis"
 
-      # --- 3.3 Standalone EIPs tagged with origin=mapt in this VPC ---
-      # (EIPs not attached to an ENI won't be caught above)
-      standalone_eips=$(aws ec2 describe-addresses --region "$region" --filters "$FILTER" --query "Addresses[?AssociationId==null].AllocationId" --output text 2>/dev/null)
-      for eip_alloc_id in $standalone_eips; do
-          delete_resource "EIP" "$eip_alloc_id" "$region" "Orphaned standalone EIP"
-          regional_eips=$((regional_eips + 1))
-      done
-
-      # --- 3.4 VPC Endpoints ---
+      # --- 3.3 VPC Endpoints ---
       endpoints=$(aws ec2 describe-vpc-endpoints --region "$region" --filter "$VPC_FILTER" --query 'VpcEndpoints[].VpcEndpointId' --output text 2>/dev/null)
       for ep_id in $endpoints; do
           delete_resource "ENDPOINT" "$ep_id" "$region" "Orphaned VPC cleanup"
           regional_endpoints=$((regional_endpoints + 1))
       done
 
-      # --- 3.5 VPC Peering Connections ---
+      # --- 3.4 VPC Peering Connections ---
       peering_conns=$(aws ec2 describe-vpc-peering-connections --region "$region" --filter "Name=requester-vpc-info.vpc-id,Values=$vpc_id" --query 'VpcPeeringConnections[].VpcPeeringConnectionId' --output text 2>/dev/null)
       for pcx_id in $peering_conns; do
           delete_resource "PEERING" "$pcx_id" "$region" "Orphaned VPC cleanup"
           regional_peering=$((regional_peering + 1))
       done
 
-      # --- 3.6 VPN Gateways ---
+      # --- 3.5 VPN Gateways ---
       vpn_gws=$(aws ec2 describe-vpn-gateways --region "$region" --filter "Name=attachment.vpc-id,Values=$vpc_id" --query 'VpnGateways[].VpnGatewayId' --output text 2>/dev/null)
       for vpn_id in $vpn_gws; do
           delete_resource "VPN_GW" "$vpn_id" "$region" "Orphaned VPC cleanup"
           regional_vpns=$((regional_vpns + 1))
       done
 
-      # --- 3.7 Carrier Gateways ---
+      # --- 3.6 Carrier Gateways ---
       carrier_gws=$(aws ec2 describe-carrier-gateways --region "$region" --filter "$VPC_FILTER" --query 'CarrierGateways[].CarrierGatewayId' --output text 2>/dev/null)
       for carrier_id in $carrier_gws; do
           delete_resource "CARRIER_GW" "$carrier_id" "$region" "Orphaned VPC cleanup"
           regional_carriers=$((regional_carriers + 1))
       done
 
-      # --- 3.8 Local Gateway Route Table VPC Associations ---
+      # --- 3.7 Local Gateway Route Table VPC Associations ---
       lgw_assocs=$(aws ec2 describe-local-gateway-route-table-vpc-associations --region "$region" --filter "$VPC_FILTER" --query 'LocalGatewayRouteTableVpcAssociations[].LocalGatewayRouteTableVpcAssociationId' --output text 2>/dev/null)
       for assoc_id in $lgw_assocs; do
           delete_resource "LGW_ASSOC" "$assoc_id" "$region" "Orphaned VPC cleanup"
           regional_lgw_assoc=$((regional_lgw_assoc + 1))
       done
 
-      # --- 3.9 Internet Gateways (Detach and Delete) ---
+      # --- 3.8 Internet Gateways (Detach and Delete) ---
       igws=$(aws ec2 describe-internet-gateways --region "$region" --query "InternetGateways[?Attachments[0].VpcId=='$vpc_id'].InternetGatewayId" --output text 2>/dev/null)
       for igw_id in $igws; do
           delete_resource "IGW" "$igw_id" "$region" "Orphaned VPC cleanup"
           regional_igws=$((regional_igws + 1))
       done
 
-      # --- 3.10 Route Tables (skip main) ---
+      # --- 3.9 Route Tables (skip main) ---
       rts=$(aws ec2 describe-route-tables --region "$region" --query "RouteTables[?VpcId=='$vpc_id'].RouteTableId" --output text 2>/dev/null)
       for rt_id in $rts; do
           is_main=$(aws ec2 describe-route-tables --region "$region" --route-table-ids "$rt_id" --query 'RouteTables[0].Associations[?Main == `true`].Main' --output text 2>/dev/null)
@@ -606,27 +615,46 @@ for region in $regions; do
           fi
       done
 
-      # --- 3.11 Network ACLs (skip default) ---
+      # --- 3.10 Network ACLs (skip default) ---
       acls=$(aws ec2 describe-network-acls --region "$region" --filter "$VPC_FILTER" --query 'NetworkAcls[?IsDefault == `false`].NetworkAclId' --output text 2>/dev/null)
       for acl_id in $acls; do
           delete_resource "ACL" "$acl_id" "$region" "Orphaned VPC cleanup"
           regional_acls=$((regional_acls + 1))
       done
 
-      # --- 3.12 Subnets ---
+      # --- 3.11 Subnets ---
       subnets=$(aws ec2 describe-subnets --region "$region" --filter "$VPC_FILTER" --query 'Subnets[].SubnetId' --output text 2>/dev/null)
       for subnet_id in $subnets; do
           delete_resource "SUBNET" "$subnet_id" "$region" "Orphaned VPC cleanup"
           regional_subnets=$((regional_subnets + 1))
       done
 
-      # --- 3.13 Security Groups (skip default) ---
+      # --- 3.12 Security Groups (skip default) ---
       sgs=$(aws ec2 describe-security-groups --region "$region" --filter "$VPC_FILTER" --query "SecurityGroups[?GroupName!='default'].GroupId" --output text 2>/dev/null)
       for sg_id in $sgs; do
           delete_resource "SG" "$sg_id" "$region" "Orphaned VPC cleanup"
           regional_sgs=$((regional_sgs + 1))
       done
   done
+
+  # -----------------------------------------------------------------
+  # 3.x Standalone EIPs tagged origin=mapt (single regional pass)
+  # EIPs have no VPC linkage when unassociated, so we scope deletion
+  # to EIPs whose projectName matches an orphan project identified above.
+  # -----------------------------------------------------------------
+  if [ -n "$orphan_project_names" ]; then
+      standalone_eips=$(aws ec2 describe-addresses --region "$region" --filters "$FILTER" --query "Addresses[?AssociationId==null].{Id:AllocationId,Tags:Tags}" --output json 2>/dev/null)
+      eip_count=$(echo "$standalone_eips" | jq 'length')
+      for i in $(seq 0 $((eip_count - 1))); do
+          eip_alloc_id=$(echo "$standalone_eips" | jq -r ".[$i].Id")
+          eip_project=$(echo "$standalone_eips" | jq -r ".[$i].Tags[]? | select(.Key==\"$PROJECT_TAG_KEY\") | .Value // \"unknown\"")
+          eip_project="${eip_project:-unknown}"
+          if echo "$orphan_project_names" | grep -q "|${eip_project}|"; then
+              delete_resource "EIP" "$eip_alloc_id" "$region" "Orphaned standalone EIP (project: $eip_project)"
+              regional_eips=$((regional_eips + 1))
+          fi
+      done
+  fi
 
   # -----------------------------------------------------------------
   # 4. FINAL VPC DELETION PASS (After all dependencies are removed)
