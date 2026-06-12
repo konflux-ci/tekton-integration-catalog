@@ -550,8 +550,14 @@ for region in $regions; do
           if [ -z "$eni_id" ]; then
               continue
           fi
-          # Skip ELB-managed ENIs — they are auto-deleted after LB deletion completes
+          # ELB-managed ENIs are auto-deleted after LB deletion, but their EIPs
+          # must be released first — otherwise IGW detach fails with DependencyViolation.
           if [ "$eni_type" = "network_load_balancer" ] || [ "$eni_type" = "elastic_load_balancing" ]; then
+              eips_data=$(aws ec2 describe-addresses --region "$region" --query "Addresses[?NetworkInterfaceId=='$eni_id'].AllocationId" --output text 2>/dev/null)
+              for eip_alloc_id in $eips_data; do
+                  delete_resource "EIP" "$eip_alloc_id" "$region" "ELB ENI EIP release"
+                  regional_eips=$((regional_eips + 1))
+              done
               continue
           fi
           eips_data=$(aws ec2 describe-addresses --region "$region" --query "Addresses[?NetworkInterfaceId=='$eni_id'].AllocationId" --output text 2>/dev/null)
