@@ -89,7 +89,59 @@ spec:
       default: "https://konflux-ui.apps.stone-prd-rh01.pg1f.p1.openshiftapps.com"
       type: string
   tasks:
+    - name: validate-parameters
+      taskSpec:
+        steps:
+          - name: validate-parameters
+            image: quay.io/konflux-ci/konflux-test:v1.4.48@sha256:9b815268fb2bf10b5d745518da1c6568944f15816efe51adc192972b42a6e74d
+            script: |
+              #!/usr/bin/env bash
+              set -euo pipefail
+
+              if [[ -z "${params.SNAPSHOT}" ]]; then
+                echo "SNAPSHOT parameter is required"
+                exit 1
+              fi
+
+              if [[ -z "${params.PACKAGE_NAME}" ]]; then
+                echo "WARNING: PACKAGE_NAME parameter is not set, using empty package name"
+              fi
+
+              if [[ -z "${params.CHANNEL_NAME}" ]]; then
+<<<<<<< Updated upstream
+                echo "WARNING: CHANNEL_NAME parameter is not set, using empty channel name"
+=======
+                echo "CHANNEL_NAME parameter is empty. The step will determine the default channel name of the selected package."
+>>>>>>> Stashed changes
+              fi
+
+              if [[ -z "${params.CREDENTIALS_SECRET_NAME}" ]]; then
+                echo "CREDENTIALS_SECRET_NAME parameter is required"
+                exit 1
+              fi
+
+              if [[ -z "${params.OCI_REF}" ]]; then
+                echo "OCI_REF parameter is required"
+                exit 1
+              fi
+
+              if [[ -z "${params.REPO_TOKEN}" &&  -z "${params.REPO_KEY}" ]]; then
+                echo "WARNING: REPO_TOKEN and REPO_KEY parameters are not set."
+              elif [[ -z "${params.REPO_TOKEN}" || -z "${params.REPO_KEY}" ]]; then
+                echo "REPO_TOKEN and REPO_KEY should be set together."
+                exit 1
+              fi
+
+              if [[ -z "${params.SLACK_SECRET_NAME}" ]]; then
+                echo "WARNING: SLACK_SECRET_NAME parameter is not set, sending notifications to Slack may not work."
+              fi
+
+              if [[ -z "${params.SLACK_KEY_NAME}" ]]; then
+                echo "WARNING: SLACK_KEY_NAME parameter is not set, sending notifications to Slack may not work."
+              fi
     - name: parse-metadata
+      runAfter:
+        - validate-parameters
       taskRef:
         resolver: git
         params:
