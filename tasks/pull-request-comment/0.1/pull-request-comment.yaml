@@ -109,7 +109,7 @@ spec:
         - name: konflux-test-infra-volume
           mountPath: /usr/local/konflux-test-infra
       script: |
-        #!/bin/sh
+        #!/bin/bash
 
         PIPELINE_STATUS=$(kubectl get pipelinerun $(params.test-name) -o jsonpath='{.status.conditions[0].reason}')
 
