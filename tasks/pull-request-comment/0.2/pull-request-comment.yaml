@@ -151,7 +151,7 @@ spec:
         done
 
         # If the pipeline succeeded, do not post a new comment and exit
-        if [[ "$PIPELINE_RUN_AGGREGATE_STATUS" == "Succeeded" ]]; then
+        if [[ "$PIPELINE_RUN_AGGREGATE_STATUS" == "Succeeded" || "$PIPELINE_RUN_AGGREGATE_STATUS" == "Completed" ]]; then
             echo "[INFO]: Pipeline finished successfully. No new comment will be posted."
             exit 0
         fi
