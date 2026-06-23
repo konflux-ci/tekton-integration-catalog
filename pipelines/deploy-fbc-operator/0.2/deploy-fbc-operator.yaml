@@ -100,15 +100,9 @@ spec:
               #!/usr/bin/env bash
               set -euo pipefail
 
-              if [[ -z "${params.SNAPSHOT}" ]]; then
-                echo "SNAPSHOT parameter is required"
-                exit 1
-              fi
-
               if [[ -z "${params.PACKAGE_NAME}" ]]; then
                 echo "PACKAGE_NAME parameter is empty: the step will discover the package name in the FBC fragment."
               fi
-
 
               if [[ -z "${params.CHANNEL_NAME}" ]]; then
                 echo "CHANNEL_NAME parameter is empty. The step will determine the default channel name of the selected package."
@@ -133,10 +127,6 @@ spec:
 
               if [[ -z "${params.SLACK_SECRET_NAME}" ]]; then
                 echo "WARNING: SLACK_SECRET_NAME parameter is not set, sending notifications to Slack may not work."
-              fi
-
-              if [[ -z "${params.SLACK_KEY_NAME}" ]]; then
-                echo "WARNING: SLACK_KEY_NAME parameter is not set, sending notifications to Slack may not work."
               fi
     - name: parse-metadata
       runAfter:
@@ -185,7 +175,7 @@ spec:
               echo
     - name: provision-eaas-space
       runAfter:
-        - log-non-push-tasks
+        - parse-metadata
       when:
         - input: $(tasks.parse-metadata.results.test-event-type)
           operator: in
