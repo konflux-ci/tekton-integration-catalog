@@ -95,7 +95,7 @@ spec:
       taskSpec:
         steps:
           - name: validate-parameters
-            image: quay.io/konflux-ci/konflux-test:v1.4.48@sha256:9b815268fb2bf10b5d745518da1c6568944f15816efe51adc192972b42a6e74d
+            image: quay.io/konflux-ci/konflux-test:1.5.2@sha256:c370a7bc6e172cdbab001f1a19f37ebc95f47c3d8fe2d915fa4641132490ead7
             script: |
               #!/usr/bin/env bash
               set -euo pipefail
@@ -151,7 +151,7 @@ spec:
       taskSpec:
         steps:
           - name: log-skipped-tasks
-            image: quay.io/konflux-ci/konflux-test:v1.4.48@sha256:9b815268fb2bf10b5d745518da1c6568944f15816efe51adc192972b42a6e74d
+            image: quay.io/konflux-ci/konflux-test:1.5.2@sha256:c370a7bc6e172cdbab001f1a19f37ebc95f47c3d8fe2d915fa4641132490ead7
             script: |
               #!/usr/bin/env bash
               set -euo pipefail
@@ -225,7 +225,7 @@ spec:
             description: "Images pulled from the scorecard config YAML."
         steps:
           - name: retrieve-auth-header
-            image: quay.io/konflux-ci/konflux-test:v1.4.48@sha256:9b815268fb2bf10b5d745518da1c6568944f15816efe51adc192972b42a6e74d
+            image: quay.io/konflux-ci/konflux-test:1.5.2@sha256:c370a7bc6e172cdbab001f1a19f37ebc95f47c3d8fe2d915fa4641132490ead7
             env:
               - name: SOURCE_GIT_URL
                 value: "$(tasks.parse-metadata.results.source-git-url)"
@@ -264,7 +264,7 @@ spec:
 
               echo "$AUTH_HEADER" > /tmp/auth_header.txt
           - name: retrieve-mirror-set-and-scorecard-config
-            image: quay.io/konflux-ci/konflux-test:v1.4.48@sha256:9b815268fb2bf10b5d745518da1c6568944f15816efe51adc192972b42a6e74d
+            image: quay.io/konflux-ci/konflux-test:1.5.2@sha256:c370a7bc6e172cdbab001f1a19f37ebc95f47c3d8fe2d915fa4641132490ead7
             computeResources:
               limits:
                 memory: 512Mi
@@ -375,7 +375,7 @@ spec:
               - name: channelName
                 value: $(params.CHANNEL_NAME)
           - name: process-image-mirror-set
-            image: quay.io/konflux-ci/konflux-test:v1.4.48@sha256:9b815268fb2bf10b5d745518da1c6568944f15816efe51adc192972b42a6e74d
+            image: quay.io/konflux-ci/konflux-test:1.5.2@sha256:c370a7bc6e172cdbab001f1a19f37ebc95f47c3d8fe2d915fa4641132490ead7
             computeResources:
               limits:
                 memory: 512Mi
@@ -641,7 +641,7 @@ spec:
             # In case the test fails, we don't want to fail the TaskRun immediately,
             # because we want to proceed with archiving the artifacts in a following step.
             onError: continue
-            image: quay.io/konflux-ci/konflux-test:v1.4.48@sha256:9b815268fb2bf10b5d745518da1c6568944f15816efe51adc192972b42a6e74d
+            image: quay.io/konflux-ci/konflux-test:1.5.2@sha256:c370a7bc6e172cdbab001f1a19f37ebc95f47c3d8fe2d915fa4641132490ead7
             computeResources:
               limits:
                 memory: 4Gi
@@ -970,7 +970,7 @@ spec:
                 value: "/workspace/konflux-artifacts"
           # validate that the cluster resources are available in another tekton step
           - name: list-artifacts
-            image: quay.io/konflux-ci/konflux-test:v1.4.48@sha256:9b815268fb2bf10b5d745518da1c6568944f15816efe51adc192972b42a6e74d
+            image: quay.io/konflux-ci/konflux-test:1.5.2@sha256:c370a7bc6e172cdbab001f1a19f37ebc95f47c3d8fe2d915fa4641132490ead7
             workingDir: "/workspace"
             script: |
               #!/bin/bash
