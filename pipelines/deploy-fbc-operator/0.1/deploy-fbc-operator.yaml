@@ -136,9 +136,24 @@ spec:
               if [[ -z "${params.SLACK_KEY_NAME}" ]]; then
                 echo "WARNING: SLACK_KEY_NAME parameter is not set, sending notifications to Slack may not work."
               fi
-    - name: log-non-push-tasks
+    - name: parse-metadata
       runAfter:
         - validate-parameters
+      taskRef:
+        resolver: git
+        params:
+          - name: url
+            value: https://github.com/konflux-ci/integration-examples
+          - name: revision
+            value: main
+          - name: pathInRepo
+            value: tasks/test_metadata.yaml
+      params:
+        - name: SNAPSHOT
+          value: $(params.SNAPSHOT)
+    - name: log-non-push-tasks
+      runAfter:
+        - parse-metadata
       when:
         - input: $(tasks.parse-metadata.results.test-event-type)
           operator: notin
@@ -166,24 +181,9 @@ spec:
                 echo "- $task"
               done
               echo
-    - name: parse-metadata
-      runAfter:
-        - log-non-push-tasks
-      taskRef:
-        resolver: git
-        params:
-          - name: url
-            value: https://github.com/konflux-ci/integration-examples
-          - name: revision
-            value: main
-          - name: pathInRepo
-            value: tasks/test_metadata.yaml
-      params:
-        - name: SNAPSHOT
-          value: $(params.SNAPSHOT)
     - name: provision-eaas-space
       runAfter:
-        - parse-metadata
+        - log-non-push-tasks
       when:
         - input: $(tasks.parse-metadata.results.test-event-type)
           operator: in
