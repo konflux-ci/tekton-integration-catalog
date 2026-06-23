@@ -106,15 +106,12 @@ spec:
               fi
 
               if [[ -z "${params.PACKAGE_NAME}" ]]; then
-                echo "WARNING: PACKAGE_NAME parameter is not set, using empty package name"
+                echo "PACKAGE_NAME parameter is empty: the step will discover the package name in the FBC fragment."
               fi
 
+
               if [[ -z "${params.CHANNEL_NAME}" ]]; then
-<<<<<<< Updated upstream
-                echo "WARNING: CHANNEL_NAME parameter is not set, using empty channel name"
-=======
                 echo "CHANNEL_NAME parameter is empty. The step will determine the default channel name of the selected package."
->>>>>>> Stashed changes
               fi
 
               if [[ -z "${params.CREDENTIALS_SECRET_NAME}" ]]; then
