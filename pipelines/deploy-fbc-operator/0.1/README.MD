@@ -4,25 +4,32 @@ The deploy-fbc-operator pipeline automates the provisioning of a EaaS Hypershift
 ## Pipeline Flow
 The pipeline consists of the following tasks:
 
-1. **Parse Metadata (`parse-metadata`)**  
+1. **Validate Parameters (`validate-parameters`)**
+   Validates whether all required parameters are properly passed to the pipeline.
+
+2. **Parse Metadata (`parse-metadata`)**  
    Extracts metadata from the provided *snapshot*, including:
      * FBC fragment container image
      * Source Git URL
      * Git revision
 
-2. **Provision EAAS Space (`provision-eaas-space`)**  
+3. **Log Non Push Tasks `log-non-push-tasks`**
+   Informs which tasks are going to be skipped for non `push` events, such as
+   `pull_request` or `retest-all-comment`
+
+4. **Provision EAAS Space (`provision-eaas-space`)**  
    Allocates an **Environment-as-a-Service (EaaS) space** for cluster provisioning.
 
-3. **Fetch Config Files (`fetch-config-files`)**
+5. **Fetch Config Files (`fetch-config-files`)**
    - Retrieves the authorization token if the source Git repository is private.
    - Downloads `.tekton/images-mirror-set.yaml` and `bundle/tests/scorecard/config.yaml` from the source Git repository.
    - Stores the raw YAML and the serialized versions of the ImageDigestMirrorSet and scorecard config images as Tekton results for use by downstream tasks.
 
-4. **Get Unreleased Bundle (`get-unreleased-bundle`)**
+6. **Get Unreleased Bundle (`get-unreleased-bundle`)**
    - Retrieves the **unreleased bundle** from the FBC fragment.
    - Processes **.tekton/images-mirror-set.yaml** to resolve mirrored image references, if available.
 
-5. **Pick Cluster Params (`pick-cluster-params`)**
+7. **Pick Cluster Params (`pick-cluster-params`)**
    - Fetches a list of supported **OpenShift versions** for Hypershift.
       
       The version of Multi-Cluster Engine (MCE) that is deployed for Hypershift dictates what cluster versions can be provisioned. For example, MCE 2.7 supports provisioning OCP 4.14–4.17.
@@ -33,11 +40,11 @@ The pipeline consists of the following tasks:
    - Selects the **target OpenShift version** for deployment.
    - Identifies the **supported cluster architecture** (`arm64`, `amd64`).
 
-6. **Provision Cluster (`provision-cluster`)**
+8. **Provision Cluster (`provision-cluster`)**
    - Retrieves the latest OpenShift **version tag**.
    - Provisions a **Hypershift AWS cluster** using the parameters selected above, along with the `imageContentSources` parameter, which contains the serialized image mirror set YAML used to apply IDMS to the running cluster.
 
-7. **Deploy Operator (`deploy-operator`)**  
+9. **Deploy Operator (`deploy-operator`)**  
    - Retrieves **Kubeconfig credentials** for cluster access.
    - Installs the **operator** on the newly provisioned cluster.
    - Gathers **cluster artifacts** for analysis and validation.
@@ -45,7 +52,7 @@ The pipeline consists of the following tasks:
    - Pushes gathered artifacts to an **OCI artifact repository** (e.g. Quay).
    - Fails the pipeline if operator installation fails.
 
-8. **Verify Image Sources (`verify-image-sources`)**  
+10. **Verify Image Sources (`verify-image-sources`)**  
    - Validates that each pulled image comes from an approved registry:
       * `registry.redhat.io`
       * `registry.access.redhat.com`
