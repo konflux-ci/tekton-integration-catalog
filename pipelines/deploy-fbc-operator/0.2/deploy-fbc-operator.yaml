@@ -91,7 +91,46 @@ spec:
   workspaces:
     - name: shared-data
   tasks:
+    - name: validate-parameters
+      taskSpec:
+        steps:
+          - name: validate-parameters
+            image: quay.io/konflux-ci/konflux-test:1.5.2@sha256:c370a7bc6e172cdbab001f1a19f37ebc95f47c3d8fe2d915fa4641132490ead7
+            script: |
+              #!/usr/bin/env bash
+              set -euo pipefail
+
+              if [[ -z "${params.PACKAGE_NAME}" ]]; then
+                echo "PACKAGE_NAME parameter is empty: the step will discover the package name in the FBC fragment."
+              fi
+
+              if [[ -z "${params.CHANNEL_NAME}" ]]; then
+                echo "CHANNEL_NAME parameter is empty. The step will determine the default channel name of the selected package."
+              fi
+
+              if [[ -z "${params.CREDENTIALS_SECRET_NAME}" ]]; then
+                echo "CREDENTIALS_SECRET_NAME parameter is required"
+                exit 1
+              fi
+
+              if [[ -z "${params.OCI_REF}" ]]; then
+                echo "OCI_REF parameter is required"
+                exit 1
+              fi
+
+              if [[ -z "${params.REPO_TOKEN}" &&  -z "${params.REPO_KEY}" ]]; then
+                echo "WARNING: REPO_TOKEN and REPO_KEY parameters are not set."
+              elif [[ -z "${params.REPO_TOKEN}" || -z "${params.REPO_KEY}" ]]; then
+                echo "REPO_TOKEN and REPO_KEY should be set together."
+                exit 1
+              fi
+
+              if [[ -z "${params.SLACK_SECRET_NAME}" ]]; then
+                echo "WARNING: SLACK_SECRET_NAME parameter is not set, sending notifications to Slack may not work."
+              fi
     - name: parse-metadata
+      runAfter:
+        - validate-parameters
       taskRef:
         resolver: git
         params:
@@ -104,6 +143,36 @@ spec:
       params:
         - name: SNAPSHOT
           value: $(params.SNAPSHOT)
+    - name: log-non-push-tasks
+      runAfter:
+        - parse-metadata
+      when:
+        - input: $(tasks.parse-metadata.results.test-event-type)
+          operator: notin
+          values: ["push", "Push"]
+      taskSpec:
+        steps:
+          - name: log-skipped-tasks
+            image: quay.io/konflux-ci/konflux-test:1.5.2@sha256:c370a7bc6e172cdbab001f1a19f37ebc95f47c3d8fe2d915fa4641132490ead7
+            script: |
+              #!/usr/bin/env bash
+              set -euo pipefail
+
+              skipped_tasks=(
+                "provision-eaas-space"
+                "fetch-config-files"
+                "get-unreleased-bundle"
+                "pick-cluster-params"
+                "provision-cluster"
+                "deploy-operator"
+                "verify-image-sources"
+              )
+
+              echo "The following tasks are not going to be executed for the event type \"$(tasks.parse-metadata.results.test-event-type)\":"
+              for task in "${skipped_tasks[@]}"; do
+                echo "- $task"
+              done
+              echo
     - name: provision-eaas-space
       runAfter:
         - parse-metadata
@@ -143,7 +212,7 @@ spec:
             description: "Images pulled from the scorecard config YAML."
         steps:
           - name: retrieve-auth-header
-            image: quay.io/konflux-ci/konflux-test:v1.4.48@sha256:9b815268fb2bf10b5d745518da1c6568944f15816efe51adc192972b42a6e74d
+            image: quay.io/konflux-ci/konflux-test:1.5.2@sha256:c370a7bc6e172cdbab001f1a19f37ebc95f47c3d8fe2d915fa4641132490ead7
             env:
               - name: SOURCE_GIT_URL
                 value: "$(tasks.parse-metadata.results.source-git-url)"
@@ -182,7 +251,7 @@ spec:
 
               echo "$AUTH_HEADER" > /tmp/auth_header.txt
           - name: retrieve-mirror-set-and-scorecard-config
-            image: quay.io/konflux-ci/konflux-test:v1.4.48@sha256:9b815268fb2bf10b5d745518da1c6568944f15816efe51adc192972b42a6e74d
+            image: quay.io/konflux-ci/konflux-test:1.5.2@sha256:c370a7bc6e172cdbab001f1a19f37ebc95f47c3d8fe2d915fa4641132490ead7
             computeResources:
               limits:
                 memory: 512Mi
@@ -293,7 +362,7 @@ spec:
               - name: channelName
                 value: $(params.CHANNEL_NAME)
           - name: process-image-mirror-set
-            image: quay.io/konflux-ci/konflux-test:v1.4.48@sha256:9b815268fb2bf10b5d745518da1c6568944f15816efe51adc192972b42a6e74d
+            image: quay.io/konflux-ci/konflux-test:1.5.2@sha256:c370a7bc6e172cdbab001f1a19f37ebc95f47c3d8fe2d915fa4641132490ead7
             computeResources:
               limits:
                 memory: 512Mi
@@ -559,7 +628,7 @@ spec:
             # In case the test fails, we don't want to fail the TaskRun immediately,
             # because we want to proceed with archiving the artifacts in a following step.
             onError: continue
-            image: quay.io/konflux-ci/konflux-test:v1.4.48@sha256:9b815268fb2bf10b5d745518da1c6568944f15816efe51adc192972b42a6e74d
+            image: quay.io/konflux-ci/konflux-test:1.5.2@sha256:c370a7bc6e172cdbab001f1a19f37ebc95f47c3d8fe2d915fa4641132490ead7
             computeResources:
               limits:
                 memory: 4Gi
@@ -888,7 +957,7 @@ spec:
                 value: "/workspace/konflux-artifacts"
           # validate that the cluster resources are available in another tekton step
           - name: list-artifacts
-            image: quay.io/konflux-ci/konflux-test:v1.4.48@sha256:9b815268fb2bf10b5d745518da1c6568944f15816efe51adc192972b42a6e74d
+            image: quay.io/konflux-ci/konflux-test:1.5.2@sha256:c370a7bc6e172cdbab001f1a19f37ebc95f47c3d8fe2d915fa4641132490ead7
             workingDir: "/workspace"
             script: |
               #!/bin/bash
