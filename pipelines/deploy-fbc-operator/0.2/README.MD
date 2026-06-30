@@ -21,6 +21,7 @@ A new version of the pipeline (`0.2`) has been introduced to improve handling of
 The pipeline consists of the following tasks:
 
 1. **Validate Parameters (`validate-parameters`)**
+
    Validates whether all required parameters are properly passed to the pipeline.
 
 2. **Parse Metadata (`parse-metadata`)**  
