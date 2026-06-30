@@ -5,6 +5,7 @@ The deploy-fbc-operator pipeline automates the provisioning of a EaaS Hypershift
 The pipeline consists of the following tasks:
 
 1. **Validate Parameters (`validate-parameters`)**
+
    Validates whether all required parameters are properly passed to the pipeline.
 
 2. **Parse Metadata (`parse-metadata`)**  
@@ -13,7 +14,7 @@ The pipeline consists of the following tasks:
      * Source Git URL
      * Git revision
 
-3. **Log Non Push Tasks `log-non-push-tasks`**
+3. **Log Non Push Tasks (`log-non-push-tasks`)**
    Informs which tasks are going to be skipped for non `push` events, such as
    `pull_request` or `retest-all-comment`
 
