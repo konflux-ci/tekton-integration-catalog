@@ -1,27 +1,5 @@
 {
   "$schema": "https://docs.renovatebot.com/renovate-schema.json",
-  "customManagers": [
-    {
-      "customType": "regex",
-      "fileMatch": ["konflux/sealights-agents/nodejs/Dockerfile"],
-      "matchStrings": [
-        "ENV AGENT_VERSION=(?<currentValue>\\d+\\.\\d+\\.\\d+)"
-      ],
-      "datasourceTemplate": "npm",
-      "depNameTemplate": "slnodejs",
-      "versioningTemplate": "semver"
-    },
-    {
-      "customType": "regex",
-      "fileMatch": ["konflux/sealights-agents/python/Dockerfile"],
-      "matchStrings": [
-        "ENV AGENT_VERSION=(?<currentValue>\\d+\\.\\d+\\.\\d+)"
-      ],
-      "datasourceTemplate": "pypi",
-      "depNameTemplate": "sealights-python-agent",
-      "versioningTemplate": "semver"
-    }
-  ],
   "extends": [
     "config:recommended"
   ]
