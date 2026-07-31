@@ -1,0 +1,249 @@
+apiVersion: tekton.dev/v1
+kind: Task
+metadata:
+  labels:
+    app.kubernetes.io/version: "0.1"
+  annotations:
+    tekton.dev/pipelines.minVersion: "0.12.1"
+    tekton.dev/tags: "konflux"
+  name: slack-webhook-notification
+spec:
+  description: >-
+    Sends message to slack using incoming webhook
+  params:
+    - name: message
+      description: Message to be sent
+    - name: secret-name
+      description: |
+        Secret with at least one key where value is webhook URL for slack.
+        eg. oc create secret generic my-secret --from-literal team1=https://hooks.slack.com/services/XXX/XXXXXX --from-literal team2=https://hooks.slack.com/services/YYY/YYYYYY
+      default: slack-webhook-notification-secret
+    - name: key-name
+      description: Key in the key in secret which contains webhook URL for slack.
+    - name: user-ids
+      type: array
+      description: List of Slack user IDs to mention (e.g., U024BE7LH). If set, the users will be mentioned in the notification.
+      default: []
+    - name: group-ids
+      type: array
+      description: List of Slack group IDs to mention (e.g., S0614TZR7). If set, the groups will be mentioned in the notification.
+      default: []
+    - name: submodules
+      type: array
+      description: List of submodules name to dump. Git log since previous submodule commit will be added to the message. The previous submodule commit is found by looking at the previous commit in the repository that declares the submodules.
+      default: []
+    - name: files
+      type: array
+      description: List of file to dump. The content will be added to the message.
+      default: []
+  volumes:
+    - name: webhook-secret
+      secret:
+        secretName: $(params.secret-name)
+        optional: true
+  stepTemplate:
+    imagePullPolicy: IfNotPresent
+  steps:
+    - name: send-message
+      image: quay.io/konflux-ci/task-runner:2.0.0@sha256:4b01fbf98fa7155f5c21443c285f88853864ae7cc66981cf6b543fc6ba16b81b
+      computeResources:
+        requests:
+          memory: 64Mi
+          cpu: 50m
+        limits:
+          memory: 64Mi
+      securityContext:
+        runAsUser: 0
+        runAsNonRoot: false
+      # per https://kubernetes.io/docs/concepts/containers/images/#imagepullpolicy-defaulting
+      # the cluster will set imagePullPolicy to IfNotPresent
+      volumeMounts:
+        - name: webhook-secret
+          mountPath: "/etc/secrets"
+          readOnly: true
+      env:
+        - name: HOME
+          value: /tekton/home
+        - name: KEY_NAME
+          value: $(params.key-name)
+        - name: MESSAGE
+          value: $(params.message)
+      args:
+        - --files
+        - $(params.files[*])
+        - --submodules
+        - $(params.submodules[*])
+        - --user-ids
+        - $(params.user-ids[*])
+        - --group-ids
+        - $(params.group-ids[*])
+      script: |
+        #!/usr/bin/env bash
+
+        # ---------
+        #  HELPERS
+        # ---------
+
+        function concat {
+            cat << EOM
+        $1
+        $2
+        EOM
+        }
+
+        # ---------
+        #  DUMPERS
+        # ---------
+
+        function dumpSeparator {
+          echo "-----------------------------------------"
+        }
+
+        function dumpFile {
+          filePath=$1
+
+          cat << EOM
+        *${filePath}:*
+        \`\`\`
+        $(cat "${filePath}")
+        \`\`\`
+        EOM
+        }
+
+        # dumpSubmodule will dump the git log history as follow
+        # $commitShortSHA $authorName $subject
+        # with some padding to align the lines (author name is truncated after 27 char).
+        # A link to the previous commits is available (tested on github & gitlab).
+        function dumpSubmodule {
+          name=$1
+
+          path=$(git config -f .gitmodules --get submodule."${name}".path)
+          url=$(git config -f .gitmodules --get submodule."${name}".url)
+
+          current_commit=$(git -C "${path}" rev-parse HEAD)
+          previous_commit=$(git diff HEAD~1 "${path}" | grep commit | head -n 1 | awk '{print $3;}')
+          if [ "${previous_commit}" = "" ]; then
+            previous_commit=${current_commit}
+          fi
+
+          commits=None
+          if [ "${previous_commit}" != "${current_commit}" ]; then
+            commits=$(git -C "${path}" log --pretty=format:'%h %<(27,trunc)%an %s' --abbrev-commit "${previous_commit}".."${current_commit}")
+          fi
+
+          cat << EOM
+        *Submodule ${name} (<${url}/commits/${current_commit}|commits>):*
+        \`\`\`
+        ${commits}
+        \`\`\`
+        EOM
+        }
+
+        # --------------
+        #  ARGS PARSING
+        # --------------
+
+        echo "Parsing $*"
+
+        FILES=()
+        SUBMODULES=()
+        USER_IDS=()
+        GROUP_IDS=()
+
+        while [[ $# -gt 0 ]]; do
+          case $1 in
+          --files)
+            shift
+            while [[ $# -gt 0 ]] && ! [[ "$1" =~ ^--.* ]]; do
+              FILES+=("$1")
+              shift
+            done
+            ;;
+          --submodules)
+            shift
+            while [[ $# -gt 0 ]] && ! [[ "$1" =~ ^--.* ]]; do
+              SUBMODULES+=("$1")
+              shift
+            done
+            ;;
+          --user-ids)
+            shift
+            while [[ $# -gt 0 ]] && ! [[ "$1" =~ ^--.* ]]; do
+              USER_IDS+=("$1")
+              shift
+            done
+            ;;
+          --group-ids)
+            shift
+            while [[ $# -gt 0 ]] && ! [[ "$1" =~ ^--.* ]]; do
+              GROUP_IDS+=("$1")
+              shift
+            done
+            ;;
+          esac
+        done
+
+        # -------------------
+        #  PARAMS VALIDATION
+        # -------------------
+
+        if [ -f "/etc/secrets/$KEY_NAME" ]; then
+          WEBHOOK_URL=$(cat "/etc/secrets/$KEY_NAME")
+        else
+          echo "Secret not defined properly"
+          exit 1
+        fi
+
+        # ------
+        #  DUMP
+        # ------
+
+        slack_message=${MESSAGE}
+
+        # Add user mentions if user-ids are set
+        user_mentions=""
+        for user_id in "${USER_IDS[@]}"; do
+          if [ -n "${user_id}" ]; then
+            user_mentions="${user_mentions}<@${user_id}> "
+          fi
+        done
+
+        # Add group mentions if group-ids are set
+        group_mentions=""
+        for group_id in "${GROUP_IDS[@]}"; do
+          if [ -n "${group_id}" ]; then
+            group_mentions="${group_mentions}<!subteam^${group_id}> "
+          fi
+        done
+
+        # Prepend mentions to message
+        if [ -n "${user_mentions}" ] || [ -n "${group_mentions}" ]; then
+          slack_message="${user_mentions}${group_mentions}${slack_message}"
+        fi
+
+        if [ ${#FILES[@]} -ne 0 ]; then
+            slack_message=$(concat "${slack_message}" "$(dumpSeparator)")
+        fi
+
+        for file in "${FILES[@]}"; do
+            content=$(dumpFile "${file}")
+            slack_message=$(concat "${slack_message}" "${content}")
+        done
+
+        if [ ${#SUBMODULES[@]} -ne 0 ]; then
+            slack_message=$(concat "${slack_message}" "$(dumpSeparator)")
+        fi
+
+        for submodule in "${SUBMODULES[@]}"; do
+            content=$(dumpSubmodule "${submodule}")
+            slack_message=$(concat "${slack_message}" "${content}")
+        done
+
+        data=$(jq --compact-output --null-input --arg message "$slack_message" '{text: $message}')
+
+        curl -X POST -H 'Content-type: application/json' --data "${data}" "$WEBHOOK_URL"
+      workingDir: $(workspaces.source.path)/source
+  workspaces:
+    - name: source
+      description: Workspace containing the source code to build.
+      optional: true
