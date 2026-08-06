@@ -1,21 +1,57 @@
-# slack-webhook-notification task
+# Slack Webhook Notification Task
 
-Sends message to slack using incoming webhook
+Version: 0.1
+
+Send a message to Slack using an incoming webhook
+
+---
 
 ## Parameters
-|name|description|default value|required|
-|---|---|---|---|
-|message|Message to be sent||true|
-|secret-name|Secret with at least one key where value is webhook URL for slack. eg. oc create secret generic my-secret --from-literal team1=https://hooks.slack.com/services/XXX/XXXXXX --from-literal team2=https://hooks.slack.com/services/YYY/YYYYYY |slack-webhook-notification-secret|false|
-|key-name|Key in the key in secret which contains webhook URL for slack.||true|
-|user-ids|List of Slack user IDs to mention (e.g., U024BE7LH). If set, the users will be mentioned in the notification.|[]|false|
-|group-ids|List of Slack group IDs to mention (e.g., S0614TZR7). If set, the groups will be mentioned in the notification.|[]|false|
-|submodules|List of submodules name to dump. Git log since previous submodule commit will be added to the message. The previous submodule commit is found by looking at the previous commit in the repository that declares the submodules.|[]|false|
-|files|List of file to dump. The content will be added to the message.|[]|false|
+
+| Name | Description | Default | Required |
+| --- | --- | --- | --- |
+| `message` | Message to be sent | | Yes |
+| `secret-name` | Secret with at least one key whose value is a Slack incoming webhook URL | `slack-webhook-notification-secret` | No |
+| `key-name` | Key in the secret which contains the webhook URL for Slack | | Yes |
+| `user-ids` | List of Slack user IDs to mention (e.g. `U024BE7LH`) | `[]` | No |
+| `group-ids` | List of Slack group IDs to mention (e.g. `S0614TZR7`) | `[]` | No |
+| `submodules` | List of submodule names to dump into the message. Requires the source workspace | `[]` | No |
+| `files` | List of files to dump into the message. Requires the source workspace | `[]` | No |
 
 ## Workspaces
-|name|description|optional|
-|---|---|---|
-|source|Workspace containing the source code to build.|true|
 
-## Additional info
+| Name | Description | Optional |
+| --- | --- | --- |
+| `source` | Workspace containing the cloned repository. Required when files or submodules are set | Yes |
+
+## Usage
+
+```yaml
+apiVersion: tekton.dev/v1
+kind: Pipeline
+metadata:
+  name: notify-on-failure
+spec:
+  finally:
+    - name: slack-notification
+      when:
+        - input: $(tasks.status)
+          operator: in
+          values: ["Failed"]
+      taskRef:
+        resolver: git
+        params:
+          - name: url
+            value: https://github.com/konflux-ci/tekton-integration-catalog.git
+          - name: revision
+            value: main
+          - name: pathInRepo
+            value: tasks/slack-webhook-notification/0.1/slack-webhook-notification.yaml
+      params:
+        - name: message
+          value: "Pipeline $(context.pipelineRun.name) failed"
+        - name: key-name
+          value: team1
+```
+
+### Suitable for upstream communities

@@ -1,48 +1,54 @@
+---
 apiVersion: tekton.dev/v1
 kind: Task
 metadata:
+  name: slack-webhook-notification
   labels:
     app.kubernetes.io/version: "0.1"
+    upstream-usable: "true"
   annotations:
-    tekton.dev/pipelines.minVersion: "0.12.1"
-    tekton.dev/tags: "konflux"
-  name: slack-webhook-notification
+    tekton.dev/pipelines.minVersion: 0.12.1
+    tekton.dev/tags: konflux
 spec:
-  description: >-
-    Sends message to slack using incoming webhook
+  description: Send a message to Slack using an incoming webhook
   params:
     - name: message
+      type: string
       description: Message to be sent
     - name: secret-name
-      description: |
-        Secret with at least one key where value is webhook URL for slack.
-        eg. oc create secret generic my-secret --from-literal team1=https://hooks.slack.com/services/XXX/XXXXXX --from-literal team2=https://hooks.slack.com/services/YYY/YYYYYY
+      type: string
+      description: Secret with at least one key whose value is a Slack incoming webhook URL
       default: slack-webhook-notification-secret
     - name: key-name
-      description: Key in the key in secret which contains webhook URL for slack.
+      type: string
+      description: Key in the secret which contains the webhook URL for Slack
     - name: user-ids
       type: array
-      description: List of Slack user IDs to mention (e.g., U024BE7LH). If set, the users will be mentioned in the notification.
+      description: List of Slack user IDs to mention (e.g. U024BE7LH)
       default: []
     - name: group-ids
       type: array
-      description: List of Slack group IDs to mention (e.g., S0614TZR7). If set, the groups will be mentioned in the notification.
+      description: List of Slack group IDs to mention (e.g. S0614TZR7)
       default: []
     - name: submodules
       type: array
-      description: List of submodules name to dump. Git log since previous submodule commit will be added to the message. The previous submodule commit is found by looking at the previous commit in the repository that declares the submodules.
+      description: List of submodule names to dump into the message. Requires the source workspace
       default: []
     - name: files
       type: array
-      description: List of file to dump. The content will be added to the message.
+      description: List of files to dump into the message. Requires the source workspace
       default: []
   volumes:
     - name: webhook-secret
       secret:
         secretName: $(params.secret-name)
         optional: true
+        items:
+          - key: $(params.key-name)
+            path: webhook-url
   stepTemplate:
     imagePullPolicy: IfNotPresent
+
   steps:
     - name: send-message
       image: quay.io/konflux-ci/task-runner:2.0.0@sha256:4b01fbf98fa7155f5c21443c285f88853864ae7cc66981cf6b543fc6ba16b81b
@@ -52,22 +58,19 @@ spec:
           cpu: 50m
         limits:
           memory: 64Mi
-      securityContext:
-        runAsUser: 0
-        runAsNonRoot: false
-      # per https://kubernetes.io/docs/concepts/containers/images/#imagepullpolicy-defaulting
-      # the cluster will set imagePullPolicy to IfNotPresent
       volumeMounts:
         - name: webhook-secret
-          mountPath: "/etc/secrets"
+          mountPath: /etc/secrets
           readOnly: true
       env:
         - name: HOME
           value: /tekton/home
-        - name: KEY_NAME
-          value: $(params.key-name)
         - name: MESSAGE
           value: $(params.message)
+        - name: SOURCE_BOUND
+          value: $(workspaces.source.bound)
+        - name: SOURCE_PATH
+          value: $(workspaces.source.path)
       args:
         - --files
         - $(params.files[*])
@@ -79,13 +82,14 @@ spec:
         - $(params.group-ids[*])
       script: |
         #!/usr/bin/env bash
+        set -o errexit -o nounset -o pipefail
 
         # ---------
         #  HELPERS
         # ---------
 
         function concat {
-            cat << EOM
+          cat <<EOM
         $1
         $2
         EOM
@@ -100,30 +104,63 @@ spec:
         }
 
         function dumpFile {
-          filePath=$1
+          local filePath=$1
+          local resolved
+          local workspace_root
 
-          cat << EOM
+          if [[ "${filePath}" == /* ]] || [[ "${filePath}" == *..* ]]; then
+            echo "Refusing to read path outside workspace: ${filePath}" >&2
+            exit 1
+          fi
+
+          if [ ! -f "${filePath}" ]; then
+            echo "File not found in workspace: ${filePath}" >&2
+            exit 1
+          fi
+
+          workspace_root=$(pwd -P)
+          resolved=$(realpath "${filePath}")
+          case "${resolved}" in
+            "${workspace_root}"|"${workspace_root}"/*) ;;
+            *)
+              echo "Refusing to read path outside workspace: ${filePath}" >&2
+              exit 1
+              ;;
+          esac
+
+          cat <<EOM
         *${filePath}:*
         \`\`\`
-        $(cat "${filePath}")
+        $(cat "${resolved}")
         \`\`\`
         EOM
         }
 
-        # dumpSubmodule will dump the git log history as follow
-        # $commitShortSHA $authorName $subject
-        # with some padding to align the lines (author name is truncated after 27 char).
-        # A link to the previous commits is available (tested on github & gitlab).
         function dumpSubmodule {
-          name=$1
+          local name=$1
+          local path
+          local url
+          local current_commit
+          local previous_commit
+          local commits
 
           path=$(git config -f .gitmodules --get submodule."${name}".path)
           url=$(git config -f .gitmodules --get submodule."${name}".url)
 
           current_commit=$(git -C "${path}" rev-parse HEAD)
-          previous_commit=$(git diff HEAD~1 "${path}" | grep commit | head -n 1 | awk '{print $3;}')
-          if [ "${previous_commit}" = "" ]; then
-            previous_commit=${current_commit}
+          previous_commit="${current_commit}"
+
+          if git rev-parse --verify --quiet HEAD~1 >/dev/null; then
+            previous_commit=$(
+              git diff HEAD~1 -- "${path}" \
+                | awk '/^-Subproject commit / {print $3; exit}'
+            )
+            if [ -z "${previous_commit}" ]; then
+              previous_commit="${current_commit}"
+            elif ! [[ "${previous_commit}" =~ ^[0-9a-fA-F]{7,40}$ ]]; then
+              echo "Invalid previous submodule commit: ${previous_commit}" >&2
+              exit 1
+            fi
           fi
 
           commits=None
@@ -131,7 +168,7 @@ spec:
             commits=$(git -C "${path}" log --pretty=format:'%h %<(27,trunc)%an %s' --abbrev-commit "${previous_commit}".."${current_commit}")
           fi
 
-          cat << EOM
+          cat <<EOM
         *Submodule ${name} (<${url}/commits/${current_commit}|commits>):*
         \`\`\`
         ${commits}
@@ -154,31 +191,35 @@ spec:
           case $1 in
           --files)
             shift
-            while [[ $# -gt 0 ]] && ! [[ "$1" =~ ^--.* ]]; do
+            while [[ $# -gt 0 ]] && ! [[ "$1" =~ ^-- ]]; do
               FILES+=("$1")
               shift
             done
             ;;
           --submodules)
             shift
-            while [[ $# -gt 0 ]] && ! [[ "$1" =~ ^--.* ]]; do
+            while [[ $# -gt 0 ]] && ! [[ "$1" =~ ^-- ]]; do
               SUBMODULES+=("$1")
               shift
             done
             ;;
           --user-ids)
             shift
-            while [[ $# -gt 0 ]] && ! [[ "$1" =~ ^--.* ]]; do
+            while [[ $# -gt 0 ]] && ! [[ "$1" =~ ^-- ]]; do
               USER_IDS+=("$1")
               shift
             done
             ;;
           --group-ids)
             shift
-            while [[ $# -gt 0 ]] && ! [[ "$1" =~ ^--.* ]]; do
+            while [[ $# -gt 0 ]] && ! [[ "$1" =~ ^-- ]]; do
               GROUP_IDS+=("$1")
               shift
             done
+            ;;
+          *)
+            echo "Unknown option: $1" >&2
+            exit 1
             ;;
           esac
         done
@@ -187,10 +228,15 @@ spec:
         #  PARAMS VALIDATION
         # -------------------
 
-        if [ -f "/etc/secrets/$KEY_NAME" ]; then
-          WEBHOOK_URL=$(cat "/etc/secrets/$KEY_NAME")
+        if [ -f /etc/secrets/webhook-url ]; then
+          WEBHOOK_URL=$(cat /etc/secrets/webhook-url)
         else
-          echo "Secret not defined properly"
+          echo "Secret not defined properly" >&2
+          exit 1
+        fi
+
+        if [ -z "${WEBHOOK_URL}" ]; then
+          echo "Webhook URL is empty" >&2
           exit 1
         fi
 
@@ -202,48 +248,67 @@ spec:
 
         # Add user mentions if user-ids are set
         user_mentions=""
-        for user_id in "${USER_IDS[@]}"; do
-          if [ -n "${user_id}" ]; then
-            user_mentions="${user_mentions}<@${user_id}> "
-          fi
-        done
+        if [ ${#USER_IDS[@]} -ne 0 ]; then
+          for user_id in "${USER_IDS[@]}"; do
+            if [ -n "${user_id}" ]; then
+              user_mentions="${user_mentions}<@${user_id}> "
+            fi
+          done
+        fi
 
         # Add group mentions if group-ids are set
         group_mentions=""
-        for group_id in "${GROUP_IDS[@]}"; do
-          if [ -n "${group_id}" ]; then
-            group_mentions="${group_mentions}<!subteam^${group_id}> "
-          fi
-        done
+        if [ ${#GROUP_IDS[@]} -ne 0 ]; then
+          for group_id in "${GROUP_IDS[@]}"; do
+            if [ -n "${group_id}" ]; then
+              group_mentions="${group_mentions}<!subteam^${group_id}> "
+            fi
+          done
+        fi
 
         # Prepend mentions to message
         if [ -n "${user_mentions}" ] || [ -n "${group_mentions}" ]; then
           slack_message="${user_mentions}${group_mentions}${slack_message}"
         fi
 
-        if [ ${#FILES[@]} -ne 0 ]; then
-            slack_message=$(concat "${slack_message}" "$(dumpSeparator)")
+        if [ ${#FILES[@]} -ne 0 ] || [ ${#SUBMODULES[@]} -ne 0 ]; then
+          if [ "${SOURCE_BOUND}" != "true" ]; then
+            echo "source workspace is required when files or submodules are set" >&2
+            exit 1
+          fi
+          cd "${SOURCE_PATH}"
         fi
 
-        for file in "${FILES[@]}"; do
+        if [ ${#FILES[@]} -ne 0 ]; then
+          slack_message=$(concat "${slack_message}" "$(dumpSeparator)")
+          for file in "${FILES[@]}"; do
             content=$(dumpFile "${file}")
             slack_message=$(concat "${slack_message}" "${content}")
-        done
-
-        if [ ${#SUBMODULES[@]} -ne 0 ]; then
-            slack_message=$(concat "${slack_message}" "$(dumpSeparator)")
+          done
         fi
 
-        for submodule in "${SUBMODULES[@]}"; do
+        if [ ${#SUBMODULES[@]} -ne 0 ]; then
+          slack_message=$(concat "${slack_message}" "$(dumpSeparator)")
+          for submodule in "${SUBMODULES[@]}"; do
             content=$(dumpSubmodule "${submodule}")
             slack_message=$(concat "${slack_message}" "${content}")
-        done
+          done
+        fi
 
-        data=$(jq --compact-output --null-input --arg message "$slack_message" '{text: $message}')
+        data=$(jq --compact-output --null-input --arg message "${slack_message}" '{text: $message}')
 
-        curl -X POST -H 'Content-type: application/json' --data "${data}" "$WEBHOOK_URL"
-      workingDir: $(workspaces.source.path)/source
+        # Pass the webhook URL via a curl config file so it is not visible in process argv (/proc/<pid>/cmdline).
+        curl_config="$(mktemp)"
+        trap 'rm -f "${curl_config}"' EXIT
+        printf 'url = "%s"\n' "${WEBHOOK_URL}" >"${curl_config}"
+        chmod 600 "${curl_config}"
+
+        printf '%s' "${data}" | curl --fail --silent --show-error \
+          -X POST \
+          -H 'Content-type: application/json' \
+          --data-binary @- \
+          --config "${curl_config}"
   workspaces:
     - name: source
-      description: Workspace containing the source code to build.
+      description: Workspace containing the cloned repository. Required when files or submodules are set
       optional: true
