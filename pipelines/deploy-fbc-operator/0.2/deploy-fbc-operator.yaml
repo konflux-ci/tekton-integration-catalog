@@ -100,32 +100,32 @@ spec:
               #!/usr/bin/env bash
               set -euo pipefail
 
-              if [[ -z "${params.PACKAGE_NAME}" ]]; then
+              if [[ -z "$(params.PACKAGE_NAME)" ]]; then
                 echo "PACKAGE_NAME parameter is empty: the step will discover the package name in the FBC fragment."
               fi
 
-              if [[ -z "${params.CHANNEL_NAME}" ]]; then
+              if [[ -z "$(params.CHANNEL_NAME)" ]]; then
                 echo "CHANNEL_NAME parameter is empty. The step will determine the default channel name of the selected package."
               fi
 
-              if [[ -z "${params.CREDENTIALS_SECRET_NAME}" ]]; then
+              if [[ -z "$(params.CREDENTIALS_SECRET_NAME)" ]]; then
                 echo "CREDENTIALS_SECRET_NAME parameter is required"
                 exit 1
               fi
 
-              if [[ -z "${params.OCI_REF}" ]]; then
+              if [[ -z "$(params.OCI_REF)" ]]; then
                 echo "OCI_REF parameter is required"
                 exit 1
               fi
 
-              if [[ -z "${params.REPO_TOKEN}" &&  -z "${params.REPO_KEY}" ]]; then
+              if [[ -z "$(params.REPO_TOKEN)" &&  -z "$(params.REPO_KEY)" ]]; then
                 echo "WARNING: REPO_TOKEN and REPO_KEY parameters are not set."
-              elif [[ -z "${params.REPO_TOKEN}" || -z "${params.REPO_KEY}" ]]; then
+              elif [[ -z "$(params.REPO_TOKEN)" || -z "$(params.REPO_KEY)" ]]; then
                 echo "REPO_TOKEN and REPO_KEY should be set together."
                 exit 1
               fi
 
-              if [[ -z "${params.SLACK_SECRET_NAME}" ]]; then
+              if [[ -z "$(params.SLACK_SECRET_NAME)" ]]; then
                 echo "WARNING: SLACK_SECRET_NAME parameter is not set, sending notifications to Slack may not work."
               fi
     - name: parse-metadata
