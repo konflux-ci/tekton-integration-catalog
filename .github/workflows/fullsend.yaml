@@ -41,7 +41,7 @@ jobs:
     if: >-
       github.event_name != 'issue_comment'
       || github.event.comment.user.type != 'Bot'
-    uses: konflux-ci/.fullsend/.github/workflows/dispatch.yml@701e62a9c6f104ed68f8d4085d9c3b8bad3a82e4 # main
+    uses: konflux-ci/.fullsend/.github/workflows/dispatch.yml@9ee3c2553bf4b71786b0e1444cc9a0706d09980b # main
     with:
       event_action: ${{ github.event.action }}
 
