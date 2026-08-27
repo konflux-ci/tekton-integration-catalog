@@ -12,7 +12,7 @@ metadata:
     tekton.dev/tags: infrastructure, aws, kind
     tekton.dev/displayName: "Kind Cloud Single Node - Destroy"
     tekton.dev/platforms: "linux/amd64, linux/arm64"
-    mapt/version: "v0.9.9"
+    mapt/version: "v0.13.0"
 spec:
   description: |
     Tears down a Kind cluster that was previously provisioned on AWS using the Mapt CLI.
@@ -145,7 +145,7 @@ spec:
           values: ["Succeeded"]
 
     - name: destroy
-      image: quay.io/redhat-developer/mapt:v0.9.9
+      image: quay.io/redhat-developer/mapt:v0.13.0
       volumeMounts:
         - name: aws-credentials
           mountPath: /opt/aws-credentials
