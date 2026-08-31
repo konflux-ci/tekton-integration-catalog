@@ -90,6 +90,37 @@ spec:
       description: |
         Additional port mappings for the Kind cluster as a JSON array of objects with
         containerPort, hostPort, and protocol properties.
+  env:
+    - name: CLUSTER_INFO_PATH
+      value: $(params.cluster-info-path)
+    - name: PARAM_ID
+      value: $(params.id)
+    - name: PARAM_ARCH
+      value: $(params.arch)
+    - name: PARAM_CPUS
+      value: $(params.cpus)
+    - name: PARAM_MEMORY
+      value: $(params.memory)
+    - name: PARAM_COMPUTE_SIZES
+      value: $(params.compute-sizes)
+    - name: PARAM_NESTED_VIRT
+      value: $(params.nested-virt)
+    - name: PARAM_SPOT
+      value: $(params.spot)
+    - name: PARAM_SPOT_INCREASE_RATE
+      value: $(params.spot-increase-rate)
+    - name: PARAM_SPOT_EVICTION_TOLERANCE
+      value: $(params.spot-eviction-tolerance)
+    - name: PARAM_VERSION
+      value: $(params.version)
+    - name: PARAM_TAGS
+      value: $(params.tags)
+    - name: PARAM_DEBUG
+      value: $(params.debug)
+    - name: PARAM_TIMEOUT
+      value: $(params.timeout)
+    - name: PARAM_EXTRA_PORT_MAPPINGS
+      value: $(params.extra-port-mappings)
   volumeMounts:
     - name: $(params.aws-credentials-volume)
       mountPath: /opt/aws-credentials
@@ -98,7 +129,7 @@ spec:
   script: |
     #!/bin/bash
     set -euo pipefail
-    if [[ "$(params.debug)" == "true" ]]; then set -xeuo pipefail; fi
+    if [[ "${PARAM_DEBUG}" == "true" ]]; then set -xeuo pipefail; fi
 
     AWS_ACCESS_KEY_ID=$(cat /opt/aws-credentials/access-key)
     export AWS_ACCESS_KEY_ID
@@ -109,27 +140,27 @@ spec:
     BUCKET=$(cat /opt/aws-credentials/bucket)
 
     cmd=(mapt aws kind create
-      --project-name "kind-$(params.id)"
-      --backed-url "s3://${BUCKET}/mapt/kind/$(params.id)"
-      --conn-details-output "$(params.cluster-info-path)"
+      --project-name "kind-${PARAM_ID}"
+      --backed-url "s3://${BUCKET}/mapt/kind/${PARAM_ID}"
+      --conn-details-output "${CLUSTER_INFO_PATH}"
     )
-    if [[ "$(params.compute-sizes)" != "" ]]; then
-      cmd+=(--compute-sizes "$(params.compute-sizes)")
+    if [[ "${PARAM_COMPUTE_SIZES}" != "" ]]; then
+      cmd+=(--compute-sizes "${PARAM_COMPUTE_SIZES}")
     else
-      cmd+=(--arch "$(params.arch)" --cpus "$(params.cpus)" --memory "$(params.memory)")
+      cmd+=(--arch "${PARAM_ARCH}" --cpus "${PARAM_CPUS}" --memory "${PARAM_MEMORY}")
     fi
-    if [[ "$(params.extra-port-mappings)" != "" ]]; then
-      cmd+=(--extra-port-mappings "$(params.extra-port-mappings)")
+    if [[ "${PARAM_EXTRA_PORT_MAPPINGS}" != "" ]]; then
+      cmd+=(--extra-port-mappings "${PARAM_EXTRA_PORT_MAPPINGS}")
     fi
-    if [[ "$(params.nested-virt)" == "true" ]]; then cmd+=(--nested-virt); fi
-    if [[ "$(params.version)" != "" ]]; then cmd+=(--version "$(params.version)"); fi
-    if [[ "$(params.spot)" == "true" ]]; then
-      cmd+=(--spot --spot-increase-rate "$(params.spot-increase-rate)" --spot-eviction-tolerance "$(params.spot-eviction-tolerance)")
+    if [[ "${PARAM_NESTED_VIRT}" == "true" ]]; then cmd+=(--nested-virt); fi
+    if [[ "${PARAM_VERSION}" != "" ]]; then cmd+=(--version "${PARAM_VERSION}"); fi
+    if [[ "${PARAM_SPOT}" == "true" ]]; then
+      cmd+=(--spot --spot-increase-rate "${PARAM_SPOT_INCREASE_RATE}" --spot-eviction-tolerance "${PARAM_SPOT_EVICTION_TOLERANCE}")
     fi
-    if [[ "$(params.timeout)" != "" ]]; then cmd+=(--timeout "$(params.timeout)"); fi
-    tags_value="iac=mapt,k8s-type=kind,cluster-name=$(params.id)"
-    if [[ "$(params.tags)" != "" ]]; then
-      tags_value="${tags_value},$(params.tags)"
+    if [[ "${PARAM_TIMEOUT}" != "" ]]; then cmd+=(--timeout "${PARAM_TIMEOUT}"); fi
+    tags_value="iac=mapt,k8s-type=kind,cluster-name=${PARAM_ID}"
+    if [[ "${PARAM_TAGS}" != "" ]]; then
+      tags_value="${tags_value},${PARAM_TAGS}"
     fi
     cmd+=(--tags "${tags_value}")
 
