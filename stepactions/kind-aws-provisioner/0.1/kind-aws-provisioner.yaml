@@ -95,13 +95,6 @@ spec:
       mountPath: /opt/aws-credentials
     - name: $(params.cluster-info-volume)
       mountPath: $(params.cluster-info-path)
-  computeResources:
-    requests:
-      memory: "200Mi"
-      cpu: "100m"
-    limits:
-      memory: "600Mi"
-      cpu: "300m"
   script: |
     #!/bin/bash
     set -euo pipefail
