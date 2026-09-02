@@ -1,0 +1,175 @@
+---
+apiVersion: tekton.dev/v1alpha1
+kind: StepAction
+metadata:
+  name: kind-aws-provisioner
+  labels:
+    app.kubernetes.io/version: "0.1"
+    upstream-usable: "true"
+  annotations:
+    tekton.dev/pipelines.minVersion: "0.44.x"
+    tekton.dev/categories: infrastructure
+    tekton.dev/tags: infrastructure, aws, kind
+    tekton.dev/displayName: "Kind on AWS - Provision"
+    tekton.dev/platforms: "linux/amd64, linux/arm64"
+    mapt/version: "v0.9.9"
+spec:
+  description: |
+    Provisions a single-node Kind cluster on AWS using the Mapt CLI.
+    Writes connection details (kubeconfig, host, username, id_rsa) to the cluster-info-path directory.
+    If the LOG_FILENAME environment variable is set (e.g. via a Task stepTemplate), output is
+    also tee'd to that file for later OCI log upload.
+  image: quay.io/redhat-developer/mapt:v0.9.9
+  params:
+    - name: aws-credentials-volume
+      type: string
+      description: Name of the volume that mounts the AWS credentials secret.
+    - name: cluster-info-volume
+      type: string
+      description: Name of the volume where mapt will write connection details.
+    - name: cluster-info-path
+      type: string
+      default: '/opt/cluster-info'
+      description: Mount path for the cluster-info volume.
+    - name: id
+      type: string
+      description: A unique identifier for this Kind environment.
+    - name: arch
+      type: string
+      default: 'x86_64'
+      description: Architecture of the instance (x86_64 or arm64).
+    - name: cpus
+      type: string
+      default: '16'
+      description: Number of vCPUs to allocate.
+    - name: memory
+      type: string
+      default: '64'
+      description: Amount of memory in GiB to allocate.
+    - name: compute-sizes
+      type: string
+      default: ''
+      description: |
+        Comma-separated list of compute sizes (e.g. m5a.large,m6a.large).
+        Takes precedence over arch, cpus, and memory when set.
+    - name: nested-virt
+      type: string
+      default: 'false'
+      description: Enables nested virtualization if set to true.
+    - name: spot
+      type: string
+      default: 'true'
+      description: Use spot instances to potentially reduce costs.
+    - name: spot-increase-rate
+      type: string
+      default: '20'
+      description: Percentage added to the base spot price to improve instance acquisition chances.
+    - name: spot-eviction-tolerance
+      type: string
+      default: 'lowest'
+      description: Minimum eviction tolerance level (lowest, low, medium, high, highest).
+    - name: version
+      type: string
+      default: 'v1.32'
+      description: Kubernetes version for the Kind cluster.
+    - name: tags
+      type: string
+      default: ""
+      description: AWS resource tags. iac=mapt and k8s-type=kind are added automatically.
+    - name: debug
+      type: string
+      default: 'false'
+      description: Enables verbose logging. May expose credentials — use only in secure environments.
+    - name: timeout
+      type: string
+      default: ""
+      description: Auto-destroy timeout.
+    - name: extra-port-mappings
+      type: string
+      default: ""
+      description: |
+        Additional port mappings for the Kind cluster as a JSON array of objects with
+        containerPort, hostPort, and protocol properties.
+  env:
+    - name: CLUSTER_INFO_PATH
+      value: $(params.cluster-info-path)
+    - name: PARAM_ID
+      value: $(params.id)
+    - name: PARAM_ARCH
+      value: $(params.arch)
+    - name: PARAM_CPUS
+      value: $(params.cpus)
+    - name: PARAM_MEMORY
+      value: $(params.memory)
+    - name: PARAM_COMPUTE_SIZES
+      value: $(params.compute-sizes)
+    - name: PARAM_NESTED_VIRT
+      value: $(params.nested-virt)
+    - name: PARAM_SPOT
+      value: $(params.spot)
+    - name: PARAM_SPOT_INCREASE_RATE
+      value: $(params.spot-increase-rate)
+    - name: PARAM_SPOT_EVICTION_TOLERANCE
+      value: $(params.spot-eviction-tolerance)
+    - name: PARAM_VERSION
+      value: $(params.version)
+    - name: PARAM_TAGS
+      value: $(params.tags)
+    - name: PARAM_DEBUG
+      value: $(params.debug)
+    - name: PARAM_TIMEOUT
+      value: $(params.timeout)
+    - name: PARAM_EXTRA_PORT_MAPPINGS
+      value: $(params.extra-port-mappings)
+  volumeMounts:
+    - name: $(params.aws-credentials-volume)
+      mountPath: /opt/aws-credentials
+    - name: $(params.cluster-info-volume)
+      mountPath: $(params.cluster-info-path)
+  script: |
+    #!/bin/bash
+    set -euo pipefail
+    if [[ "${PARAM_DEBUG}" == "true" ]]; then set -xeuo pipefail; fi
+
+    AWS_ACCESS_KEY_ID=$(cat /opt/aws-credentials/access-key)
+    export AWS_ACCESS_KEY_ID
+    AWS_SECRET_ACCESS_KEY=$(cat /opt/aws-credentials/secret-key)
+    export AWS_SECRET_ACCESS_KEY
+    AWS_DEFAULT_REGION=$(cat /opt/aws-credentials/region)
+    export AWS_DEFAULT_REGION
+    BUCKET=$(cat /opt/aws-credentials/bucket)
+
+    cmd=(mapt aws kind create
+      --project-name "kind-${PARAM_ID}"
+      --backed-url "s3://${BUCKET}/mapt/kind/${PARAM_ID}"
+      --conn-details-output "${CLUSTER_INFO_PATH}"
+    )
+    if [[ "${PARAM_COMPUTE_SIZES}" != "" ]]; then
+      cmd+=(--compute-sizes "${PARAM_COMPUTE_SIZES}")
+    else
+      cmd+=(--arch "${PARAM_ARCH}" --cpus "${PARAM_CPUS}" --memory "${PARAM_MEMORY}")
+    fi
+    if [[ "${PARAM_EXTRA_PORT_MAPPINGS}" != "" ]]; then
+      cmd+=(--extra-port-mappings "${PARAM_EXTRA_PORT_MAPPINGS}")
+    fi
+    if [[ "${PARAM_NESTED_VIRT}" == "true" ]]; then cmd+=(--nested-virt); fi
+    if [[ "${PARAM_VERSION}" != "" ]]; then cmd+=(--version "${PARAM_VERSION}"); fi
+    if [[ "${PARAM_SPOT}" == "true" ]]; then
+      cmd+=(--spot --spot-increase-rate "${PARAM_SPOT_INCREASE_RATE}" --spot-eviction-tolerance "${PARAM_SPOT_EVICTION_TOLERANCE}")
+    fi
+    if [[ "${PARAM_TIMEOUT}" != "" ]]; then cmd+=(--timeout "${PARAM_TIMEOUT}"); fi
+    tags_value="iac=mapt,k8s-type=kind,cluster-name=${PARAM_ID}"
+    if [[ "${PARAM_TAGS}" != "" ]]; then
+      tags_value="${tags_value},${PARAM_TAGS}"
+    fi
+    cmd+=(--tags "${tags_value}")
+
+    if [[ -n "${LOG_FILENAME:-}" ]]; then
+      "${cmd[@]}" 2>&1 | tee "$LOG_FILENAME"
+      exit_code="${PIPESTATUS[0]}"
+    else
+      "${cmd[@]}"
+      exit_code="$?"
+    fi
+    echo "[INFO] cluster provisioning finished with exit code $exit_code"
+    exit "$exit_code"
