@@ -12,14 +12,14 @@ metadata:
     tekton.dev/tags: infrastructure, aws, kind
     tekton.dev/displayName: "Kind on AWS - Provision"
     tekton.dev/platforms: "linux/amd64, linux/arm64"
-    mapt/version: "v0.9.9"
+    mapt/version: "v0.14.4"
 spec:
   description: |
     Provisions a single-node Kind cluster on AWS using the Mapt CLI.
     Writes connection details (kubeconfig, host, username, id_rsa) to the cluster-info-path directory.
     If the LOG_FILENAME environment variable is set (e.g. via a Task stepTemplate), output is
     also tee'd to that file for later OCI log upload.
-  image: quay.io/redhat-developer/mapt:v0.9.9
+  image: quay.io/redhat-developer/mapt:v0.14.4
   params:
     - name: aws-credentials-volume
       type: string
