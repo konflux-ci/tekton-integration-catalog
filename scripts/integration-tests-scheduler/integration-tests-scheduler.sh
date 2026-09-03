@@ -61,7 +61,7 @@ set -euo pipefail
 #
 ###############################################################################
 
-cd $(mktemp -d)
+cd "$(mktemp -d)"
 
 export SCHEDULE=""
 export REPO_URL=""
@@ -130,7 +130,8 @@ clone_repository() {
 
 check_recent_commits() {
     local since_time="$1"
-    local commit_count=$(git rev-list --count --since="$since_time" HEAD)
+    local commit_count
+    commit_count=$(git rev-list --count --since="$since_time" HEAD)
 
     if [[ "$commit_count" -eq 0 ]]; then
         echo "[WARN] Trigger of periodic integration tests will be cancelled due to no commits in the last $SCHEDULE."

@@ -14,6 +14,7 @@ rules:
   document-start: disable
   empty-lines: enable
   empty-values: enable
+  float-values: enable
   hyphens: enable
   key-duplicates: enable
   key-ordering: disable
@@ -25,6 +26,7 @@ rules:
   trailing-spaces: enable
   truthy:
     level: warning
+    allowed-values: ["true", "false", "yes", "no"]
 
   # accept both     key:
   #                   - item

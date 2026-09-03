@@ -1,0 +1,35 @@
+# Hadolint configuration for tekton-integration-catalog
+# https://github.com/hadolint/hadolint
+
+# Fail on warning and above
+failure-threshold: warning
+
+# Trusted registries (suppress DL3026 for these)
+trustedRegistries:
+  - registry.redhat.io
+  - quay.io
+
+ignored:
+  # DL3007: Using latest — sealights agent images intentionally track latest UBI
+  - DL3007
+  # DL3008: Pin versions in apt-get — not applicable (using dnf on UBI)
+  - DL3008
+  # DL3013: Pin pip versions — yamllint version is managed by renovate
+  - DL3013
+  # DL3018: Pin versions in apk — not applicable (using dnf on UBI)
+  - DL3018
+  # DL3002: Last USER should not be root — builder stages require root; final
+  # stages run as non-root via UBI defaults or explicit USER directives
+  - DL3002
+  # DL3042: Avoid pip cache dir — addressed where possible, baselined for existing
+  - DL3042
+  # DL3041: Specify version with dnf install — versions managed externally via ARGs
+  - DL3041
+  # DL4001: Either use Wget or Curl — tooling image installs from multiple
+  # upstream sources that provide different download methods
+  - DL4001
+  # DL4006: Set SHELL -o pipefail — UBI images use /bin/sh by default;
+  # adding SHELL directive changes build behavior for existing Dockerfiles
+  - DL4006
+  # SC3060: POSIX sh string replacement — RUN commands execute in bash on UBI
+  - SC3060

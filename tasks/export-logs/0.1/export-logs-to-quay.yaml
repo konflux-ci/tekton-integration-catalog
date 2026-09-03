@@ -26,15 +26,21 @@ spec:
       description: The specific tag generated for the log artifact.
   workspaces:
     - name: shared-data
-      description: Workspace for log archiving and OCI artifact creation files.
+      optional: true
+      description: "Unused. Kept for backwards compatibility with callers that bind this workspace."
   volumes:
     - name: credentials-volume
       secret:
         secretName: $(params.artifact-credentials-secret)
+    - name: log-staging
+      emptyDir: {}
   steps:
     - name: fetch-and-prepare-logs
       image: quay.io/konflux-ci/tekton-integration-catalog/utils:latest
-      workingDir: $(workspaces.shared-data.path)
+      workingDir: /staging
+      volumeMounts:
+        - name: log-staging
+          mountPath: /staging
       env:
         - name: PR_NAME
           value: "$(params.pipeline-run-name)"
@@ -59,7 +65,7 @@ spec:
 
             if [ -n "$POD_NAME" ]; then
                 echo "--- LOGS FOR ${taskrun} (Pod: ${POD_NAME}) ---" >> "${LOG_FILENAME}" 2>&1
-                ${CMD} logs --namespace "${PR_NAMESPACE}" pod/"${POD_NAME}" >> "${LOG_FILENAME}" 2>&1 || true
+                ${CMD} logs --namespace "${PR_NAMESPACE}" --all-containers --ignore-errors pod/"${POD_NAME}" >> "${LOG_FILENAME}" 2>&1 || true
             fi
         done
 
@@ -74,7 +80,12 @@ spec:
 
     - name: secure-push-oci-direct
       image: quay.io/konflux-ci/tekton-integration-catalog/utils:latest
-      workingDir: $(workspaces.shared-data.path)
+      workingDir: /staging
+      volumeMounts:
+        - name: log-staging
+          mountPath: /staging
+        - name: credentials-volume
+          mountPath: /etc/oci-credentials
       env:
         - name: OCI_REFERENCE_BASE
           value: $(params.quay-repo)
@@ -82,13 +93,20 @@ spec:
         #!/bin/bash
         set -euo pipefail
 
+        ARCHIVE_FILENAME="logs.tar.gz"
+
+        if [ ! -f "${ARCHIVE_FILENAME}" ]; then
+          echo "No logs archive found — skipping push."
+          exit 0
+        fi
+
         IMAGE_TAG=$(cat "$(results.LOG_ARTIFACT_TAG.path)")
 
         REPO_NAME_ONLY="${OCI_REFERENCE_BASE%:*}"
         FULL_OCI_REF="${REPO_NAME_ONLY}:${IMAGE_TAG}"
 
         # Setup authentication
-        AUTH_DIR="/tekton/volumes/credentials-volume"
+        AUTH_DIR="/etc/oci-credentials"
         AUTH_PATH="$AUTH_DIR/.dockerconfigjson"
 
         if [ -f "$AUTH_PATH" ]; then
@@ -101,6 +119,6 @@ spec:
         oras push --no-tty \
           --artifact-type "application/vnd.logs.tar+gzip" \
           "${FULL_OCI_REF}" \
-          "logs.tar.gz:application/vnd.logs.tar+gzip"
+          "${ARCHIVE_FILENAME}:application/vnd.logs.tar+gzip"
 
         echo "Successfully pushed log artifact to ${FULL_OCI_REF}"

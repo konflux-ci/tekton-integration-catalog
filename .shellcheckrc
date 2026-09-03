@@ -1,0 +1,15 @@
+# ShellCheck configuration for tekton-integration-catalog
+# https://www.shellcheck.net/wiki/
+
+# Default shell dialect (scripts should declare their own via shebang)
+shell=bash
+
+# Enable all checks by default; disable specific ones only with justification.
+
+# SC2154: Referenced but not assigned — many vars come from Tekton params/env
+# injected at runtime. Disable globally; scripts must document expected env vars.
+# SC2016: Expressions don't expand in single quotes — intentional for JMESPath
+# and jq queries that use backticks as part of their query language syntax.
+# SC2128: Expanding array without index — false positive in templated CI scripts
+# where the variable is an env-var string being re-split into an array.
+disable=SC2154,SC2016,SC2128

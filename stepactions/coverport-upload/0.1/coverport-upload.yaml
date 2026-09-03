@@ -24,7 +24,7 @@ spec:
 
     More information: https://github.com/konflux-ci/coverport
 
-  image: quay.io/konflux-ci/konflux-devprod/coverport-cli@sha256:bef3f7af97512649141bb273530be99f9afdebd6aaa1dfa795a0c84b5e322112
+  image: quay.io/konflux-ci/konflux-devprod/coverport-cli@sha256:44c180e1e3a3521b1057f4e85723efef2eb2107a153c9c5e91dfdb0f5631e41d
 
   params:
     # Input parameters

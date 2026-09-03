@@ -114,7 +114,7 @@ delete_target_groups() {
         --query 'Events[*].Resources[?ResourceType==`AWS::ElasticLoadBalancingV2::TargetGroup`].ResourceName' \
         --output text)
 
-    TODAYS_TARGET_GROUP_ARRAY=($TODAYS_TARGET_GROUPS)
+    mapfile -t TODAYS_TARGET_GROUP_ARRAY < <(echo "$TODAYS_TARGET_GROUPS" | tr '\t' '\n')
 
     # Loop through all target groups
     for TG_ARN in $ALL_TARGET_GROUPS; do
@@ -124,6 +124,8 @@ delete_target_groups() {
 
         if [[ "$IS_KONFLUX_CI_TAG" == "true" ]]; then
             # Check if the target group was created today
+            # Literal match with space boundaries is intentional (not regex)
+            # shellcheck disable=SC2076
             if [[ ! " ${TODAYS_TARGET_GROUP_ARRAY[*]} " =~ " ${TG_ARN} " ]]; then
                 echo "Deleting target group: $TG_ARN (tagged 'konflux-ci=true' and not created today)"
                 aws elbv2 delete-target-group --target-group-arn "$TG_ARN" --region "$AWS_DEFAULT_REGION"

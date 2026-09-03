@@ -1,0 +1,19 @@
+# Gitleaks configuration for tekton-integration-catalog
+# https://github.com/gitleaks/gitleaks
+
+title = "tekton-integration-catalog gitleaks config"
+
+[extend]
+useDefault = true
+
+[allowlist]
+description = "Global allowlist"
+paths = [
+  # Test fixtures may contain example tokens/dummy secrets
+  '''^tests/''',
+  '''^testdata/''',
+  # Task-level test directories
+  '''/tests/''',
+  # Vendor directory
+  '''^vendor/''',
+]
