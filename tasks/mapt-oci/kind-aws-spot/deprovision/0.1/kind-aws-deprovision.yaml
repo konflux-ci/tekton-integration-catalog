@@ -145,7 +145,7 @@ spec:
           values: ["Succeeded"]
 
     - name: destroy
-      image: quay.io/redhat-developer/mapt:v0.9.9
+      image: quay.io/redhat-developer/mapt:v0.14.4
       volumeMounts:
         - name: aws-credentials
           mountPath: /opt/aws-credentials
