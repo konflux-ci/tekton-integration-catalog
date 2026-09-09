@@ -67,7 +67,7 @@ spec:
       default: "true"
   steps:
     - name: destroy
-      image: quay.io/redhat-developer/mapt:v0.9.9
+      image: quay.io/redhat-developer/mapt:v0.14.4@sha256:6f5b3418cd9737a8b9c5d5a818a4f7379aa6d262913ba3c9a75c8361baaebc9e
       imagePullPolicy: Always
       env:
         - name: HOME
