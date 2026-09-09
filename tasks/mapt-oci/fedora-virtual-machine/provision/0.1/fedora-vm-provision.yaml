@@ -91,6 +91,11 @@ spec:
     - name: memory
       description: Amount of RAM for the cloud instance in GiB (default 16)
       default: "16"
+    - name: compute-families
+      default: ""
+      description: |
+        Comma-separated allowlist of compute family prefixes (e.g. m5,m6i,m7i for AWS).
+        Empty means no restriction. Only used when compute-sizes is not set.
     - name: compute-sizes
       description: |
         Comma seperated list of sizes for the machines to be requested, e.g. `m5a.large,m6a.large`
@@ -213,6 +218,10 @@ spec:
         if [[ "$(params.compute-sizes)" != "" ]]; then
           cmd+="--compute-sizes '$(params.compute-sizes)' "
         else
+          if [[ "$(params.compute-families)" != "" ]]; then
+            cmd+="--compute-families '$(params.compute-families)' "
+          fi
+
           cmd+="--cpus '$(params.cpus)' "
           cmd+="--memory '$(params.memory)' "
           cmd+="--gpus '$(params.gpus)' "
