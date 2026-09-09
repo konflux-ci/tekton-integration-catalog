@@ -156,7 +156,7 @@ spec:
             id_rsa: ${id_rsa}
   steps:
     - name: provisioner
-      image: quay.io/redhat-developer/mapt:v0.9.9
+      image: quay.io/redhat-developer/mapt:v0.14.5@sha256:a80035e53b855f3f54c95e7b2b000a88da95110d1e5fb65388b2d4ab8621181a
       imagePullPolicy: Always
       env:
         - name: HOME
