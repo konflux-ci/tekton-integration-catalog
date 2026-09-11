@@ -12,12 +12,12 @@ metadata:
     tekton.dev/tags: infrastructure, aws, kind
     tekton.dev/displayName: "Kind on AWS - Destroy"
     tekton.dev/platforms: "linux/amd64, linux/arm64"
-    mapt/version: "v0.9.9"
+    mapt/version: "0.14.5"
 spec:
   description: |
     Destroys a Kind cluster previously provisioned on AWS using the Mapt CLI.
     Matches the environment ID used during provisioning to scope the cleanup operation.
-  image: quay.io/redhat-developer/mapt:v0.9.9
+  image: quay.io/redhat-developer/mapt:v0.14.5
   params:
     - name: aws-credentials-volume
       type: string
