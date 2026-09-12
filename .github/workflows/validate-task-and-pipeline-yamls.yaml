@@ -23,7 +23,7 @@ jobs:
 
       - name: Set up Tekton
         id: setup-tektoncd
-        uses: tektoncd/actions/setup-tektoncd@2b126ef971bbfda195d8a6c9b7c4eb3bfda452bf # main
+        uses: tektoncd/actions/setup-tektoncd@cd4768a594ec4a7af8ef72d73524a584cb564e34 # main
         with:
           pipeline_version: latest
         continue-on-error: true
