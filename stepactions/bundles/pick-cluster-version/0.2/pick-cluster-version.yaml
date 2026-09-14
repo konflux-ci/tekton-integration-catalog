@@ -1,0 +1,52 @@
+apiVersion: tekton.dev/v1beta1
+kind: StepAction
+metadata:
+  name: pick-cluster-version
+  labels:
+    app.kubernetes.io/version: "0.2"
+    tekton.dev/tags: konflux
+    upstream-usable: "true"
+spec:
+  description: >-
+    This StepAction determines the target OCP version of an FBC fragment and returns it for cluster
+    provisioning. Unlike version 0.1, it returns the fragment version directly without validating
+    it against a list of supported cluster versions.
+  image: quay.io/konflux-ci/konflux-test:1.5.2@sha256:c370a7bc6e172cdbab001f1a19f37ebc95f47c3d8fe2d915fa4641132490ead7
+  params:
+    - name: fbcFragment
+      type: string
+      description: "An FBC fragment image."
+  results:
+    - name: ocpVersion
+      description: "OCP version for cluster provisioning."
+  script: |
+    #!/usr/bin/env bash
+    set -o errexit -o nounset -o pipefail
+    # shellcheck disable=SC1091
+    . /utils.sh
+
+    FBC_FRAGMENT="$1"
+
+    if [ -z "$FBC_FRAGMENT" ]; then
+      echo "ERROR: fbcFragment parameter is required!" >&2
+      exit 1
+    fi
+
+    if ! ocp_version=$(get_ocp_version_from_fbc_fragment "$FBC_FRAGMENT"); then
+      echo "ERROR: Failed to determine target OCP version from FBC fragment." >&2
+      exit 1
+    fi
+
+    # Strip the leading "v" if present
+    ocp_version="${ocp_version#v}"
+
+    if [[ -z "$ocp_version" ]]; then
+      echo "ERROR: Extracted OCP version is empty." >&2
+      exit 1
+    fi
+
+    echo "Target OCP version: $ocp_version"
+
+    echo -n "$ocp_version" > "$(step.results.ocpVersion.path)"
+  args:
+    - "$(params.fbcFragment)"

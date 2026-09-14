@@ -1,0 +1,57 @@
+apiVersion: tekton.dev/v1beta1
+kind: StepAction
+metadata:
+  name: pick-cluster-arch
+  labels:
+    app.kubernetes.io/version: "0.2"
+    tekton.dev/tags: konflux
+    upstream-usable: "true"
+spec:
+  description: |
+    This StepAction retrieves the supported architectures for a bundle by checking the "operatorframework.io/arch" labels on the bundle CSV.
+    It returns the architecture and the corresponding AWS instance type separately.
+    If arm64 is supported, it returns arm64 and m6g.large; otherwise, it returns amd64 and m5.large.
+    If the architecture labels are not defined in the bundle CSV, it defaults to amd64 and m5.large.
+  image: quay.io/konflux-ci/konflux-test:1.5.2@sha256:c370a7bc6e172cdbab001f1a19f37ebc95f47c3d8fe2d915fa4641132490ead7
+  params:
+    - name: bundleImage
+      type: string
+      description: A bundle image.
+  results:
+    - name: arch
+      description: A bundle-supported architecture, arm64 or amd64.
+    - name: awsInstanceType
+      description: The AWS instance type corresponding to the selected architecture.
+  env:
+    - name: BUNDLE_IMAGE
+      value: "$(params.bundleImage)"
+  script: |
+    #!/usr/bin/env bash
+    set -o errexit -o nounset -o pipefail
+    . /utils.sh
+
+    if [ -z "$BUNDLE_IMAGE" ]; then
+      echo "Error: BUNDLE_IMAGE parameter is required." >&2
+      exit 1
+    fi
+
+    if ! bundle_render_out=$(render_opm -t "$BUNDLE_IMAGE"); then
+      echo "Failed to render the bundle image" >&2
+      exit 1
+    fi
+
+    echo "Retrieving bundle-supported architectures..."
+    if ! arches=$(get_bundle_arches "$bundle_render_out"); then
+      echo "Could not get bundle-supported architectures" >&2
+      exit 1
+    fi
+
+    if echo "$arches" | grep -q "^arm64$"; then
+      echo "arm64 architecture is supported"
+      printf "arm64" > "$(step.results.arch.path)"
+      printf "m6g.large" > "$(step.results.awsInstanceType.path)"
+    else
+      echo "amd64 architecture is supported"
+      printf "amd64" > "$(step.results.arch.path)"
+      printf "m5.large" > "$(step.results.awsInstanceType.path)"
+    fi
