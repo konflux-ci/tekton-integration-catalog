@@ -295,8 +295,8 @@ spec:
             uid: ${OWNER_UID}
         type: Opaque
         data:
-          host: $(base64 -w0 < /opt/host-info/host)
-          username: $(base64 -w0 < /opt/host-info/username)
+          host: $(base64 -w0 < <(tr -d '\n' < /opt/host-info/host))
+          username: $(base64 -w0 < <(tr -d '\n' < /opt/host-info/username))
           id_rsa: $(base64 -w0 < /opt/host-info/id_rsa)
         EOF
 
