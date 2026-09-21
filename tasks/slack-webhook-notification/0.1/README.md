@@ -30,7 +30,7 @@ Send a message to Slack using an incoming webhook
 apiVersion: tekton.dev/v1
 kind: Pipeline
 metadata:
-  name: notify-on-failure
+  name: docker-build
 spec:
   finally:
     - name: slack-notification
@@ -51,7 +51,12 @@ spec:
         - name: message
           value: "Pipeline $(context.pipelineRun.name) failed"
         - name: key-name
-          value: team1
+          value: team
+        - name: files
+          value: ["README.md"]
+      workspaces:
+        - name: source
+          workspace: workspace
 ```
 
 ### Suitable for upstream communities
