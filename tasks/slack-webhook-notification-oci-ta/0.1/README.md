@@ -1,4 +1,4 @@
-# Slack Webhook Notification Task
+# Slack Webhook Notification Task (OCI Trusted Artifacts)
 
 Version: 0.1
 
@@ -15,14 +15,9 @@ Send a message to Slack using an incoming webhook
 | `key-name` | Key in the secret which contains the webhook URL for Slack | | Yes |
 | `user-ids` | List of Slack user IDs to mention (e.g. `U024BE7LH`) | `[]` | No |
 | `group-ids` | List of Slack group IDs to mention (e.g. `S0614TZR7`) | `[]` | No |
-| `submodules` | List of submodule names to dump into the message. Requires the source workspace | `[]` | No |
-| `files` | List of files to dump into the message. Requires the source workspace | `[]` | No |
-
-## Workspaces
-
-| Name | Description | Optional |
-| --- | --- | --- |
-| `source` | Workspace containing the cloned repository. Required when files or submodules are set | Yes |
+| `submodules` | List of submodule names to dump into the message. Requires `SOURCE_ARTIFACT` | `[]` | No |
+| `files` | List of files to dump into the message. Requires `SOURCE_ARTIFACT` | `[]` | No |
+| `SOURCE_ARTIFACT` | Trusted Artifact URI for the source code | `""` | No |
 
 ## Usage
 
@@ -46,7 +41,7 @@ spec:
           - name: revision
             value: main
           - name: pathInRepo
-            value: tasks/slack-webhook-notification/0.1/slack-webhook-notification.yaml
+            value: tasks/slack-webhook-notification-oci-ta/0.1/slack-webhook-notification-oci-ta.yaml
       params:
         - name: message
           value: "Pipeline $(context.pipelineRun.name) failed"
@@ -54,9 +49,8 @@ spec:
           value: team
         - name: files
           value: ["README.md"]
-      workspaces:
-        - name: source
-          workspace: workspace
+        - name: SOURCE_ARTIFACT
+          value: $(tasks.git-clone-oci-ta.results.SOURCE_ARTIFACT)
 ```
 
 ### Suitable for upstream communities
