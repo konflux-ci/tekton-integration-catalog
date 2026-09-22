@@ -10,8 +10,6 @@ trustedRegistries:
   - quay.io
 
 ignored:
-  # DL3007: Using latest — sealights agent images intentionally track latest UBI
-  - DL3007
   # DL3008: Pin versions in apt-get — not applicable (using dnf on UBI)
   - DL3008
   # DL3013: Pin pip versions — yamllint version is managed by renovate

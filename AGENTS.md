@@ -9,7 +9,7 @@ Konflux PipelineRun (PAC trigger) -> `test-metadata` (extracts SNAPSHOT, git inf
 ## Key Paths
 
 `tasks/<category>/<name>/<version>/` task definitions | `stepactions/<name>/<version>/` reusable step units | `pipelines/<name>/<version>/` pipeline definitions
-`scripts/` helper scripts | `konflux/` Dockerfiles for utils + Sealights images | `docs/TESTING.md` testing guide
+`scripts/` helper scripts | `konflux/` Dockerfiles for utils image | `docs/TESTING.md` testing guide
 `.github/workflows/` CI gates | `.github/scripts/test_tekton_tasks.sh` functional test runner
 
 ## Adding a Task

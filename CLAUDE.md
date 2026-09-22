@@ -14,7 +14,7 @@ stepactions/<name>/<version>/              # Tekton StepAction definitions
 pipelines/<name>/<version>/                # Tekton Pipeline definitions
 pipelineruns/<name>/<version>/             # Example PipelineRun YAMLs
 scripts/                                   # Helper shell scripts
-konflux/                                   # Konflux component Dockerfiles (utils image, Sealights agents)
+konflux/                                   # Konflux component Dockerfiles (utils image)
 .github/workflows/                         # CI: yamllint, checkton, YAML validation, task tests
 .github/scripts/test_tekton_tasks.sh       # Functional test runner
 .github/actions/install-tkn/               # Custom action to install tkn CLI
@@ -31,7 +31,7 @@ Konflux PipelineRun (PAC trigger) -> `test-metadata` task (extracts SNAPSHOT, gi
 | Image | Used By |
 |-------|---------|
 | `quay.io/konflux-qe-incubator/konflux-qe-tools:latest` | test-metadata, PR comment, ROSA deprovision, linters |
-| `quay.io/konflux-ci/tekton-integration-catalog/utils:latest` | ROSA provision, export-logs, Sealights stepactions |
+| `quay.io/konflux-ci/tekton-integration-catalog/utils:latest` | ROSA provision, export-logs |
 | `quay.io/konflux-ci/konflux-test:latest` | Bundle stepactions |
 | `registry.redhat.io/openshift4/ose-cli:4.13` | mapt flows, protect-control-plane |
 | `quay.io/redhat-developer/mapt:*` | mapt provision/deprovision |
