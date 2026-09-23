@@ -1023,14 +1023,14 @@ spec:
         - name: key-name
           value: $(params.SLACK_KEY_NAME)
       taskRef:
+        resolver: git
         params:
-          - name: bundle
-            value: quay.io/konflux-ci/tekton-catalog/task-slack-webhook-notification:0.1
-          - name: name
-            value: slack-webhook-notification
-          - name: kind
-            value: Task
-        resolver: bundles
+          - name: url
+            value: https://github.com/konflux-ci/tekton-integration-catalog.git
+          - name: revision
+            value: main
+          - name: pathInRepo
+            value: tasks/slack-webhook-notification/0.1/slack-webhook-notification.yaml
       when:
         - input: $(tasks.status)
           operator: in
