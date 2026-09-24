@@ -203,6 +203,16 @@ spec:
               printf "INFO: Track the progress of the cluster creation...\n"
               rosa logs install --cluster="$CLUSTER_NAME" --region "$REGION" --watch
 
+              printf "INFO: Waiting for cluster to reach ready state...\n"
+              wait_for "
+                  state=\$(rosa describe cluster --cluster='$CLUSTER_NAME' --region '$REGION' -o json | jq -r '.status.state')
+                  if echo \"\$state\" | grep -qiE '(error|uninstalling|waiting)'; then
+                      printf 'ERROR: Cluster entered terminal non-ready state: %s\n' \"\$state\" >&2
+                      exit 1
+                  fi
+                  echo \"\$state\" | grep -qi '^ready$'
+              " "cluster to reach ready state" "30m" "60" || print_debug_info
+
               printf "INFO: ROSA with HCP cluster is ready, create a cluster admin account for accessing the cluster\n"
               admin_output="$(rosa create admin --region "$REGION" --cluster="$CLUSTER_NAME")"
 
