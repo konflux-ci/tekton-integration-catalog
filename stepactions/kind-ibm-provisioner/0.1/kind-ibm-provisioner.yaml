@@ -88,11 +88,15 @@ spec:
     set -o errexit -o nounset -o pipefail
     [[ "${PARAM_DEBUG}" == "true" ]] && set -x
 
-    export IBMCLOUD_API_KEY="$(cat /opt/ibm-credentials/IBMCLOUD_API_KEY)"
-    export IBMCLOUD_COS_ACCESS_KEY_ID="$(cat /opt/ibm-credentials/IBMCLOUD_COS_ACCESS_KEY_ID)"
-    export IBMCLOUD_COS_SECRET_ACCESS_KEY="$(cat /opt/ibm-credentials/IBMCLOUD_COS_SECRET_ACCESS_KEY)"
+    IBMCLOUD_API_KEY="$(cat /opt/ibm-credentials/IBMCLOUD_API_KEY)"
+    export IBMCLOUD_API_KEY
+    IBMCLOUD_COS_ACCESS_KEY_ID="$(cat /opt/ibm-credentials/IBMCLOUD_COS_ACCESS_KEY_ID)"
+    export IBMCLOUD_COS_ACCESS_KEY_ID
+    IBMCLOUD_COS_SECRET_ACCESS_KEY="$(cat /opt/ibm-credentials/IBMCLOUD_COS_SECRET_ACCESS_KEY)"
+    export IBMCLOUD_COS_SECRET_ACCESS_KEY
     if [[ -s /opt/ibm-credentials/IBMCLOUD_COS_ENDPOINT ]]; then
-      export IBMCLOUD_COS_ENDPOINT="$(cat /opt/ibm-credentials/IBMCLOUD_COS_ENDPOINT)"
+      IBMCLOUD_COS_ENDPOINT="$(cat /opt/ibm-credentials/IBMCLOUD_COS_ENDPOINT)"
+      export IBMCLOUD_COS_ENDPOINT
     fi
 
     tags="iac=mapt,k8s-type=kind,cluster-name=${PARAM_ID}"
