@@ -88,7 +88,6 @@ spec:
   script: |
     #!/usr/bin/env bash
     set -o errexit -o nounset -o pipefail
-    [[ "${PARAM_DEBUG}" == "true" ]] && set -x
 
     IBMCLOUD_API_KEY="$(cat /opt/ibm-credentials/IBMCLOUD_API_KEY)"
     export IBMCLOUD_API_KEY
@@ -100,6 +99,7 @@ spec:
       IBMCLOUD_COS_ENDPOINT="$(cat /opt/ibm-credentials/IBMCLOUD_COS_ENDPOINT)"
       export IBMCLOUD_COS_ENDPOINT
     fi
+    [[ "${PARAM_DEBUG}" == "true" ]] && set -x
 
     tags="iac=mapt,k8s-type=kind,cluster-name=${PARAM_ID}"
     [[ -n "${PARAM_TAGS}" ]] && tags="${tags},${PARAM_TAGS}"
