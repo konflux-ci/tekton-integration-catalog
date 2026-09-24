@@ -1,0 +1,61 @@
+apiVersion: tekton.dev/v1alpha1
+kind: StepAction
+metadata:
+  name: kind-ibm-destroy
+  labels:
+    app.kubernetes.io/version: "0.1"
+    upstream-usable: "true"
+  annotations:
+    tekton.dev/categories: infrastructure
+    tekton.dev/tags: infrastructure, ibm, kind
+    mapt/version: "0.14.5"
+spec:
+  description: Destroys a Kind cluster on IBM Cloud using the same mapt state backend used for provisioning.
+  image: quay.io/redhat-developer/mapt:v0.14.5
+  params:
+    - name: ibm-credentials-volume
+      type: string
+    - name: id
+      type: string
+    - name: region
+      type: string
+      default: us-south
+    - name: backed-url
+      type: string
+    - name: debug
+      type: string
+      default: "false"
+    - name: force-destroy
+      type: string
+      default: "true"
+  env:
+    - name: IC_REGION
+      value: $(params.region)
+    - name: PARAM_ID
+      value: $(params.id)
+    - name: PARAM_REGION
+      value: $(params.region)
+    - name: PARAM_BACKED_URL
+      value: $(params.backed-url)
+    - name: PARAM_DEBUG
+      value: $(params.debug)
+    - name: PARAM_FORCE_DESTROY
+      value: $(params.force-destroy)
+  volumeMounts:
+    - name: $(params.ibm-credentials-volume)
+      mountPath: /opt/ibm-credentials
+  script: |
+    #!/usr/bin/env bash
+    set -o errexit -o nounset -o pipefail
+    [[ "${PARAM_DEBUG}" == "true" ]] && set -x
+    export IBMCLOUD_API_KEY="$(cat /opt/ibm-credentials/IBMCLOUD_API_KEY)"
+    export IBMCLOUD_COS_ACCESS_KEY_ID="$(cat /opt/ibm-credentials/IBMCLOUD_COS_ACCESS_KEY_ID)"
+    export IBMCLOUD_COS_SECRET_ACCESS_KEY="$(cat /opt/ibm-credentials/IBMCLOUD_COS_SECRET_ACCESS_KEY)"
+    if [[ -s /opt/ibm-credentials/IBMCLOUD_COS_ENDPOINT ]]; then
+      export IBMCLOUD_COS_ENDPOINT="$(cat /opt/ibm-credentials/IBMCLOUD_COS_ENDPOINT)"
+    fi
+    cmd=(mapt ibmcloud kind destroy \
+      --project-name "kind-${PARAM_ID}" \
+      --backed-url "${PARAM_BACKED_URL}")
+    [[ "${PARAM_FORCE_DESTROY}" == "true" ]] && cmd+=(--force-destroy)
+    "${cmd[@]}"

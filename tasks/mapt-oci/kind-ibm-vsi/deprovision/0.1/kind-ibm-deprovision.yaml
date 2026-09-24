@@ -1,0 +1,89 @@
+apiVersion: tekton.dev/v1
+kind: Task
+metadata:
+  name: kind-ibm-deprovision
+  labels:
+    app.kubernetes.io/version: "0.1"
+    upstream-usable: "true"
+  annotations:
+    tekton.dev/pipelines.minVersion: "0.44.x"
+    tekton.dev/categories: infrastructure
+    tekton.dev/tags: infrastructure, ibm, kind
+    tekton.dev/displayName: Kind Cloud Single Node - Destroy
+    mapt/version: "0.14.5"
+spec:
+  description: Destroys a Kind cluster on IBM Cloud using its shared mapt state backend.
+  volumes:
+    - name: ibm-credentials
+      secret:
+        secretName: $(params.secret-ibmcloud-credentials)
+    - name: konflux-test-infra-volume
+      secret:
+        secretName: $(params.oci-credentials)
+    - name: credentials-volume
+      secret:
+        secretName: $(params.cluster-access-secret)
+  params:
+    - name: secret-ibmcloud-credentials
+      type: string
+    - name: id
+      type: string
+    - name: region
+      type: string
+      default: us-south
+    - name: backed-url
+      type: string
+    - name: cluster-access-secret
+      type: string
+    - name: pipeline-aggregate-status
+      type: string
+      default: None
+    - name: oci-container
+      type: string
+    - name: oci-credentials
+      type: string
+      default: konflux-test-infra
+    - name: debug
+      type: string
+      default: "false"
+    - name: force-destroy
+      type: string
+      default: "true"
+  steps:
+    - name: gather-cluster-resources
+      onError: continue
+      ref:
+        resolver: git
+        params: [{name: url, value: https://github.com/konflux-ci/tekton-integration-catalog.git}, {name: revision, value: main}, {name: pathInRepo, value: stepactions/gather-cluster-resources/0.1/gather-cluster-resources.yaml}]
+      params:
+        - {name: credentials, value: credentials-volume}
+        - {name: kubeconfig, value: kubeconfig}
+        - {name: artifact-dir, value: /workspace/konflux-artifacts}
+      when:
+        - input: $(params.pipeline-aggregate-status)
+          operator: notin
+          values: [Succeeded]
+    - name: secure-push-oci
+      onError: continue
+      ref:
+        resolver: git
+        params: [{name: url, value: https://github.com/konflux-ci/tekton-integration-catalog.git}, {name: revision, value: main}, {name: pathInRepo, value: stepactions/secure-push-oci/0.1/secure-push-oci.yaml}]
+      params:
+        - {name: workdir-path, value: /workspace}
+        - {name: oci-ref, value: $(params.oci-container)}
+        - {name: credentials-volume-name, value: konflux-test-infra-volume}
+      when:
+        - input: $(params.pipeline-aggregate-status)
+          operator: notin
+          values: [Succeeded]
+    - name: destroy
+      ref:
+        resolver: git
+        params: [{name: url, value: https://github.com/konflux-ci/tekton-integration-catalog.git}, {name: revision, value: main}, {name: pathInRepo, value: stepactions/kind-ibm-destroy/0.1/kind-ibm-destroy.yaml}]
+      params:
+        - {name: ibm-credentials-volume, value: ibm-credentials}
+        - {name: id, value: $(params.id)}
+        - {name: region, value: $(params.region)}
+        - {name: backed-url, value: $(params.backed-url)}
+        - {name: debug, value: $(params.debug)}
+        - {name: force-destroy, value: $(params.force-destroy)}
