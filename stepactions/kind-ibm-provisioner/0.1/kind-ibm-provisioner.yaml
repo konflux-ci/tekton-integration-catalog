@@ -52,6 +52,8 @@ spec:
       type: string
       default: ""
   env:
+    - name: CLUSTER_INFO_PATH
+      value: $(params.cluster-info-path)
     - name: IC_REGION
       value: $(params.region)
     - name: IC_ZONE
