@@ -1,0 +1,174 @@
+apiVersion: tekton.dev/v1
+kind: Task
+metadata:
+  name: kind-ibm-provision
+  labels:
+    app.kubernetes.io/version: "0.1"
+    upstream-usable: "true"
+  annotations:
+    tekton.dev/pipelines.minVersion: "0.44.x"
+    tekton.dev/categories: infrastructure
+    tekton.dev/tags: infrastructure, ibm, kind
+    tekton.dev/displayName: Kind Cloud Single Node - Create
+    mapt/version: "0.14.5"
+spec:
+  description: Creates a configurable Kind cluster on IBM Cloud using mapt.
+  volumes:
+    - name: ibm-credentials
+      secret:
+        secretName: $(params.secret-ibmcloud-credentials)
+    - name: cluster-info
+      emptyDir: {}
+    - name: logs
+      emptyDir: {}
+    - name: konflux-test-infra-volume
+      secret:
+        secretName: $(params.oci-credentials)
+  params:
+    - name: secret-ibmcloud-credentials
+      type: string
+      description: Secret containing IBMCLOUD_API_KEY and COS HMAC credentials.
+    - name: id
+      type: string
+    - name: cluster-access-secret-name
+      type: string
+      default: $(context.pipelineRun.name)
+    - name: ssh-credentials-secret-name
+      type: string
+      default: ""
+    - name: ownerKind
+      type: string
+      default: PipelineRun
+    - name: ownerName
+      type: string
+    - name: ownerUid
+      type: string
+    - name: region
+      type: string
+      default: us-south
+    - name: zone
+      type: string
+      default: us-south-2
+    - name: version
+      type: string
+      default: v1.34
+    - name: cpus
+      type: string
+      default: "32"
+    - name: memory
+      type: string
+      default: "64"
+    - name: backed-url
+      type: string
+      description: Shared s3:// IBM COS backend used by provision and destroy.
+    - name: tags
+      type: string
+      default: ""
+    - name: extra-port-mappings
+      type: string
+      default: '[{"containerPort":30012,"hostPort":8180,"protocol":"TCP"}]'
+    - name: harden-control-plane
+      type: string
+      default: "false"
+    - name: debug
+      type: string
+      default: "false"
+    - name: timeout
+      type: string
+      default: ""
+    - name: oci-ref
+      type: string
+    - name: oci-credentials
+      type: string
+      default: konflux-test-infra
+  results:
+    - name: cluster-access-secret
+      value: $(steps.create-kubeconfig-secret.results.secret-name)
+    - name: ssh-credentials-secret
+      value: $(steps.create-ssh-credentials-secret.results.secret-name)
+  stepTemplate:
+    env:
+      - name: LOG_FILENAME
+        value: /var/log-dir/kind-ibm-provision.log
+    volumeMounts:
+      - name: logs
+        mountPath: /var/log-dir
+  steps:
+    - name: create-kubeconfig-secret
+      ref:
+        resolver: git
+        params: [{name: url, value: https://github.com/konflux-ci/tekton-integration-catalog.git}, {name: revision, value: main}, {name: pathInRepo, value: stepactions/create-kubeconfig-secret/0.1/create-kubeconfig-secret.yaml}]
+      params:
+        - {name: secret-name, value: $(params.cluster-access-secret-name)}
+        - {name: namespace, value: $(context.taskRun.namespace)}
+        - {name: ownerKind, value: $(params.ownerKind)}
+        - {name: ownerName, value: $(params.ownerName)}
+        - {name: ownerUid, value: $(params.ownerUid)}
+    - name: create-ssh-credentials-secret
+      ref:
+        resolver: git
+        params: [{name: url, value: https://github.com/konflux-ci/tekton-integration-catalog.git}, {name: revision, value: main}, {name: pathInRepo, value: stepactions/create-ssh-credentials-secret/0.1/create-ssh-credentials-secret.yaml}]
+      params:
+        - {name: secret-name, value: $(params.ssh-credentials-secret-name)}
+        - {name: namespace, value: $(context.taskRun.namespace)}
+        - {name: ownerKind, value: $(params.ownerKind)}
+        - {name: ownerName, value: $(params.ownerName)}
+        - {name: ownerUid, value: $(params.ownerUid)}
+    - name: provisioner
+      onError: continue
+      ref:
+        resolver: git
+        params: [{name: url, value: https://github.com/konflux-ci/tekton-integration-catalog.git}, {name: revision, value: main}, {name: pathInRepo, value: stepactions/kind-ibm-provisioner/0.1/kind-ibm-provisioner.yaml}]
+      params:
+        - {name: ibm-credentials-volume, value: ibm-credentials}
+        - {name: cluster-info-volume, value: cluster-info}
+        - {name: id, value: $(params.id)}
+        - {name: region, value: $(params.region)}
+        - {name: zone, value: $(params.zone)}
+        - {name: version, value: $(params.version)}
+        - {name: cpus, value: $(params.cpus)}
+        - {name: memory, value: $(params.memory)}
+        - {name: backed-url, value: $(params.backed-url)}
+        - {name: tags, value: $(params.tags)}
+        - {name: extra-port-mappings, value: $(params.extra-port-mappings)}
+        - {name: debug, value: $(params.debug)}
+        - {name: timeout, value: $(params.timeout)}
+    - name: protect-control-plane
+      onError: continue
+      ref:
+        resolver: git
+        params: [{name: url, value: https://github.com/konflux-ci/tekton-integration-catalog.git}, {name: revision, value: main}, {name: pathInRepo, value: stepactions/protect-control-plane/0.1/protect-control-plane.yaml}]
+      params:
+        - {name: harden-control-plane, value: $(params.harden-control-plane)}
+        - {name: kubeconfig-dir, value: /opt/cluster-info}
+        - {name: kubeconfig-volume-name, value: cluster-info}
+    - name: update-kubeconfig-secret
+      onError: continue
+      ref:
+        resolver: git
+        params: [{name: url, value: https://github.com/konflux-ci/tekton-integration-catalog.git}, {name: revision, value: main}, {name: pathInRepo, value: stepactions/update-kubeconfig-secret/0.1/update-kubeconfig-secret.yaml}]
+      params:
+        - {name: secret-name, value: $(params.cluster-access-secret-name)}
+        - {name: namespace, value: $(context.taskRun.namespace)}
+        - {name: cluster-info-volume, value: cluster-info}
+    - name: update-ssh-credentials-secret
+      onError: continue
+      ref:
+        resolver: git
+        params: [{name: url, value: https://github.com/konflux-ci/tekton-integration-catalog.git}, {name: revision, value: main}, {name: pathInRepo, value: stepactions/update-ssh-credentials-secret/0.1/update-ssh-credentials-secret.yaml}]
+      params:
+        - {name: secret-name, value: $(params.ssh-credentials-secret-name)}
+        - {name: namespace, value: $(context.taskRun.namespace)}
+        - {name: cluster-info-volume, value: cluster-info}
+    - name: secure-push-oci
+      ref:
+        resolver: git
+        params: [{name: url, value: https://github.com/konflux-ci/tekton-integration-catalog.git}, {name: revision, value: main}, {name: pathInRepo, value: stepactions/secure-push-oci/0.1/secure-push-oci.yaml}]
+      params:
+        - {name: workdir-path, value: /var/log-dir}
+        - {name: oci-ref, value: $(params.oci-ref)}
+        - {name: credentials-volume-name, value: konflux-test-infra-volume}
+    - name: fail-if-any-step-failed
+      ref:
+        resolver: git
+        params: [{name: url, value: https://github.com/konflux-ci/tekton-integration-catalog.git}, {name: revision, value: main}, {name: pathInRepo, value: stepactions/fail-if-any-step-failed/0.1/fail-if-any-step-failed.yaml}]

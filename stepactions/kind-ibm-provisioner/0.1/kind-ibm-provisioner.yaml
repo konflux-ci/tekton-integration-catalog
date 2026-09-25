@@ -1,0 +1,120 @@
+apiVersion: tekton.dev/v1alpha1
+kind: StepAction
+metadata:
+  name: kind-ibm-provisioner
+  labels:
+    app.kubernetes.io/version: "0.1"
+    upstream-usable: "true"
+  annotations:
+    tekton.dev/categories: infrastructure
+    tekton.dev/tags: infrastructure, ibm, kind
+    mapt/version: "0.14.5"
+spec:
+  description: Provisions a Kind cluster on IBM Cloud using mapt and writes connection details to a shared volume.
+  image: quay.io/redhat-developer/mapt:v0.14.5
+  params:
+    - name: ibm-credentials-volume
+      type: string
+    - name: cluster-info-volume
+      type: string
+    - name: cluster-info-path
+      type: string
+      default: /opt/cluster-info
+    - name: id
+      type: string
+    - name: region
+      type: string
+      default: us-south
+    - name: zone
+      type: string
+      default: us-south-2
+    - name: version
+      type: string
+      default: v1.34
+    - name: cpus
+      type: string
+      default: "32"
+    - name: memory
+      type: string
+      default: "64"
+    - name: backed-url
+      type: string
+    - name: extra-port-mappings
+      type: string
+      default: '[{"containerPort":30012,"hostPort":8180,"protocol":"TCP"}]'
+    - name: tags
+      type: string
+      default: ""
+    - name: debug
+      type: string
+      default: "false"
+    - name: timeout
+      type: string
+      default: ""
+  env:
+    - name: CLUSTER_INFO_PATH
+      value: $(params.cluster-info-path)
+    - name: IC_REGION
+      value: $(params.region)
+    - name: IC_ZONE
+      value: $(params.zone)
+    - name: PARAM_ID
+      value: $(params.id)
+    - name: PARAM_REGION
+      value: $(params.region)
+    - name: PARAM_ZONE
+      value: $(params.zone)
+    - name: PARAM_VERSION
+      value: $(params.version)
+    - name: PARAM_CPUS
+      value: $(params.cpus)
+    - name: PARAM_MEMORY
+      value: $(params.memory)
+    - name: PARAM_BACKED_URL
+      value: $(params.backed-url)
+    - name: PARAM_EXTRA_PORT_MAPPINGS
+      value: $(params.extra-port-mappings)
+    - name: PARAM_TAGS
+      value: $(params.tags)
+    - name: PARAM_DEBUG
+      value: $(params.debug)
+    - name: PARAM_TIMEOUT
+      value: $(params.timeout)
+  volumeMounts:
+    - name: $(params.ibm-credentials-volume)
+      mountPath: /opt/ibm-credentials
+    - name: $(params.cluster-info-volume)
+      mountPath: $(params.cluster-info-path)
+  script: |
+    #!/usr/bin/env bash
+    set -o errexit -o nounset -o pipefail
+
+    IBMCLOUD_API_KEY="$(cat /opt/ibm-credentials/IBMCLOUD_API_KEY)"
+    export IBMCLOUD_API_KEY
+    IBMCLOUD_COS_ACCESS_KEY_ID="$(cat /opt/ibm-credentials/IBMCLOUD_COS_ACCESS_KEY_ID)"
+    export IBMCLOUD_COS_ACCESS_KEY_ID
+    IBMCLOUD_COS_SECRET_ACCESS_KEY="$(cat /opt/ibm-credentials/IBMCLOUD_COS_SECRET_ACCESS_KEY)"
+    export IBMCLOUD_COS_SECRET_ACCESS_KEY
+    if [[ -s /opt/ibm-credentials/IBMCLOUD_COS_ENDPOINT ]]; then
+      IBMCLOUD_COS_ENDPOINT="$(cat /opt/ibm-credentials/IBMCLOUD_COS_ENDPOINT)"
+      export IBMCLOUD_COS_ENDPOINT
+    fi
+    [[ "${PARAM_DEBUG}" == "true" ]] && set -x
+
+    tags="iac=mapt,k8s-type=kind,cluster-name=${PARAM_ID}"
+    [[ -n "${PARAM_TAGS}" ]] && tags="${tags},${PARAM_TAGS}"
+    cmd=(mapt ibmcloud kind create
+      --project-name "kind-${PARAM_ID}"
+      --backed-url "${PARAM_BACKED_URL}"
+      --conn-details-output "${CLUSTER_INFO_PATH}"
+      --version "${PARAM_VERSION}"
+      --cpus "${PARAM_CPUS}"
+      --memory "${PARAM_MEMORY}"
+      --extra-port-mappings "${PARAM_EXTRA_PORT_MAPPINGS}"
+      --tags "${tags}")
+    [[ -n "${PARAM_TIMEOUT}" ]] && cmd+=(--timeout "${PARAM_TIMEOUT}")
+    if [[ -n "${LOG_FILENAME:-}" ]]; then
+      "${cmd[@]}" 2>&1 | tee "${LOG_FILENAME}"
+      exit "${PIPESTATUS[0]}"
+    fi
+    "${cmd[@]}"
