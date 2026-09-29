@@ -1,0 +1,21 @@
+---
+apiVersion: tekton.dev/v1
+kind: Pipeline
+metadata:
+  name: test-trigger-jenkins-job-pass
+spec:
+  description: |
+    Positive test: trigger-jenkins-job task succeeds when pointed at a mock
+    Jenkins HTTPS server. The CA cert is mounted into the task pod by the
+    pre-apply hook via a ConfigMap volume at /ca/ca.crt.
+  tasks:
+    - name: run-trigger-jenkins-job
+      taskRef:
+        name: trigger-jenkins-job
+      params:
+        - name: JENKINS_HOST_URL
+          value: "https://mock-jenkins.$(context.pipelineRun.namespace).svc.cluster.local:8443"
+        - name: JOB_NAME
+          value: "test-job"
+        - name: CA_BUNDLE
+          value: "/ca/ca.crt"

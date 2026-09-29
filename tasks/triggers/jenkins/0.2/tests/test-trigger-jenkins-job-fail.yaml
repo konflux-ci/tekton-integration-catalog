@@ -1,0 +1,22 @@
+---
+apiVersion: tekton.dev/v1
+kind: Pipeline
+metadata:
+  name: test-trigger-jenkins-job-fail
+  annotations:
+    test/assert-task-failure: "run-trigger-jenkins-job"
+spec:
+  description: |
+    Negative test: trigger-jenkins-job task fails when the referenced
+    credentials secret does not exist.
+  tasks:
+    - name: run-trigger-jenkins-job
+      taskRef:
+        name: trigger-jenkins-job
+      params:
+        - name: JENKINS_HOST_URL
+          value: "https://mock-jenkins.$(context.pipelineRun.namespace).svc.cluster.local:8443"
+        - name: JOB_NAME
+          value: "test-job"
+        - name: JENKINS_SECRETS
+          value: "nonexistent-secret"

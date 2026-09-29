@@ -1,0 +1,178 @@
+apiVersion: tekton.dev/v1
+kind: Task
+metadata:
+  name: trigger-jenkins-job
+  labels:
+    app.kubernetes.io/version: "0.2"
+    upstream-usable: "true"
+  annotations:
+    tekton.dev/pipelines.minVersion: 0.12.1
+    tekton.dev/tags: konflux
+spec:
+  description: >-
+    The following task can be used to trigger a Jenkins job using
+    CURL request from a Tekton Task.
+  params:
+    - name: JENKINS_HOST_URL
+      type: string
+      description: Server URL on which Jenkins is running
+    - name: JOB_NAME
+      type: string
+      description: Jenkins Job which needs to be triggered
+    - name: JENKINS_SECRETS
+      type: string
+      description: Jenkins secret containing credentials
+      default: jenkins-credentials
+    - name: JOB_PARAMS
+      type: array
+      description: Extra arguments to append as a part of CURL request
+      default: [""]
+    - name: CA_BUNDLE
+      type: string
+      description: >-
+        Path to a CA bundle file for TLS verification when Jenkins uses a
+        private CA. Leave empty to use the system default trust store.
+      default: ""
+  workspaces:
+    - name: ca-bundle
+      description: >-
+        Optional workspace containing a CA certificate bundle for TLS
+        verification when Jenkins uses a private CA. Mount a Secret or
+        ConfigMap with the CA cert file, then set the CA_BUNDLE param
+        to the file path within the workspace (e.g.
+        $(workspaces.ca-bundle.path)/ca.crt).
+      optional: true
+  steps:
+    - name: trigger-pipeline
+      image: registry.access.redhat.com/ubi8/ubi:8.2
+      workingDir: /workspace
+      args:
+        - $(params.JOB_PARAMS)
+      script: |
+        #!/usr/libexec/platform-python
+        import base64
+        import http.cookiejar
+        import os
+        import sys
+        import urllib.request
+        import ssl
+
+        JENKINS_URL = os.getenv("JENKINS_HOST_URL", "").rstrip('/')
+        JOB_NAME = os.getenv("JOB_NAME", "")
+        USERNAME = os.getenv("USERNAME")
+        APITOKEN = os.getenv("API_TOKEN")
+
+        def construct_job_url(base_url, job_name, action):
+            parts = [p for p in job_name.split('/') if p]
+            url = base_url
+            for part in parts:
+                url += f"/job/{part}"
+            url += f"/{action}"
+            return url
+
+        def build_args(args):
+            data = {}
+            filename = ""
+            for params in args:
+                if "=@" in params:
+                    filename += params.split("=")[1][1:]
+                elif "=" in params:
+                    key_value = params.split("=")
+                    data[key_value[0]] = key_value[1]
+            if data:
+                data = urllib.parse.urlencode(data).encode("utf-8")
+            return (data, filename)
+
+        def main():
+            try:
+                if not USERNAME or not APITOKEN:
+                    print("Error: USERNAME and API_TOKEN environment variables must be set")
+                    sys.exit(1)
+
+                if not JENKINS_URL or not JOB_NAME:
+                    print("Error: JENKINS_HOST_URL and JOB_NAME environment variables must be set")
+                    sys.exit(1)
+
+                # Create SSL context with certificate verification
+                ca_bundle = os.getenv("CA_BUNDLE", "")
+                if ca_bundle:
+                    ssl_context = ssl.create_default_context(cafile=ca_bundle)
+                else:
+                    ssl_context = ssl.create_default_context()
+
+                # Process job parameters
+                data, filename = build_args(sys.argv[1:])
+                action = "buildWithParameters" if data else "build"
+
+                # Get the URL and set up request
+                job_url = construct_job_url(JENKINS_URL, JOB_NAME, action)
+                print(f"Triggering Jenkins job at: {job_url}")
+
+                # Set up authentication
+                jarhead = http.cookiejar.CookieJar()
+                base64string = base64.b64encode(f"{USERNAME}:{APITOKEN}".encode("utf-8"))
+                auth_header = f"Basic {base64string.decode('utf-8')}"
+
+                # Create form data for POST request
+                if data:
+                    # Use provided parameters
+                    form_data = data
+                else:
+                    # Use empty parameters
+                    form_data = urllib.parse.urlencode({
+                        'json': '{"parameter": []}'
+                    }).encode('utf-8')
+
+                # Create the request
+                request = urllib.request.Request(
+                    job_url,
+                    data=form_data,
+                    method='POST'
+                )
+
+                # Add headers
+                request.add_header("Authorization", auth_header)
+                request.add_header("Content-Type", "application/x-www-form-urlencoded")
+
+                if filename:
+                    request.add_header("Content-Type", "multipart/form-data")
+                    request.add_header("Content-Length", str(os.stat(filename).st_size))
+                    request = urllib.request.Request(
+                        job_url,
+                        data=open(filename, "rb"),
+                        method='POST'
+                    )
+
+                opener = urllib.request.build_opener(
+                    urllib.request.HTTPSHandler(context=ssl_context),
+                    urllib.request.HTTPCookieProcessor(jarhead)
+                )
+
+                with opener.open(request) as handle:
+                    if handle.status in [200, 201]:
+                        print("Jenkins job triggered successfully")
+                    else:
+                        print(f"Unexpected response status: {handle.status}")
+
+            except Exception as e:
+                print(f"Error triggering Jenkins job: {str(e)}")
+                raise
+
+        main()
+      env:
+        - name: JENKINS_HOST_URL
+          value: $(params.JENKINS_HOST_URL)
+        - name: JOB_NAME
+          value: $(params.JOB_NAME)
+        - name: CA_BUNDLE
+          value: $(params.CA_BUNDLE)
+        - name: USERNAME
+          valueFrom:
+            secretKeyRef:
+              name: $(params.JENKINS_SECRETS)
+              key: username
+        - name: API_TOKEN
+          valueFrom:
+            secretKeyRef:
+              name: $(params.JENKINS_SECRETS)
+              key: apitoken

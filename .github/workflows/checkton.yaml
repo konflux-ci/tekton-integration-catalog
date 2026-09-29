@@ -23,6 +23,8 @@ jobs:
           # Set to false when re-enabling SARIF uploads
           fail-on-findings: true
           find-copies-harder: true
+          # Exclude tasks with embedded Python scripts (not shell)
+          exclude-regex: "tasks/triggers/jenkins/"
 
           # Currently, code scanning alerts annoyingly stay open even if you fix them.
           # Don't upload SARIF until https://github.com/orgs/community/discussions/132787 is resolved.
