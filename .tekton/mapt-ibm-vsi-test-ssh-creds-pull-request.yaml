@@ -1,0 +1,105 @@
+apiVersion: tekton.dev/v1
+kind: PipelineRun
+metadata:
+  annotations:
+    build.appstudio.openshift.io/repo: https://github.com/konflux-ci/tekton-integration-catalog?rev={{revision}}
+    build.appstudio.redhat.com/commit_sha: '{{revision}}'
+    build.appstudio.redhat.com/pull_request_number: '{{pull_request_number}}'
+    build.appstudio.redhat.com/target_branch: '{{target_branch}}'
+    pipelinesascode.tekton.dev/cancel-in-progress: "true"
+    pipelinesascode.tekton.dev/max-keep-runs: "3"
+    pipelinesascode.tekton.dev/on-cel-expression: event == "pull_request" && target_branch == "main" && ( "tasks/mapt-oci/kind-ibm-provision/***".pathChanged() || "tasks/mapt-oci/kind-ibm-deprovision/***".pathChanged() || "stepactions/kind-ibm-provisioner/***".pathChanged() || "stepactions/kind-ibm-destroy/***".pathChanged() || ".tekton/mapt-ibm-vsi-test-ssh-creds-pull-request.yaml".pathChanged() )
+  creationTimestamp: null
+  labels:
+    appstudio.openshift.io/application: mapt-ibm-vsi-test
+    appstudio.openshift.io/component: mapt-ibm-vsi-test
+    pipelines.appstudio.openshift.io/type: build
+  name: mapt-ibm-vsi-test-ssh-creds-on-pull-request
+  namespace: rh-konflux-devprod-tenant
+spec:
+  params:
+    - name: git-url
+      value: '{{source_url}}'
+    - name: revision
+      value: '{{revision}}'
+    - name: cluster-id
+      value: 'ibm-{{pull_request_number}}'
+    - name: oci-container-repo
+      value: 'quay.io/konflux-test-storage/konflux-team/tekton-integration-catalog'
+  pipelineSpec:
+    description: Tests IBM VSI mapt provisioning including SSH credential output.
+    params:
+      - {name: git-url, type: string}
+      - {name: revision, type: string}
+      - {name: cluster-id, type: string}
+      - {name: oci-container-repo, type: string}
+    tasks:
+      - name: provision-kind-cluster
+        taskRef:
+          resolver: git
+          params:
+            - {name: url, value: $(params.git-url)}
+            - {name: revision, value: $(params.revision)}
+            - {name: pathInRepo, value: tasks/mapt-oci/kind-ibm-provision/0.1/kind-ibm-provision.yaml}
+        params:
+          - {name: secret-ibmcloud-credentials, value: ibmcloud-mapt-credentials}
+          - {name: cluster-access-secret-name, value: $(context.pipelineRun.uid)}
+          - {name: ssh-credentials-secret-name, value: $(context.pipelineRun.uid)-ssh-creds}
+          - {name: id, value: $(params.cluster-id)}
+          - {name: catalog-revision, value: $(params.revision)}
+          - {name: catalog-url, value: $(params.git-url)}
+          - {name: region, value: us-south}
+          - {name: zone, value: us-south-2}
+          - {name: backed-url, value: s3://konflux-mapt-state/mapt/kind/$(params.cluster-id)}
+          # IBM Cloud tag values cannot contain '@'; owner abbreviates konflux-devprod@redhat.com.
+          - {name: tags, value: owner=konflux-devprod,project=Konflux,created-by=integration-pipeline,component=tekton-integration-catalog,pipelinerun=$(context.pipelineRun.name)}
+          - {name: ownerKind, value: PipelineRun}
+          - {name: ownerName, value: $(context.pipelineRun.name)}
+          - {name: ownerUid, value: $(context.pipelineRun.uid)}
+          - {name: oci-ref, value: $(params.oci-container-repo):$(context.pipelineRun.name)}
+      - name: connectivity-test
+        runAfter: [provision-kind-cluster]
+        taskSpec:
+          volumes:
+            - name: cluster-credentials
+              secret:
+                secretName: $(tasks.provision-kind-cluster.results.cluster-access-secret)
+            - name: ssh-credentials
+              secret:
+                secretName: $(tasks.provision-kind-cluster.results.ssh-credentials-secret)
+          steps:
+            - name: get-cluster-state
+              image: registry.redhat.io/openshift4/ose-cli:4.13@sha256:e70eb2be867f1236b19f5cbfeb8e0625737ce0ec1369e32a4f9f146aaaf68d49
+              volumeMounts:
+                - {name: cluster-credentials, mountPath: /credentials}
+                - {name: ssh-credentials, mountPath: /ssh}
+              script: |
+                #!/usr/bin/env bash
+                set -o errexit -o nounset -o pipefail
+                export KUBECONFIG=/credentials/kubeconfig
+                oc get nodes
+                oc get pods --all-namespaces
+                test -s /ssh/host
+                test -s /ssh/username
+                test -s /ssh/id_rsa
+                echo "SSH credentials Secret contains host, username, and id_rsa"
+    finally:
+      - name: deprovision-kind-cluster
+        taskRef:
+          resolver: git
+          params:
+            - {name: url, value: $(params.git-url)}
+            - {name: revision, value: $(params.revision)}
+            - {name: pathInRepo, value: tasks/mapt-oci/kind-ibm-deprovision/0.1/kind-ibm-deprovision.yaml}
+        params:
+          - {name: secret-ibmcloud-credentials, value: ibmcloud-mapt-credentials}
+          - {name: id, value: $(params.cluster-id)}
+          - {name: catalog-revision, value: $(params.revision)}
+          - {name: catalog-url, value: $(params.git-url)}
+          - {name: region, value: us-south}
+          - {name: backed-url, value: s3://konflux-mapt-state/mapt/kind/$(params.cluster-id)}
+          - {name: cluster-access-secret, value: $(context.pipelineRun.uid)}
+          - {name: oci-container, value: $(params.oci-container-repo):$(context.pipelineRun.name)}
+          - {name: oci-credentials, value: konflux-test-infra}
+  taskRunTemplate:
+    serviceAccountName: konflux-integration-runner

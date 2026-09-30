@@ -1,0 +1,110 @@
+---
+apiVersion: tekton.dev/v1
+kind: Task
+metadata:
+  name: kind-ibm-deprovision
+  labels:
+    app.kubernetes.io/version: "0.1"
+    upstream-usable: "true"
+  annotations:
+    tekton.dev/pipelines.minVersion: "0.44.x"
+    tekton.dev/categories: infrastructure
+    tekton.dev/tags: infrastructure, ibm, kind
+    tekton.dev/displayName: Kind Cloud Single Node - Destroy
+    tekton.dev/platforms: "linux/amd64, linux/arm64"
+    mapt/version: "0.14.5"
+spec:
+  description: Destroys a Kind cluster on IBM Cloud using its shared mapt state backend.
+  volumes:
+    - name: ibm-credentials
+      secret:
+        secretName: $(params.secret-ibmcloud-credentials)
+    - name: konflux-test-infra-volume
+      secret:
+        secretName: $(params.oci-credentials)
+    - name: credentials-volume
+      secret:
+        secretName: $(params.cluster-access-secret)
+        optional: true
+  params:
+    - name: secret-ibmcloud-credentials
+      type: string
+      description: Secret containing IBMCLOUD_API_KEY and COS HMAC credentials.
+    - name: id
+      type: string
+      description: Unique identifier of the Kind environment to destroy.
+    - name: catalog-revision
+      type: string
+      default: main
+      description: Git revision from which nested StepActions are resolved.
+    - name: catalog-url
+      type: string
+      default: https://github.com/konflux-ci/tekton-integration-catalog.git
+      description: Git repository URL from which nested StepActions are resolved.
+    - name: region
+      type: string
+      default: us-south
+      description: IBM Cloud region used by the cluster.
+    - name: backed-url
+      type: string
+      description: Shared s3:// IBM COS backend used to locate mapt state.
+    - name: cluster-access-secret
+      type: string
+      description: Secret containing the kubeconfig used for diagnostics, if available.
+    - name: pipeline-aggregate-status
+      type: string
+      default: None
+      description: Aggregate status of the parent PipelineRun.
+    - name: oci-container
+      type: string
+      description: OCI image reference to which diagnostic logs are pushed.
+    - name: oci-credentials
+      type: string
+      default: konflux-test-infra
+      description: Name of the Secret containing OCI registry credentials.
+    - name: debug
+      type: string
+      default: "false"
+      description: Enables verbose logging.
+    - name: force-destroy
+      type: string
+      default: "true"
+      description: Destroy even if there is a provisioning lock on the stack.
+  steps:
+    - name: gather-cluster-resources
+      onError: continue
+      ref:
+        resolver: git
+        params: [{name: url, value: $(params.catalog-url)}, {name: revision, value: $(params.catalog-revision)}, {name: pathInRepo, value: stepactions/gather-cluster-resources/0.1/gather-cluster-resources.yaml}]
+      params:
+        - {name: credentials, value: credentials-volume}
+        - {name: kubeconfig, value: kubeconfig}
+        - {name: artifact-dir, value: /workspace/konflux-artifacts}
+      when:
+        - input: $(params.pipeline-aggregate-status)
+          operator: notin
+          values: [Succeeded]
+    - name: secure-push-oci
+      onError: continue
+      ref:
+        resolver: git
+        params: [{name: url, value: $(params.catalog-url)}, {name: revision, value: $(params.catalog-revision)}, {name: pathInRepo, value: stepactions/secure-push-oci/0.1/secure-push-oci.yaml}]
+      params:
+        - {name: workdir-path, value: /workspace}
+        - {name: oci-ref, value: $(params.oci-container)}
+        - {name: credentials-volume-name, value: konflux-test-infra-volume}
+      when:
+        - input: $(params.pipeline-aggregate-status)
+          operator: notin
+          values: [Succeeded]
+    - name: destroy
+      ref:
+        resolver: git
+        params: [{name: url, value: $(params.catalog-url)}, {name: revision, value: $(params.catalog-revision)}, {name: pathInRepo, value: stepactions/kind-ibm-destroy/0.1/kind-ibm-destroy.yaml}]
+      params:
+        - {name: ibm-credentials-volume, value: ibm-credentials}
+        - {name: id, value: $(params.id)}
+        - {name: region, value: $(params.region)}
+        - {name: backed-url, value: $(params.backed-url)}
+        - {name: debug, value: $(params.debug)}
+        - {name: force-destroy, value: $(params.force-destroy)}
