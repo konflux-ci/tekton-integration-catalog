@@ -154,6 +154,17 @@ The test runner creates a namespace `{task-name}-{version-with-hyphens}`, applie
 
 Versions are **directory-based**: `tasks/<name>/0.1/`, `tasks/<name>/0.2/`, etc. Multiple versions coexist. Create a new version when the interface changes (params, workspaces, results), behavior is not backward-compatible, or a critical fix requires a different implementation. Never modify an existing version's interface.
 
+### Paired Task Layout
+
+Tasks that come in provision/deprovision (or create/destroy) pairs must be grouped under a shared parent directory named after the cloud provider or platform:
+
+```
+tasks/mapt-oci/kind-aws-spot/provision/0.1/
+tasks/mapt-oci/kind-aws-spot/deprovision/0.1/
+```
+
+Do not flatten paired tasks into separate top-level directories (e.g., avoid `kind-aws-spot-provision/0.1/` and `kind-aws-spot-deprovision/0.1/` as siblings). The grouped layout makes the pairing explicit and keeps related tasks discoverable.
+
 ### Task YAML Conventions
 
 - **API version**: Prefer `tekton.dev/v1`; legacy tasks may use `v1beta1`
