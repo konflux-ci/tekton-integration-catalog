@@ -9,6 +9,7 @@ Tasks are consumed by Konflux test pipelines to provision infrastructure, run li
 
 ```
 tasks/<category>/<name>/<version>/         # Tekton Task definitions + README
+tasks/<category>/<name>/<action>/<version>/  # Paired tasks (provision/deprovision)
   tests/                                   # Functional tests (Tekton Pipelines)
 stepactions/<name>/<version>/              # Tekton StepAction definitions
 pipelines/<name>/<version>/                # Tekton Pipeline definitions
@@ -156,14 +157,14 @@ Versions are **directory-based**: `tasks/<name>/0.1/`, `tasks/<name>/0.2/`, etc.
 
 ### Paired Task Layout
 
-Tasks that come in provision/deprovision (or create/destroy) pairs must be grouped under a shared parent directory named after the cloud provider or platform:
+Tasks that come in provision/deprovision (or create/destroy) pairs should be grouped under a shared parent directory named after the cloud provider or platform:
 
 ```
 tasks/mapt-oci/kind-aws-spot/provision/0.1/
 tasks/mapt-oci/kind-aws-spot/deprovision/0.1/
 ```
 
-Do not flatten paired tasks into separate top-level directories (e.g., avoid `kind-aws-spot-provision/0.1/` and `kind-aws-spot-deprovision/0.1/` as siblings). The grouped layout makes the pairing explicit and keeps related tasks discoverable.
+Prefer the grouped layout for new paired tasks — it makes the pairing explicit and keeps related tasks discoverable. Some existing pairs (`kind-ibm`, `rosa-hcp`, `sprayproxy`) predate this convention and use a flat-sibling layout (e.g., `rosa-hcp-provision/` and `rosa-hcp-deprovision/` as siblings); they do not need to be restructured retroactively.
 
 ### Task YAML Conventions
 
