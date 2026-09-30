@@ -116,7 +116,7 @@ The script receives:
 
 When you open a PR:
 1. GitHub Actions detects modified files in `tasks/**/*.{yaml,sh}`
-2. Extracts task directories (depth 3 for standard tasks, e.g., `tasks/linters/yamllint/0.1`; depth 4 for paired tasks, e.g., `tasks/mapt-oci/kind-aws-spot/provision/0.1`)
+2. Extracts task directories (depth 3, e.g., `tasks/linters/yamllint/0.1`). Note: paired tasks at depth 4 (e.g., `tasks/mapt-oci/kind-aws-spot/provision/0.1`) are not currently detected by the CI test runner; an upstream update to `dir_names_max_depth` in `run-task-tests.yaml` is needed before paired task tests run automatically.
 3. Filters to tasks with `tests/` subdirectory
 4. Provisions kind cluster with Konflux
 5. Runs test pipelines for modified tasks

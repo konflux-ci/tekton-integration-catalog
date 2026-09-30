@@ -8,9 +8,10 @@ Tasks are consumed by Konflux test pipelines to provision infrastructure, run li
 ### Repository Layout
 
 ```
-tasks/<category>/<name>/<version>/                        # Tekton Task definitions + README
-  tests/                                                  # Functional tests (Tekton Pipelines)
+tasks/<category>/<name>/<version>/         # Tekton Task definitions + README
+  tests/                                   # Functional tests (Tekton Pipelines)
 tasks/<category>/<name>/<provision|deprovision>/<version>/  # Paired tasks
+  tests/                                   # Functional tests (Tekton Pipelines)
 stepactions/<name>/<version>/              # Tekton StepAction definitions
 pipelines/<name>/<version>/                # Tekton Pipeline definitions
 pipelineruns/<name>/<version>/             # Example PipelineRun YAMLs
