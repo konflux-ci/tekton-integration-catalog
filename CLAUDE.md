@@ -8,9 +8,9 @@ Tasks are consumed by Konflux test pipelines to provision infrastructure, run li
 ### Repository Layout
 
 ```
-tasks/<category>/<name>/<version>/         # Tekton Task definitions + README
-tasks/<category>/<name>/<action>/<version>/  # Paired tasks (provision/deprovision)
-  tests/                                   # Functional tests (Tekton Pipelines)
+tasks/<category>/<name>/<version>/                        # Tekton Task definitions + README
+  tests/                                                  # Functional tests (Tekton Pipelines)
+tasks/<category>/<name>/<provision|deprovision>/<version>/  # Paired tasks
 stepactions/<name>/<version>/              # Tekton StepAction definitions
 pipelines/<name>/<version>/                # Tekton Pipeline definitions
 pipelineruns/<name>/<version>/             # Example PipelineRun YAMLs
@@ -157,7 +157,7 @@ Versions are **directory-based**: `tasks/<name>/0.1/`, `tasks/<name>/0.2/`, etc.
 
 ### Paired Task Layout
 
-Tasks that come in provision/deprovision (or create/destroy) pairs should be grouped under a shared parent directory named after the cloud provider or platform:
+Tasks that come in provision/deprovision (or create/destroy) pairs should be grouped under a shared parent directory named after the infrastructure target:
 
 ```
 tasks/mapt-oci/kind-aws-spot/provision/0.1/
