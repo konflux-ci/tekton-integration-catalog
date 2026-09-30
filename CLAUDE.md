@@ -10,7 +10,8 @@ Tasks are consumed by Konflux test pipelines to provision infrastructure, run li
 ```
 tasks/<category>/<name>/<version>/         # Tekton Task definitions + README
   tests/                                   # Functional tests (Tekton Pipelines)
-tasks/<category>/<name>/<provision|deprovision>/<version>/  # Paired tasks
+tasks/<category>/<name>/<provision|deprovision>/<version>/
+                                           # Paired tasks (see Design Choices)
   tests/                                   # Functional tests (Tekton Pipelines)
 stepactions/<name>/<version>/              # Tekton StepAction definitions
 pipelines/<name>/<version>/                # Tekton Pipeline definitions
@@ -165,7 +166,7 @@ tasks/mapt-oci/kind-aws-spot/provision/0.1/
 tasks/mapt-oci/kind-aws-spot/deprovision/0.1/
 ```
 
-Prefer the grouped layout for new paired tasks — it makes the pairing explicit and keeps related tasks discoverable. Some existing pairs (`kind-ibm`, `rosa-hcp`, `sprayproxy`) predate this convention and use a flat-sibling layout (e.g., `rosa-hcp-provision/` and `rosa-hcp-deprovision/` as siblings); they do not need to be restructured retroactively.
+Prefer the grouped layout for new paired tasks — it makes the pairing explicit and keeps related tasks discoverable. Some existing pairs (`rosa-hcp`, `sprayproxy`) predate this convention and use a flat-sibling layout (e.g., `rosa-hcp-provision/` and `rosa-hcp-deprovision/` as siblings). `kind-ibm` also uses the flat layout but was added after the convention was established; all three do not need to be restructured retroactively.
 
 ### Task YAML Conventions
 
