@@ -114,6 +114,23 @@ data:
   bucket: <base64>
 ```
 
+If you wish to use an existing VPC over creating a new one each time. You will need to include
+this additional `vpc-id` key:
+
+```yaml
+apiVersion: v1
+kind: Secret
+metadata:
+  name: aws-my-creds
+type: Opaque
+data:
+  access-key: <base64>
+  secret-key: <base64>
+  region: <base64>
+  bucket: <base64>
+  vpc-id: <base64>
+```
+
 ---
 
 ## 📦 Example: How to Use the Kubeconfig in Another Task

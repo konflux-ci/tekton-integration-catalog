@@ -138,6 +138,12 @@ spec:
     AWS_DEFAULT_REGION=$(cat /opt/aws-credentials/region)
     export AWS_DEFAULT_REGION
     BUCKET=$(cat /opt/aws-credentials/bucket)
+    # Optional VPC ID to use over creating a new one
+    AWS_VPC_ID=""
+    if [[ -f /opt/aws-credentials/vpc-id ]]; then
+      AWS_VPC_ID=$(cat /opt/aws-credentials/vpc-id)
+    fi
+    export AWS_VPC_ID
 
     cmd=(mapt aws kind create
       --project-name "kind-${PARAM_ID}"
@@ -163,6 +169,9 @@ spec:
       tags_value="${tags_value},${PARAM_TAGS}"
     fi
     cmd+=(--tags "${tags_value}")
+    if [[ "${AWS_VPC_ID}" != "" ]]; then
+      cmd+=(--vpc-id "${AWS_VPC_ID}")
+    fi
 
     if [[ -n "${LOG_FILENAME:-}" ]]; then
       "${cmd[@]}" 2>&1 | tee "$LOG_FILENAME"
