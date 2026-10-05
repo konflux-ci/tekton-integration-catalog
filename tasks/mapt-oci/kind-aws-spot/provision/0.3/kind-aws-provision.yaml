@@ -52,6 +52,7 @@ spec:
           secret-key: ${secret_key}
           region: ${region}
           bucket: ${bucket}
+          vpc-id: ${vpc_id}
     - name: id
       description: A unique identifier for this Kind environment
     - name: cluster-access-secret-name
