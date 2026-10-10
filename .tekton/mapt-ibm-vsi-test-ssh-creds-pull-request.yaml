@@ -40,7 +40,7 @@ spec:
           params:
             - {name: url, value: $(params.git-url)}
             - {name: revision, value: $(params.revision)}
-            - {name: pathInRepo, value: tasks/mapt-oci/kind-ibm-provision/0.1/kind-ibm-provision.yaml}
+            - {name: pathInRepo, value: tasks/mapt-oci/kind-ibm-provision/0.2/kind-ibm-provision.yaml}
         params:
           - {name: secret-ibmcloud-credentials, value: ibmcloud-mapt-credentials}
           - {name: cluster-access-secret-name, value: $(context.pipelineRun.uid)}
@@ -50,6 +50,7 @@ spec:
           - {name: catalog-url, value: $(params.git-url)}
           - {name: region, value: us-south}
           - {name: zone, value: us-south-2}
+          - {name: compute-sizes, value: cxf-24x48}
           - {name: backed-url, value: s3://konflux-mapt-state/mapt/kind/$(params.cluster-id)}
           # IBM Cloud tag values cannot contain '@'; owner abbreviates konflux-devprod@redhat.com.
           - {name: tags, value: owner=konflux-devprod,project=Konflux,created-by=integration-pipeline,component=tekton-integration-catalog,pipelinerun=$(context.pipelineRun.name)}

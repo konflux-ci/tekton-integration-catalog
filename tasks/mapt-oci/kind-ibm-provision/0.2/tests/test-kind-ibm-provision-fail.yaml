@@ -1,0 +1,20 @@
+apiVersion: tekton.dev/v1
+kind: Pipeline
+metadata:
+  name: test-kind-ibm-provision-fail
+  annotations:
+    test/assert-task-failure: provision
+spec:
+  description: >-
+    Verifies that the provision Task fails when the configured IBM credentials
+    Secret is missing. No cloud resources are created.
+  tasks:
+    - name: provision
+      taskRef:
+        name: kind-ibm-provision
+      params:
+        - {name: secret-ibmcloud-credentials, value: missing-ibmcloud-credentials}
+        - {name: id, value: test-missing-credentials}
+        - {name: backed-url, value: s3://unused/mapt/kind/test}
+        - {name: compute-sizes, value: cxf-24x48}
+        - {name: oci-ref, value: quay.io/unused/test:missing-credentials}
