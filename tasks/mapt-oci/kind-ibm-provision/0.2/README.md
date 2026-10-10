@@ -18,13 +18,3 @@ Override it with `compute-sizes`, for example `cxf-32x64`. When
 it to an empty string to select a profile from those CPU and memory values.
 The standard mapt tags are always applied:
 `iac=mapt`, `k8s-type=kind`, and `cluster-name=<id>`.
-
-The local argument test can be run with:
-
-```sh
-bash tasks/mapt-oci/kind-ibm-provision/0.2/tests/test-flex-profile-arguments.sh
-```
-
-The Tekton pass test provisions and then destroys an IBM instance, so it
-requires the IBM credentials Secret and COS/OCI test credentials in its
-namespace.
