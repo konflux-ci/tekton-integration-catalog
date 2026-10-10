@@ -157,6 +157,9 @@ guarded_delete() {
       local vpc_id="${resource_id%%|*}" prefix_id="${resource_id#*|}"
       ibmcloud is vpc-address-prefix-delete "$vpc_id" "$prefix_id" --force -q 2>&1
       ;;
+    resource-group)
+      ibmcloud resource group-delete "$resource_name" --force -q 2>&1
+      ;;
     *)
       echo "  WARNING: unknown resource type: $resource_type" >&2
       return 1
@@ -164,26 +167,42 @@ guarded_delete() {
   esac
 }
 
-# The pinned mapt image may omit tags. For targeted cleanup only, resources in
-# the exact mapt-created resource group are eligible for the legacy name-based
-# fallback. Resource-group membership alone is never sufficient: unrelated
-# resources in the same group must remain untouched.
+# VPC CLI resource JSON omits tags. Use Global Search CRNs to identify tagged
+# resources, then annotate their matching VPC CLI records for the existing
+# ownership filter. For targeted cleanup, retain the legacy name-based
+# fallback within the exact mapt-created resource group.
 normalize_target_resources() {
   local resource_type="$1"
-  jq --arg target_rg_id "$TARGET_RESOURCE_GROUP_ID" \
+  jq --argjson tagged_resource_ids "$TAGGED_RESOURCE_IDS" \
+     --argjson blocked_resource_group_ids "$BLOCKED_RESOURCE_GROUP_IDS" \
+     --arg protect_all_sweep_resources "$PROTECT_ALL_SWEEP_RESOURCES" \
+     --arg sweep "$SWEEP" \
+     --arg tag_filter "$TAG_FILTER" \
+     --arg target_rg_id "$TARGET_RESOURCE_GROUP_ID" \
      --arg project_name "$PROJECT_NAME" \
      --arg cluster_id "$CLUSTER_ID" \
      --arg resource_type "$resource_type" '
-    if $target_rg_id == "" then . else
-      map(if ((.resource_group.id // .resource_group_id) == $target_rg_id)
-             and (
-               (($resource_type == "instance" or $resource_type == "key") and .name == $project_name)
-               or
-               (($resource_type != "instance" and $resource_type != "key") and .name == ("main-" + $project_name))
-             )
-          then .tags = ((.tags // []) + ["iac:mapt", "k8s-type:kind", ("cluster-name:" + $cluster_id)])
-          else . end)
-    end
+    map(
+      . as $resource |
+      if ($tagged_resource_ids | index($resource.id)) != null then
+        .tags = ((.tags // []) + ($tag_filter | split(",")))
+      else . end
+    )
+    | if $target_rg_id == "" then . else
+        map(if ((.resource_group.id // .resource_group_id) == $target_rg_id)
+               and (
+                 (($resource_type == "instance" or $resource_type == "key") and .name == $project_name)
+                 or
+                 (($resource_type != "instance" and $resource_type != "key") and .name == ("main-" + $project_name))
+               )
+            then .tags = ((.tags // []) + ["iac:mapt", "k8s-type:kind", ("cluster-name:" + $cluster_id)])
+            else . end)
+      end
+    | map(. as $resource |
+        if $sweep == "true" and
+           ($protect_all_sweep_resources == "true" or
+            ($blocked_resource_group_ids | index($resource.resource_group.id // $resource.resource_group_id // "")) != null)
+        then .tags = [] else . end)
   '
 }
 
@@ -201,6 +220,50 @@ if [[ "$DRY_RUN" == "true" ]]; then
   echo "  (dry-run mode — no resources will be deleted)"
 fi
 
+# Tags are stored in IBM Cloud Global Search, not in VPC CLI resource JSON.
+RESOURCE_TAG_QUERY='family:is AND tags:"iac:mapt" AND tags:"k8s-type:kind"'
+RESOURCE_SEARCH_OFFSET=0
+TAGGED_RESOURCE_IDS='[]'
+while true; do
+  RESOURCE_SEARCH_ARGS=(resource search "$RESOURCE_TAG_QUERY" --limit 1000 --output JSON)
+  if [[ "$RESOURCE_SEARCH_OFFSET" -gt 0 ]]; then
+    RESOURCE_SEARCH_ARGS+=(--offset "$RESOURCE_SEARCH_OFFSET")
+  fi
+  if ! TAGGED_RESOURCES=$(ibmcloud "${RESOURCE_SEARCH_ARGS[@]}"); then
+    echo "ERROR: failed to search IBM Cloud resources for MAPT tags" >&2
+    exit 2
+  fi
+  RESOURCE_SEARCH_COUNT=$(jq -r '.items | length' <<< "$TAGGED_RESOURCES") || {
+    echo "ERROR: failed to parse IBM Cloud resource search results" >&2
+    exit 2
+  }
+  if ! PAGE_RESOURCE_IDS=$(jq -er --arg tag_filter "$TAG_FILTER" '
+    if (.items | type) != "array" then error("expected resource search items array")
+    elif any(.items[]; ((.crn | type) != "string") or ((.tags | type) != "array"))
+      then error("resource search item is missing a CRN or tags")
+    else
+      [.items[] | select(
+        (.tags // []) as $tags |
+        ($tag_filter | split(",")) | all(. as $t | $tags | any(. == $t))
+      ) | (.crn | split(":") | last)] | unique
+    end
+  ' <<< "$TAGGED_RESOURCES"); then
+    echo "ERROR: failed to parse IBM Cloud resource search results" >&2
+    exit 2
+  fi
+  TAGGED_RESOURCE_IDS=$(jq -cn --argjson all "$TAGGED_RESOURCE_IDS" --argjson page "$PAGE_RESOURCE_IDS" '$all + $page | unique')
+  if [[ "$RESOURCE_SEARCH_COUNT" -lt 1000 ]]; then
+    break
+  fi
+  if [[ "$RESOURCE_SEARCH_OFFSET" -eq 0 ]]; then
+    RESOURCE_SEARCH_OFFSET=1001
+  else
+    RESOURCE_SEARCH_OFFSET=$((RESOURCE_SEARCH_OFFSET + 1000))
+  fi
+done
+TAGGED_RESOURCE_COUNT=$(jq 'length' <<< "$TAGGED_RESOURCE_IDS")
+echo "Found $TAGGED_RESOURCE_COUNT MAPT-tagged IBM Cloud resource(s)."
+
 TARGET_RESOURCE_GROUP_ID=""
 if [[ "$SWEEP" == "false" ]]; then
   RESOURCE_GROUPS=$(ibmcloud resource groups --output json)
@@ -210,6 +273,9 @@ if [[ "$SWEEP" == "false" ]]; then
 fi
 
 ERRORS=0
+BLOCKED_RESOURCE_GROUP_IDS='[]'
+PROTECT_ALL_SWEEP_RESOURCES=false
+declare -A PROTECTED_RESOURCE_GROUP_IDS=() SUBMITTED_INSTANCE_GROUP_IDS=()
 
 # --- 1. Instances ---
 echo "--- Instances ---"
@@ -222,27 +288,65 @@ MATCHING_INSTANCES=$(echo "$INSTANCES" | jq -r --arg tag_filter "$TAG_FILTER" '
 ')
 
 INSTANCE_DELETE_COUNT=0
-while IFS=$'\t' read -r id name created_at; do
+while IFS=$'\t' read -r id name created_at resource_group_id; do
   if [[ "$SWEEP" == "true" ]]; then
     if ! is_older_than_hours "$created_at" "$AGE_HOURS"; then
       echo "  Skipping instance $name (not old enough)"
+      if [[ -n "$resource_group_id" ]]; then
+        PROTECTED_RESOURCE_GROUP_IDS["$resource_group_id"]=1
+        echo "  Protecting resource group $resource_group_id while this instance is active"
+      else
+        echo "  ERROR: instance $name has no resource group; protecting all sweep resources" >&2
+        PROTECT_ALL_SWEEP_RESOURCES=true
+        ERRORS=$((ERRORS + 1))
+      fi
       continue
     fi
   fi
   if guarded_delete "instance" "$id" "$name"; then
     if [[ "$DRY_RUN" == "false" ]]; then
       INSTANCE_DELETE_COUNT=$((INSTANCE_DELETE_COUNT + 1))
+      if [[ -n "$resource_group_id" ]]; then
+        SUBMITTED_INSTANCE_GROUP_IDS["$id"]="$resource_group_id"
+      elif [[ "$SWEEP" == "true" ]]; then
+        echo "  ERROR: instance $name has no resource group; protecting all sweep resources" >&2
+        PROTECT_ALL_SWEEP_RESOURCES=true
+        ERRORS=$((ERRORS + 1))
+      fi
     fi
   else
     ERRORS=$((ERRORS + 1))
+    if [[ "$SWEEP" == "true" ]]; then
+      if [[ -n "$resource_group_id" ]]; then
+        PROTECTED_RESOURCE_GROUP_IDS["$resource_group_id"]=1
+        echo "  Protecting resource group $resource_group_id because instance deletion failed"
+      else
+        PROTECT_ALL_SWEEP_RESOURCES=true
+      fi
+    fi
   fi
-done < <(echo "$MATCHING_INSTANCES" | jq -r '.[] | [.id, .name, .created_at] | @tsv')
+done < <(echo "$MATCHING_INSTANCES" | jq -r '.[] | [.id, .name, .created_at, (.resource_group.id // .resource_group_id // "")] | @tsv')
 
 # Wait for instance deletion to propagate before cleaning dependent resources
 if [[ "$INSTANCE_DELETE_COUNT" -gt 0 ]]; then
   echo "  Waiting 30s for instance deletion to propagate..."
   sleep 30
+  if [[ "$SWEEP" == "true" ]] && ! CURRENT_INSTANCE_IDS=$(ibmcloud is instances --output json | jq -er '[.[].id]'); then
+    echo "  ERROR: failed to verify instance deletion; protecting all sweep resources" >&2
+    PROTECT_ALL_SWEEP_RESOURCES=true
+    ERRORS=$((ERRORS + 1))
+  elif [[ "$SWEEP" == "true" ]]; then
+    for instance_id in "${!SUBMITTED_INSTANCE_GROUP_IDS[@]}"; do
+      if jq -e --arg id "$instance_id" 'index($id) != null' <<< "$CURRENT_INSTANCE_IDS" >/dev/null; then
+        resource_group_id="${SUBMITTED_INSTANCE_GROUP_IDS[$instance_id]}"
+        PROTECTED_RESOURCE_GROUP_IDS["$resource_group_id"]=1
+        echo "  Instance $instance_id is still present; protecting resource group $resource_group_id"
+        ERRORS=$((ERRORS + 1))
+      fi
+    done
+  fi
 fi
+BLOCKED_RESOURCE_GROUP_IDS=$(printf '%s\n' "${!PROTECTED_RESOURCE_GROUP_IDS[@]}" | jq -Rsc 'split("\n") | map(select(length > 0))')
 
 # --- 2. Floating IPs ---
 echo ""
@@ -267,13 +371,14 @@ done < <(echo "$FIPS" | jq -r --arg tag_filter "$TAG_FILTER" '
 echo ""
 echo "--- Public Gateways ---"
 PUBLIC_GATEWAYS=$(ibmcloud is public-gateways --output json | normalize_target_resources public-gateway)
+declare -A FAILED_PUBLIC_GATEWAYS=()
 while IFS=$'\t' read -r id name created_at; do
   [[ -z "$id" ]] && continue
   if [[ "$SWEEP" == "true" ]] && ! is_older_than_hours "$created_at" "$AGE_HOURS"; then
     echo "  Skipping public gateway $name (not old enough)"
     continue
   fi
-  guarded_delete "public-gateway" "$id" "$name" || ERRORS=$((ERRORS + 1))
+  guarded_delete "public-gateway" "$id" "$name" || FAILED_PUBLIC_GATEWAYS["$id"]="$name"
 done < <(echo "$PUBLIC_GATEWAYS" | jq -r --arg tag_filter "$TAG_FILTER" '
   .[] | select(
     (.tags // []) as $tags |
@@ -299,6 +404,13 @@ done < <(echo "$SUBNETS" | jq -r --arg tag_filter "$TAG_FILTER" '
     ($tag_filter | split(",")) | all(. as $t | $tags | any(. == $t))
   ) | [.id, .name, .created_at] | @tsv
 ')
+
+# A gateway can remain attached to a subnet that was just removed. Retry any
+# failed gateway deletion now that subnet cleanup has had a chance to detach it.
+for id in "${!FAILED_PUBLIC_GATEWAYS[@]}"; do
+  name="${FAILED_PUBLIC_GATEWAYS[$id]}"
+  guarded_delete "public-gateway" "$id" "$name" || ERRORS=$((ERRORS + 1))
+done
 
 # --- 5. Security Groups ---
 echo ""
@@ -401,11 +513,69 @@ done < <(echo "$VPCS" | jq -r --arg tag_filter "$TAG_FILTER" '
   ) | [.id, .name, .created_at] | @tsv
 ')
 
-# --- 8. Resource group (targeted cleanup only) ---
-# Resource groups are deleted last, after all tagged VPC resources. Sweep mode
-# deliberately does not infer ownership from a group name; targeted cleanup has
-# the exact project name and can safely identify the group mapt created.
-if [[ "$SWEEP" == "false" ]]; then
+# --- 8. Resource groups ---
+# Delete groups last. In sweep mode, a tagged VPC proves group ownership and
+# its creation time supplies the age check; skip a group if it also contains a
+# newer tagged VPC.
+if [[ "$SWEEP" == "true" ]]; then
+  echo ""
+  echo "--- Resource Groups ---"
+  if ! RESOURCE_GROUPS=$(ibmcloud resource groups --output json); then
+    echo "  ERROR: failed to list IBM Cloud resource groups" >&2
+    ERRORS=$((ERRORS + 1))
+  elif ! RESOURCE_GROUP_RECORDS=$(jq -r '
+    if type != "array" then error("expected an array of resource groups")
+    elif any(.[]; ((.id | type) != "string") or ((.id | length) == 0) or
+                    ((.name | type) != "string") or ((.name | length) == 0))
+      then error("resource group is missing a non-empty id or name")
+    else .[] | select((.default // false) | not) | [.name, .id] | @tsv
+    end
+  ' <<< "$RESOURCE_GROUPS"); then
+    echo "  ERROR: failed to parse IBM Cloud resource groups" >&2
+    ERRORS=$((ERRORS + 1))
+  elif ! TAGGED_VPC_GROUPS=$(jq -r --arg tag_filter "$TAG_FILTER" '
+    if type != "array" then error("expected an array of VPCs")
+    elif any(.[]; ((.tags // []) as $tags |
+                   ($tag_filter | split(",")) | all(. as $t | $tags | any(. == $t))) and
+                  (((.resource_group.id // .resource_group_id // "") | length) == 0 or
+                   ((.created_at | type) != "string") or ((.created_at | length) == 0)))
+      then error("tagged VPC is missing its resource group ID or creation time")
+    else .[] | select(
+      (.tags // []) as $tags |
+      ($tag_filter | split(",")) | all(. as $t | $tags | any(. == $t))
+    ) | [(.resource_group.id // .resource_group_id), .created_at] | @tsv
+    end
+  ' <<< "$VPCS"); then
+    echo "  ERROR: failed to identify tagged VPC resource groups" >&2
+    ERRORS=$((ERRORS + 1))
+  else
+    declare -A OLD_VPC_GROUP_IDS=() RECENT_VPC_GROUP_IDS=()
+    while IFS=$'\t' read -r group_id created_at; do
+      [[ -z "$group_id" ]] && continue
+      if is_older_than_hours "$created_at" "$AGE_HOURS"; then
+        OLD_VPC_GROUP_IDS["$group_id"]=1
+      else
+        RECENT_VPC_GROUP_IDS["$group_id"]=1
+      fi
+    done <<< "$TAGGED_VPC_GROUPS"
+
+    while IFS=$'\t' read -r group_name group_id; do
+      [[ -z "$group_id" ]] && continue
+      if [[ -z "${OLD_VPC_GROUP_IDS[$group_id]:-}" && -z "${RECENT_VPC_GROUP_IDS[$group_id]:-}" ]]; then
+        continue
+      fi
+      if [[ -z "${OLD_VPC_GROUP_IDS[$group_id]:-}" ]]; then
+        echo "  Skipping resource group $group_name (not old enough)"
+        continue
+      fi
+      if [[ -n "${RECENT_VPC_GROUP_IDS[$group_id]:-}" ]]; then
+        echo "  Skipping resource group $group_name (contains a newer tagged VPC)"
+        continue
+      fi
+      guarded_delete "resource-group" "$group_id" "$group_name" || ERRORS=$((ERRORS + 1))
+    done <<< "$RESOURCE_GROUP_RECORDS"
+  fi
+else
   echo ""
   echo "--- Resource Group ---"
   RESOURCE_GROUP_ID="$TARGET_RESOURCE_GROUP_ID"
