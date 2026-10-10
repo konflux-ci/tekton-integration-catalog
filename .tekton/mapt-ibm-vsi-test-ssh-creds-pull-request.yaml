@@ -45,13 +45,13 @@ spec:
           - {name: secret-ibmcloud-credentials, value: ibmcloud-mapt-credentials}
           - {name: cluster-access-secret-name, value: $(context.pipelineRun.uid)}
           - {name: ssh-credentials-secret-name, value: $(context.pipelineRun.uid)-ssh-creds}
-          - {name: id, value: $(params.cluster-id)}
+          - {name: id, value: $(params.cluster-id)-$(context.pipelineRun.uid)}
           - {name: catalog-revision, value: $(params.revision)}
           - {name: catalog-url, value: $(params.git-url)}
           - {name: region, value: us-south}
           - {name: zone, value: us-south-2}
           - {name: compute-sizes, value: cxf-24x48}
-          - {name: backed-url, value: s3://konflux-mapt-state/mapt/kind/$(params.cluster-id)}
+          - {name: backed-url, value: s3://konflux-mapt-state/mapt/kind/$(params.cluster-id)-$(context.pipelineRun.uid)}
           # IBM Cloud tag values cannot contain '@'; owner abbreviates konflux-devprod@redhat.com.
           - {name: tags, value: owner=konflux-devprod,project=Konflux,created-by=integration-pipeline,component=tekton-integration-catalog,pipelinerun=$(context.pipelineRun.name)}
           - {name: ownerKind, value: PipelineRun}
@@ -94,11 +94,11 @@ spec:
             - {name: pathInRepo, value: tasks/mapt-oci/kind-ibm-deprovision/0.1/kind-ibm-deprovision.yaml}
         params:
           - {name: secret-ibmcloud-credentials, value: ibmcloud-mapt-credentials}
-          - {name: id, value: $(params.cluster-id)}
+          - {name: id, value: $(params.cluster-id)-$(context.pipelineRun.uid)}
           - {name: catalog-revision, value: $(params.revision)}
           - {name: catalog-url, value: $(params.git-url)}
           - {name: region, value: us-south}
-          - {name: backed-url, value: s3://konflux-mapt-state/mapt/kind/$(params.cluster-id)}
+          - {name: backed-url, value: s3://konflux-mapt-state/mapt/kind/$(params.cluster-id)-$(context.pipelineRun.uid)}
           - {name: cluster-access-secret, value: $(context.pipelineRun.uid)}
           - {name: oci-container, value: $(params.oci-container-repo):$(context.pipelineRun.name)}
           - {name: oci-credentials, value: konflux-test-infra}
