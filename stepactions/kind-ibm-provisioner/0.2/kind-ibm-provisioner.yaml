@@ -1,0 +1,146 @@
+---
+apiVersion: tekton.dev/v1alpha1
+kind: StepAction
+metadata:
+  name: kind-ibm-provisioner
+  labels:
+    app.kubernetes.io/version: "0.2"
+    upstream-usable: "true"
+  annotations:
+    tekton.dev/pipelines.minVersion: "0.44.x"
+    tekton.dev/categories: infrastructure
+    tekton.dev/tags: infrastructure, ibm, kind
+    tekton.dev/displayName: "Kind on IBM Cloud - Provision"
+    tekton.dev/platforms: "linux/amd64, linux/arm64"
+    mapt/version: "0.14.5"
+spec:
+  description: Provisions a Kind cluster on IBM Cloud using mapt and writes connection details to a shared volume.
+  image: quay.io/redhat-developer/mapt:v0.14.5
+  params:
+    - name: ibm-credentials-volume
+      type: string
+      description: Name of the volume that mounts the IBM Cloud credentials secret.
+    - name: cluster-info-volume
+      type: string
+      description: Name of the volume where mapt will write connection details.
+    - name: cluster-info-path
+      type: string
+      default: /opt/cluster-info
+      description: Mount path for the cluster-info volume.
+    - name: id
+      type: string
+      description: A unique identifier for this Kind environment.
+    - name: region
+      type: string
+      default: us-south
+      description: IBM Cloud region in which to provision the instance.
+    - name: zone
+      type: string
+      default: us-south-2
+      description: IBM Cloud zone in which to provision the instance.
+    - name: version
+      type: string
+      default: v1.34
+      description: Kubernetes version for the Kind cluster.
+    - name: compute-sizes
+      type: string
+      default: cxf-24x48
+      description: >-
+        mapt instance profile to use. Defaults to the IBM Flex profile cxf-24x48.
+        When set, this takes precedence over cpus and memory. Set to an empty
+        string to select a profile from cpus and memory.
+    - name: cpus
+      type: string
+      default: "32"
+      description: Number of vCPUs to allocate.
+    - name: memory
+      type: string
+      default: "64"
+      description: Amount of memory in GiB to allocate.
+    - name: backed-url
+      type: string
+      description: Shared s3:// IBM COS backend used to store mapt state.
+    - name: extra-port-mappings
+      type: string
+      default: '[{"containerPort":30012,"hostPort":8180,"protocol":"TCP"}]'
+      description: Additional Kind port mappings as a JSON array of objects.
+    - name: tags
+      type: string
+      default: ""
+      description: IBM Cloud resource tags; standard mapt tags are added automatically.
+    - name: debug
+      type: string
+      default: "false"
+      description: Enables verbose logging.
+    - name: timeout
+      type: string
+      default: ""
+      description: Auto-destroy timeout.
+  env:
+    - name: CLUSTER_INFO_PATH
+      value: $(params.cluster-info-path)
+    - name: IC_REGION
+      value: $(params.region)
+    - name: IC_ZONE
+      value: $(params.zone)
+    - name: PARAM_ID
+      value: $(params.id)
+    - name: PARAM_VERSION
+      value: $(params.version)
+    - name: PARAM_COMPUTE_SIZES
+      value: $(params.compute-sizes)
+    - name: PARAM_CPUS
+      value: $(params.cpus)
+    - name: PARAM_MEMORY
+      value: $(params.memory)
+    - name: PARAM_BACKED_URL
+      value: $(params.backed-url)
+    - name: PARAM_EXTRA_PORT_MAPPINGS
+      value: $(params.extra-port-mappings)
+    - name: PARAM_TAGS
+      value: $(params.tags)
+    - name: PARAM_DEBUG
+      value: $(params.debug)
+    - name: PARAM_TIMEOUT
+      value: $(params.timeout)
+  volumeMounts:
+    - name: $(params.ibm-credentials-volume)
+      mountPath: /opt/ibm-credentials
+    - name: $(params.cluster-info-volume)
+      mountPath: $(params.cluster-info-path)
+  script: |
+    #!/usr/bin/env bash
+    set -o errexit -o nounset -o pipefail
+
+    IBMCLOUD_API_KEY="$(cat /opt/ibm-credentials/IBMCLOUD_API_KEY)"
+    export IBMCLOUD_API_KEY
+    IBMCLOUD_COS_ACCESS_KEY_ID="$(cat /opt/ibm-credentials/IBMCLOUD_COS_ACCESS_KEY_ID)"
+    export IBMCLOUD_COS_ACCESS_KEY_ID
+    IBMCLOUD_COS_SECRET_ACCESS_KEY="$(cat /opt/ibm-credentials/IBMCLOUD_COS_SECRET_ACCESS_KEY)"
+    export IBMCLOUD_COS_SECRET_ACCESS_KEY
+    if [[ -s /opt/ibm-credentials/IBMCLOUD_COS_ENDPOINT ]]; then
+      IBMCLOUD_COS_ENDPOINT="$(cat /opt/ibm-credentials/IBMCLOUD_COS_ENDPOINT)"
+      export IBMCLOUD_COS_ENDPOINT
+    fi
+    [[ "${PARAM_DEBUG}" == "true" ]] && set -x
+
+    tags="iac=mapt,k8s-type=kind,cluster-name=${PARAM_ID}"
+    [[ -n "${PARAM_TAGS}" ]] && tags="${tags},${PARAM_TAGS}"
+    cmd=(mapt ibmcloud kind create
+      --project-name "kind-${PARAM_ID}"
+      --backed-url "${PARAM_BACKED_URL}"
+      --conn-details-output "${CLUSTER_INFO_PATH}"
+      --version "${PARAM_VERSION}"
+      --extra-port-mappings "${PARAM_EXTRA_PORT_MAPPINGS}"
+      --tags "${tags}")
+    if [[ -n "${PARAM_COMPUTE_SIZES}" ]]; then
+      cmd+=(--compute-sizes "${PARAM_COMPUTE_SIZES}")
+    else
+      cmd+=(--cpus "${PARAM_CPUS}" --memory "${PARAM_MEMORY}")
+    fi
+    [[ -n "${PARAM_TIMEOUT}" ]] && cmd+=(--timeout "${PARAM_TIMEOUT}")
+    if [[ -n "${LOG_FILENAME:-}" ]]; then
+      "${cmd[@]}" 2>&1 | tee "${LOG_FILENAME}"
+      exit "${PIPESTATUS[0]}"
+    fi
+    "${cmd[@]}"
