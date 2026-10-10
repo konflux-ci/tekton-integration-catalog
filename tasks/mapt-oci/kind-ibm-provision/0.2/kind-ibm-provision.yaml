@@ -80,11 +80,11 @@ spec:
         string to select a profile from cpus and memory.
     - name: cpus
       type: string
-      default: "24"
+      default: "32"
       description: Number of vCPUs to allocate.
     - name: memory
       type: string
-      default: "48"
+      default: "64"
       description: Amount of memory in GiB to allocate.
     - name: backed-url
       type: string

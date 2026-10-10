@@ -51,11 +51,11 @@ spec:
         string to select a profile from cpus and memory.
     - name: cpus
       type: string
-      default: "24"
+      default: "32"
       description: Number of vCPUs to allocate.
     - name: memory
       type: string
-      default: "48"
+      default: "64"
       description: Amount of memory in GiB to allocate.
     - name: backed-url
       type: string
@@ -85,10 +85,6 @@ spec:
       value: $(params.zone)
     - name: PARAM_ID
       value: $(params.id)
-    - name: PARAM_REGION
-      value: $(params.region)
-    - name: PARAM_ZONE
-      value: $(params.zone)
     - name: PARAM_VERSION
       value: $(params.version)
     - name: PARAM_COMPUTE_SIZES
