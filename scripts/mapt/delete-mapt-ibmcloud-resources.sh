@@ -28,6 +28,22 @@ PROJECT_NAME=""
 SWEEP=false
 AGE_HOURS=""
 DRY_RUN=false
+MAPT_RESOURCE_GROUP_IDS='[]'
+# floor(INT64_MAX / 3600), keeping seconds conversion and cutoff subtraction safe.
+MAX_SAFE_AGE_HOURS=2562047788015215
+
+is_safe_age_hours() {
+  local value="$1"
+  [[ "$value" =~ ^[1-9][0-9]*$ ]] || return 1
+
+  if (( ${#value} < ${#MAX_SAFE_AGE_HOURS} )); then
+    return 0
+  fi
+  if (( ${#value} > ${#MAX_SAFE_AGE_HOURS} )) || [[ "$value" > "$MAX_SAFE_AGE_HOURS" ]]; then
+    return 1
+  fi
+  return 0
+}
 
 # --- parse args ---
 while [[ $# -gt 0 ]]; do
@@ -71,8 +87,8 @@ if [[ "$SWEEP" == "true" && -z "$AGE_HOURS" ]]; then
   exit 1
 fi
 
-if [[ "$SWEEP" == "true" && ! "$AGE_HOURS" =~ ^[1-9][0-9]*$ ]]; then
-  echo "ERROR: --age-hours must be a positive integer" >&2
+if [[ "$SWEEP" == "true" ]] && ! is_safe_age_hours "$AGE_HOURS"; then
+  echo "ERROR: --age-hours must be a positive integer no greater than $MAX_SAFE_AGE_HOURS" >&2
   exit 1
 fi
 
@@ -93,7 +109,7 @@ done
 echo "Authenticating with IBM Cloud..."
 ibmcloud login --apikey "$IBMCLOUD_API_KEY" -r "$REGION" -q 2>&1
 
-if ! ibmcloud resource groups --output json >/dev/null 2>&1; then
+if ! RESOURCE_GROUPS=$(ibmcloud resource groups --output json); then
   echo "ERROR: IBM Cloud Resource Manager commands are unavailable" >&2
   echo "       Install the IBM Cloud CLI with Resource Manager support." >&2
   exit 1
@@ -111,9 +127,12 @@ is_older_than_hours() {
   local max_hours="$2"
   local created_epoch max_age_epoch now_epoch
 
+  is_safe_age_hours "$max_hours" || return 1
+
   # Parse ISO 8601 timestamp to epoch
   created_epoch=$(date -d "$created_at" +%s 2>/dev/null) || return 1
-  now_epoch=$(date +%s)
+  now_epoch=$(date +%s) || return 1
+  [[ "$now_epoch" =~ ^[0-9]+$ ]] || return 1
   max_age_epoch=$(( now_epoch - (max_hours * 3600) ))
 
   [[ $created_epoch -lt $max_age_epoch ]]
@@ -175,6 +194,8 @@ normalize_target_resources() {
   local resource_type="$1"
   jq --argjson tagged_resource_ids "$TAGGED_RESOURCE_IDS" \
      --argjson blocked_resource_group_ids "$BLOCKED_RESOURCE_GROUP_IDS" \
+     --argjson owned_resource_group_ids "$MAPT_RESOURCE_GROUP_IDS" \
+     --argjson resource_groups "$RESOURCE_GROUPS" \
      --arg protect_all_sweep_resources "$PROTECT_ALL_SWEEP_RESOURCES" \
      --arg sweep "$SWEEP" \
      --arg tag_filter "$TAG_FILTER" \
@@ -198,11 +219,33 @@ normalize_target_resources() {
             then .tags = ((.tags // []) + ["iac:mapt", "k8s-type:kind", ("cluster-name:" + $cluster_id)])
             else . end)
       end
+    | if $sweep == "true" and $resource_type == "instance" then
+        map(. as $resource |
+          ($resource.resource_group.id // $resource.resource_group_id // "") as $group_id |
+          if (($tagged_resource_ids | index($resource.id)) == null) and
+             (($owned_resource_group_ids | index($group_id)) != null) and
+             (($resource.name // "") | startswith("kind-")) and
+             any($resource_groups[]; .id == $group_id and .name == $resource.name and (.default // false | not))
+          then .tags = (($resource.tags // []) + ($tag_filter | split(","))) | .sweep_inferred = true
+          else . end)
+      else . end
     | map(. as $resource |
         if $sweep == "true" and
            ($protect_all_sweep_resources == "true" or
             ($blocked_resource_group_ids | index($resource.resource_group.id // $resource.resource_group_id // "")) != null)
         then .tags = [] else . end)
+  '
+}
+
+tagged_resource_group_ids() {
+  jq -c --argjson tagged_resource_ids "$TAGGED_RESOURCE_IDS" '
+    if type != "array" then error("expected an array of IBM Cloud resources")
+    else
+      [.[] | . as $resource |
+        select(($tagged_resource_ids | index($resource.id)) != null) |
+        ($resource.resource_group.id // $resource.resource_group_id // empty)
+      ] | unique
+    end
   '
 }
 
@@ -255,18 +298,13 @@ while true; do
   if [[ "$RESOURCE_SEARCH_COUNT" -lt 1000 ]]; then
     break
   fi
-  if [[ "$RESOURCE_SEARCH_OFFSET" -eq 0 ]]; then
-    RESOURCE_SEARCH_OFFSET=1001
-  else
-    RESOURCE_SEARCH_OFFSET=$((RESOURCE_SEARCH_OFFSET + 1000))
-  fi
+  RESOURCE_SEARCH_OFFSET=$((RESOURCE_SEARCH_OFFSET + 1000))
 done
 TAGGED_RESOURCE_COUNT=$(jq 'length' <<< "$TAGGED_RESOURCE_IDS")
 echo "Found $TAGGED_RESOURCE_COUNT MAPT-tagged IBM Cloud resource(s)."
 
 TARGET_RESOURCE_GROUP_ID=""
 if [[ "$SWEEP" == "false" ]]; then
-  RESOURCE_GROUPS=$(ibmcloud resource groups --output json)
   TARGET_RESOURCE_GROUP_ID=$(echo "$RESOURCE_GROUPS" | jq -r --arg name "$PROJECT_NAME" '
     .[] | select(.name == $name and (.default // false | not)) | .id
   ' | head -n 1)
@@ -277,15 +315,37 @@ BLOCKED_RESOURCE_GROUP_IDS='[]'
 PROTECT_ALL_SWEEP_RESOURCES=false
 declare -A PROTECTED_RESOURCE_GROUP_IDS=() SUBMITTED_INSTANCE_GROUP_IDS=()
 
+# Snapshot inventories before deleting anything so tagged sibling resources
+# can establish MAPT resource-group ownership for an untagged instance.
+RAW_INSTANCES=$(ibmcloud is instances --output json)
+RAW_FIPS=$(ibmcloud is floating-ips --output json)
+RAW_PUBLIC_GATEWAYS=$(ibmcloud is public-gateways --output json)
+RAW_SUBNETS=$(ibmcloud is subnets --output json)
+RAW_SGS=$(ibmcloud is security-groups --output json)
+RAW_KEYS=$(ibmcloud is keys --output json)
+RAW_VPCS=$(ibmcloud is vpcs --output json)
+MAPT_RESOURCE_GROUP_IDS='[]'
+for resources in "$RAW_INSTANCES" "$RAW_FIPS" "$RAW_PUBLIC_GATEWAYS" "$RAW_SUBNETS" "$RAW_SGS" "$RAW_KEYS" "$RAW_VPCS"; do
+  if ! RESOURCE_GROUP_IDS=$(tagged_resource_group_ids <<< "$resources"); then
+    echo "ERROR: failed to identify MAPT resource groups from IBM Cloud resources" >&2
+    exit 2
+  fi
+  MAPT_RESOURCE_GROUP_IDS=$(jq -cn --argjson all "$MAPT_RESOURCE_GROUP_IDS" --argjson next "$RESOURCE_GROUP_IDS" '$all + $next | unique')
+done
+
 # --- 1. Instances ---
 echo "--- Instances ---"
-INSTANCES=$(ibmcloud is instances --output json | normalize_target_resources instance)
+INSTANCES=$(echo "$RAW_INSTANCES" | normalize_target_resources instance)
 MATCHING_INSTANCES=$(echo "$INSTANCES" | jq -r --arg tag_filter "$TAG_FILTER" '
   [.[] | select(
     (.tags // []) as $tags |
     ($tag_filter | split(",")) | all(. as $t | $tags | any(. == $t))
   )]
 ')
+while IFS=$'\t' read -r name resource_group_name; do
+  [[ -z "$name" ]] && continue
+  echo "  Including untagged instance $name from MAPT resource group $resource_group_name"
+done < <(echo "$MATCHING_INSTANCES" | jq -r '.[] | select(.sweep_inferred == true) | [.name, .resource_group.name] | @tsv')
 
 INSTANCE_DELETE_COUNT=0
 while IFS=$'\t' read -r id name created_at resource_group_id; do
@@ -351,7 +411,7 @@ BLOCKED_RESOURCE_GROUP_IDS=$(printf '%s\n' "${!PROTECTED_RESOURCE_GROUP_IDS[@]}"
 # --- 2. Floating IPs ---
 echo ""
 echo "--- Floating IPs ---"
-FIPS=$(ibmcloud is floating-ips --output json | normalize_target_resources floating-ip)
+FIPS=$(echo "$RAW_FIPS" | normalize_target_resources floating-ip)
 while IFS=$'\t' read -r id name created_at; do
   if [[ "$SWEEP" == "true" ]]; then
     if ! is_older_than_hours "$created_at" "$AGE_HOURS"; then
@@ -370,7 +430,7 @@ done < <(echo "$FIPS" | jq -r --arg tag_filter "$TAG_FILTER" '
 # --- 3. Public gateways ---
 echo ""
 echo "--- Public Gateways ---"
-PUBLIC_GATEWAYS=$(ibmcloud is public-gateways --output json | normalize_target_resources public-gateway)
+PUBLIC_GATEWAYS=$(echo "$RAW_PUBLIC_GATEWAYS" | normalize_target_resources public-gateway)
 declare -A FAILED_PUBLIC_GATEWAYS=()
 while IFS=$'\t' read -r id name created_at; do
   [[ -z "$id" ]] && continue
@@ -389,7 +449,7 @@ done < <(echo "$PUBLIC_GATEWAYS" | jq -r --arg tag_filter "$TAG_FILTER" '
 # --- 4. Subnets ---
 echo ""
 echo "--- Subnets ---"
-SUBNETS=$(ibmcloud is subnets --output json | normalize_target_resources subnet)
+SUBNETS=$(echo "$RAW_SUBNETS" | normalize_target_resources subnet)
 while IFS=$'\t' read -r id name created_at; do
   if [[ "$SWEEP" == "true" ]]; then
     if ! is_older_than_hours "$created_at" "$AGE_HOURS"; then
@@ -415,7 +475,7 @@ done
 # --- 5. Security Groups ---
 echo ""
 echo "--- Security Groups ---"
-SGS=$(ibmcloud is security-groups --output json | normalize_target_resources security-group)
+SGS=$(echo "$RAW_SGS" | normalize_target_resources security-group)
 while IFS=$'\t' read -r id name created_at; do
   if [[ "$SWEEP" == "true" ]]; then
     if ! is_older_than_hours "$created_at" "$AGE_HOURS"; then
@@ -434,7 +494,7 @@ done < <(echo "$SGS" | jq -r --arg tag_filter "$TAG_FILTER" '
 # --- 6. SSH Keys ---
 echo ""
 echo "--- SSH Keys ---"
-KEYS=$(ibmcloud is keys --output json | normalize_target_resources key)
+KEYS=$(echo "$RAW_KEYS" | normalize_target_resources key)
 while IFS=$'\t' read -r id name created_at; do
   if [[ "$SWEEP" == "true" ]]; then
     if ! is_older_than_hours "$created_at" "$AGE_HOURS"; then
@@ -453,7 +513,7 @@ done < <(echo "$KEYS" | jq -r --arg tag_filter "$TAG_FILTER" '
 # --- 7. VPCs ---
 echo ""
 echo "--- VPCs ---"
-VPCS=$(ibmcloud is vpcs --output json | normalize_target_resources vpc)
+VPCS=$(echo "$RAW_VPCS" | normalize_target_resources vpc)
 OWNED_RESOURCE_GROUP_IDS=$(echo "$VPCS" | jq -r --arg tag_filter "$TAG_FILTER" '
   .[] | select(
     (.tags // []) as $tags |
@@ -464,7 +524,7 @@ OWNED_RESOURCE_GROUP_IDS=$(echo "$VPCS" | jq -r --arg tag_filter "$TAG_FILTER" '
 # Address prefixes must be removed before their VPC.
 echo ""
 echo "--- VPC Address Prefixes ---"
-while read -r vpc_id vpc_created_at; do
+while IFS=$'\t' read -r vpc_id vpc_created_at; do
   [[ -z "$vpc_id" ]] && continue
   if [[ "$SWEEP" == "true" ]] && ! is_older_than_hours "$vpc_created_at" "$AGE_HOURS"; then
     continue
@@ -496,7 +556,7 @@ done < <(echo "$VPCS" | jq -r --arg tag_filter "$TAG_FILTER" '
   .[] | select(
     (.tags // []) as $tags |
     ($tag_filter | split(",")) | all(. as $t | $tags | any(. == $t))
-  ) | "\(.id) \(.created_at)"
+  ) | [.id, .created_at] | @tsv
 ')
 while IFS=$'\t' read -r id name created_at; do
   if [[ "$SWEEP" == "true" ]]; then
