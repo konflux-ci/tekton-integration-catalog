@@ -184,3 +184,9 @@ Versions are **directory-based**: `tasks/<name>/0.1/`, `tasks/<name>/0.2/`, etc.
 - The test runner needs the `appstudio-pipeline` ServiceAccount — it creates it automatically, but pre-apply hooks may need to add RoleBindings
 - Templated CI files (marked `<TEMPLATED FILE!>`) come from [konflux-ci/task-repo-shared-ci](https://github.com/konflux-ci/task-repo-shared-ci) — send fixes upstream, not here
 - `AGENTS.md` must stay under 60 lines — CI enforces this; see `validate-agents-md.yaml`
+
+### IBM Cloud Constraints
+
+- IBM VSI instance names must be ≤40 characters — cluster IDs passed to mapt provision/deprovision tasks (under `tasks/mapt-oci/`) must respect this limit, including any generated suffixes
+- IBM Flex profile names follow the pattern `cxf-{cpus}x{memory}` (e.g., `cxf-24x48`) — the profile string must match an available IBM Cloud profile
+- The `backed-url` S3 paths used by mapt are derived from the cluster ID (e.g., `s3://konflux-mapt-state/mapt/kind/<cluster-id>`) — changes to ID generation affect teardown and log export
