@@ -54,6 +54,14 @@ spec:
           bucket: ${bucket}
     - name: id
       description: A unique identifier for this Kind environment
+    - name: catalog-revision
+      type: string
+      default: main
+      description: Git revision from which nested StepActions are resolved.
+    - name: catalog-url
+      type: string
+      default: https://github.com/konflux-ci/tekton-integration-catalog.git
+      description: Git repository URL from which nested StepActions are resolved.
     - name: cluster-access-secret-name
       type: string
       default: $(context.pipelineRun.name)
@@ -247,9 +255,9 @@ spec:
         resolver: git
         params:
           - name: url
-            value: https://github.com/konflux-ci/tekton-integration-catalog.git
+            value: $(params.catalog-url)
           - name: revision
-            value: main
+            value: $(params.catalog-revision)
           - name: pathInRepo
             value: stepactions/create-kubeconfig-secret/0.1/create-kubeconfig-secret.yaml
       params:
@@ -269,9 +277,9 @@ spec:
         resolver: git
         params:
           - name: url
-            value: https://github.com/konflux-ci/tekton-integration-catalog.git
+            value: $(params.catalog-url)
           - name: revision
-            value: main
+            value: $(params.catalog-revision)
           - name: pathInRepo
             value: stepactions/create-ssh-credentials-secret/0.1/create-ssh-credentials-secret.yaml
       params:
@@ -292,9 +300,9 @@ spec:
         resolver: git
         params:
           - name: url
-            value: https://github.com/konflux-ci/tekton-integration-catalog.git
+            value: $(params.catalog-url)
           - name: revision
-            value: main
+            value: $(params.catalog-revision)
           - name: pathInRepo
             value: stepactions/kind-aws-provisioner/0.1/kind-aws-provisioner.yaml
       params:
@@ -337,9 +345,9 @@ spec:
         resolver: git
         params:
           - name: url
-            value: https://github.com/konflux-ci/tekton-integration-catalog.git
+            value: $(params.catalog-url)
           - name: revision
-            value: main
+            value: $(params.catalog-revision)
           - name: pathInRepo
             value: stepactions/protect-control-plane/0.2/protect-control-plane.yaml
       params:
@@ -390,9 +398,9 @@ spec:
         resolver: git
         params:
           - name: url
-            value: https://github.com/konflux-ci/tekton-integration-catalog.git
+            value: $(params.catalog-url)
           - name: revision
-            value: main
+            value: $(params.catalog-revision)
           - name: pathInRepo
             value: stepactions/update-kubeconfig-secret/0.1/update-kubeconfig-secret.yaml
       params:
@@ -409,9 +417,9 @@ spec:
         resolver: git
         params:
           - name: url
-            value: https://github.com/konflux-ci/tekton-integration-catalog.git
+            value: $(params.catalog-url)
           - name: revision
-            value: main
+            value: $(params.catalog-revision)
           - name: pathInRepo
             value: stepactions/update-ssh-credentials-secret/0.1/update-ssh-credentials-secret.yaml
       params:
@@ -427,9 +435,9 @@ spec:
         resolver: git
         params:
           - name: url
-            value: https://github.com/konflux-ci/tekton-integration-catalog.git
+            value: $(params.catalog-url)
           - name: revision
-            value: main
+            value: $(params.catalog-revision)
           - name: pathInRepo
             value: stepactions/secure-push-oci/0.1/secure-push-oci.yaml
       params:
@@ -445,8 +453,8 @@ spec:
         resolver: git
         params:
           - name: url
-            value: https://github.com/konflux-ci/tekton-integration-catalog.git
+            value: $(params.catalog-url)
           - name: revision
-            value: main
+            value: $(params.catalog-revision)
           - name: pathInRepo
             value: stepactions/fail-if-any-step-failed/0.1/fail-if-any-step-failed.yaml

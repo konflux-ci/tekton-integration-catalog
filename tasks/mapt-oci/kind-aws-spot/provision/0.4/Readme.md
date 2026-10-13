@@ -36,6 +36,8 @@ This task provisions a single-node Kubernetes cluster on AWS using Mapt. It outp
 |-------------------------------|-----------------------------------------------------------------------------|-------------|----------|
 | `secret-aws-credentials`      | Kubernetes Secret with AWS credentials (`access-key`, `secret-key`, etc.)  | —           | ✅       |
 | `id`                          | Unique identifier for the Kind cluster environment                         | —           | ✅       |
+| `catalog-url`                 | Git repository URL used to resolve nested StepActions                     | `https://github.com/konflux-ci/tekton-integration-catalog.git` | ❌ |
+| `catalog-revision`            | Git revision used to resolve nested StepActions                            | `main`      | ❌       |
 | `cluster-access-secret-name` | Optional: name for the output kubeconfig Secret                             | `''`        | ❌       |
 | `ssh-credentials-secret-name`| Optional: name for the Secret that will store SSH credentials (host, username, id_rsa) for the created VM. If empty, no SSH credentials secret is created. | `''`        | ❌       |
 | `ownerKind`                   | Type of resource owning the Secret (`PipelineRun`, `TaskRun`)               | `PipelineRun`| ❌       |

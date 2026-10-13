@@ -100,7 +100,10 @@ spec:
     - name: harden-control-plane
       type: string
       default: "false"
-      description: Harden the Kind control plane after provisioning.
+      description: >-
+        Harden the Kind control plane after provisioning. The default tuning values target
+        32-vCPU / 64-GiB machines; override the tuning parameters for the cxf-24x48
+        profile as documented in the task README.
     - name: apiserver-cpu
       type: string
       default: "2000m"
@@ -136,9 +139,11 @@ spec:
     - name: etcd-cpu
       type: string
       default: "3000m"
+      description: CPU request and limit for the etcd container.
     - name: etcd-memory
       type: string
       default: "8Gi"
+      description: Memory request and limit for the etcd container.
     - name: containerd-memory-min
       type: string
       default: "8G"

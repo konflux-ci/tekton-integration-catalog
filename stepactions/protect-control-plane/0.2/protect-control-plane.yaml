@@ -324,7 +324,7 @@ spec:
     ok "Connected to cluster with node ${NODE_NAME}"
 
     banner "Protect Control Plane – ${NODE_NAME}" \
-           "WARNING: supports 32 vCPUs / 64 GiB (defaults) and 24 vCPUs / 48 GiB (with overrides)"
+           "Control-plane tuning uses the configured resource parameters"
 
     # ================================================================
     #  Phase 1 – Node & Cluster Setup
@@ -587,14 +587,15 @@ spec:
     TEST_NS="cp-probe-$(date +%s)"
     kubectl create namespace "${TEST_NS}" --dry-run=client -o yaml | kubectl apply -f - 2>/dev/null
     SA_OK=false
+    SA_START=$SECONDS
     for i in $(seq 1 60); do
       if kubectl get serviceaccount default -n "${TEST_NS}" &>/dev/null; then
-        ok "default SA created in ${TEST_NS} (${i}s) — SA controller is healthy"
+        ok "default SA created in ${TEST_NS} ($((SECONDS - SA_START))s) — SA controller is healthy"
         SA_OK=true; break
       fi
       sleep 3
     done
-    [[ "${SA_OK}" == "false" ]] && fail "default SA not created in ${TEST_NS} within 180s"
+    [[ "${SA_OK}" == "false" ]] && fail "default SA not created in ${TEST_NS} after $((SECONDS - SA_START))s"
     kubectl delete namespace "${TEST_NS}" --wait=false 2>/dev/null || true
 
     section "Verifying node readiness"
