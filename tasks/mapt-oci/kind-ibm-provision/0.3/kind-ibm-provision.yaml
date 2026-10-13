@@ -101,57 +101,72 @@ spec:
       type: string
       default: "false"
       description: Harden the Kind control plane after provisioning.
-    - name: APISERVER_CPU
+    - name: apiserver-cpu
       type: string
       default: "2000m"
-    - name: APISERVER_MEMORY
+      description: CPU request and limit for the kube-apiserver container.
+    - name: apiserver-memory
       type: string
       default: "4Gi"
-    - name: APISERVER_MAX_INFLIGHT
+      description: Memory request and limit for the kube-apiserver container.
+    - name: apiserver-max-inflight
       type: string
       default: "800"
-    - name: APISERVER_MAX_MUTATING_INFLIGHT
+      description: Maximum non-mutating requests the API server handles at once.
+    - name: apiserver-max-mutating-inflight
       type: string
       default: "400"
-    - name: CONTROLLER_MANAGER_CPU
+      description: Maximum mutating requests the API server handles at once.
+    - name: controller-manager-cpu
       type: string
       default: "2000m"
-    - name: CONTROLLER_MANAGER_MEMORY
+      description: CPU request and limit for the kube-controller-manager container.
+    - name: controller-manager-memory
       type: string
       default: "4Gi"
-    - name: SCHEDULER_CPU
+      description: Memory request and limit for the kube-controller-manager container.
+    - name: scheduler-cpu
       type: string
       default: "2000m"
-    - name: SCHEDULER_MEMORY
+      description: CPU request and limit for the kube-scheduler container.
+    - name: scheduler-memory
       type: string
       default: "4Gi"
+      description: Memory request and limit for the kube-scheduler container.
     - name: etcd-cpu
       type: string
       default: "3000m"
     - name: etcd-memory
       type: string
       default: "8Gi"
-    - name: CONTAINERD_MEMORY_MIN
+    - name: containerd-memory-min
       type: string
       default: "8G"
-    - name: CONTAINERD_GOMAXPROCS
+      description: systemd MemoryMin reservation for containerd.
+    - name: containerd-gomaxprocs
       type: string
       default: "8"
-    - name: CONTAINERD_GOMEMLIMIT
+      description: GOMAXPROCS value for the containerd service.
+    - name: containerd-gomemlimit
       type: string
       default: "12GiB"
-    - name: CONTAINERD_MAX_CONCURRENT_DOWNLOADS
+      description: GOMEMLIMIT value for the containerd service.
+    - name: containerd-max-concurrent-downloads
       type: string
       default: "50"
-    - name: KUBELET_MAX_PODS
+      description: Maximum concurrent image downloads handled by containerd.
+    - name: max-pods
       type: string
       default: "350"
-    - name: KUBELET_MAX_PARALLEL_IMAGE_PULLS
+      description: Maximum number of pods the kubelet will allow on the node.
+    - name: max-parallel-image-pulls
       type: string
       default: "15"
-    - name: COREDNS_REPLICAS
+      description: Maximum number of image pulls the kubelet will perform in parallel.
+    - name: coredns-replicas
       type: string
       default: "3"
+      description: Number of CoreDNS replicas to run in kube-system.
     - name: debug
       type: string
       default: "false"
@@ -231,23 +246,23 @@ spec:
         - {name: harden-control-plane, value: $(params.harden-control-plane)}
         - {name: kubeconfig-dir, value: /opt/cluster-info}
         - {name: kubeconfig-volume-name, value: cluster-info}
-        - {name: APISERVER_CPU, value: $(params.APISERVER_CPU)}
-        - {name: APISERVER_MEMORY, value: $(params.APISERVER_MEMORY)}
-        - {name: APISERVER_MAX_INFLIGHT, value: $(params.APISERVER_MAX_INFLIGHT)}
-        - {name: APISERVER_MAX_MUTATING_INFLIGHT, value: $(params.APISERVER_MAX_MUTATING_INFLIGHT)}
-        - {name: CONTROLLER_MANAGER_CPU, value: $(params.CONTROLLER_MANAGER_CPU)}
-        - {name: CONTROLLER_MANAGER_MEMORY, value: $(params.CONTROLLER_MANAGER_MEMORY)}
-        - {name: SCHEDULER_CPU, value: $(params.SCHEDULER_CPU)}
-        - {name: SCHEDULER_MEMORY, value: $(params.SCHEDULER_MEMORY)}
+        - {name: apiserver-cpu, value: $(params.apiserver-cpu)}
+        - {name: apiserver-memory, value: $(params.apiserver-memory)}
+        - {name: apiserver-max-inflight, value: $(params.apiserver-max-inflight)}
+        - {name: apiserver-max-mutating-inflight, value: $(params.apiserver-max-mutating-inflight)}
+        - {name: controller-manager-cpu, value: $(params.controller-manager-cpu)}
+        - {name: controller-manager-memory, value: $(params.controller-manager-memory)}
+        - {name: scheduler-cpu, value: $(params.scheduler-cpu)}
+        - {name: scheduler-memory, value: $(params.scheduler-memory)}
         - {name: etcd-cpu, value: $(params.etcd-cpu)}
         - {name: etcd-memory, value: $(params.etcd-memory)}
-        - {name: CONTAINERD_MEMORY_MIN, value: $(params.CONTAINERD_MEMORY_MIN)}
-        - {name: CONTAINERD_GOMAXPROCS, value: $(params.CONTAINERD_GOMAXPROCS)}
-        - {name: CONTAINERD_GOMEMLIMIT, value: $(params.CONTAINERD_GOMEMLIMIT)}
-        - {name: CONTAINERD_MAX_CONCURRENT_DOWNLOADS, value: $(params.CONTAINERD_MAX_CONCURRENT_DOWNLOADS)}
-        - {name: KUBELET_MAX_PODS, value: $(params.KUBELET_MAX_PODS)}
-        - {name: KUBELET_MAX_PARALLEL_IMAGE_PULLS, value: $(params.KUBELET_MAX_PARALLEL_IMAGE_PULLS)}
-        - {name: COREDNS_REPLICAS, value: $(params.COREDNS_REPLICAS)}
+        - {name: containerd-memory-min, value: $(params.containerd-memory-min)}
+        - {name: containerd-gomaxprocs, value: $(params.containerd-gomaxprocs)}
+        - {name: containerd-gomemlimit, value: $(params.containerd-gomemlimit)}
+        - {name: containerd-max-concurrent-downloads, value: $(params.containerd-max-concurrent-downloads)}
+        - {name: max-pods, value: $(params.max-pods)}
+        - {name: max-parallel-image-pulls, value: $(params.max-parallel-image-pulls)}
+        - {name: coredns-replicas, value: $(params.coredns-replicas)}
     - name: update-kubeconfig-secret
       onError: continue
       ref:

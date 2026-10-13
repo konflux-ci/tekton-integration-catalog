@@ -18,14 +18,14 @@ Control-plane resource and API server defaults:
 
 | Parameter | Default |
 | --- | --- |
-| `APISERVER_CPU` | `"2000m"` |
-| `APISERVER_MEMORY` | `"4Gi"` |
-| `APISERVER_MAX_INFLIGHT` | `"800"` |
-| `APISERVER_MAX_MUTATING_INFLIGHT` | `"400"` |
-| `CONTROLLER_MANAGER_CPU` | `"2000m"` |
-| `CONTROLLER_MANAGER_MEMORY` | `"4Gi"` |
-| `SCHEDULER_CPU` | `"2000m"` |
-| `SCHEDULER_MEMORY` | `"4Gi"` |
+| `apiserver-cpu` | `"2000m"` |
+| `apiserver-memory` | `"4Gi"` |
+| `apiserver-max-inflight` | `"800"` |
+| `apiserver-max-mutating-inflight` | `"400"` |
+| `controller-manager-cpu` | `"2000m"` |
+| `controller-manager-memory` | `"4Gi"` |
+| `scheduler-cpu` | `"2000m"` |
+| `scheduler-memory` | `"4Gi"` |
 | `etcd-cpu` | `"3000m"` |
 | `etcd-memory` | `"8Gi"` |
 
@@ -33,36 +33,36 @@ Node and runtime defaults:
 
 | Parameter | Default | Purpose |
 | --- | --- | --- |
-| `CONTAINERD_MEMORY_MIN` | `"8G"` | Containerd memory reservation. |
-| `CONTAINERD_GOMAXPROCS` | `"8"` | Go runtime parallelism. |
-| `CONTAINERD_GOMEMLIMIT` | `"12GiB"` | Go runtime memory limit. |
-| `CONTAINERD_MAX_CONCURRENT_DOWNLOADS` | `"50"` | Concurrent image downloads. |
-| `KUBELET_MAX_PODS` | `"350"` | Maximum pods on the node. |
-| `KUBELET_MAX_PARALLEL_IMAGE_PULLS` | `"15"` | Parallel kubelet image pulls. |
-| `COREDNS_REPLICAS` | `"3"` | CoreDNS replica count. |
+| `containerd-memory-min` | `"8G"` | Containerd memory reservation. |
+| `containerd-gomaxprocs` | `"8"` | Go runtime parallelism. |
+| `containerd-gomemlimit` | `"12GiB"` | Go runtime memory limit. |
+| `containerd-max-concurrent-downloads` | `"50"` | Concurrent image downloads. |
+| `max-pods` | `"350"` | Maximum pods on the node. |
+| `max-parallel-image-pulls` | `"15"` | Parallel kubelet image pulls. |
+| `coredns-replicas` | `"3"` | CoreDNS replica count. |
 
 The defaults are recommended for 32-vCPU / 64-GiB machines. For 24-vCPU /
 48-GiB machines, use the following overrides:
 
 | Parameter | Value |
 | --- | --- |
-| `APISERVER_CPU` | `"1500m"` |
-| `APISERVER_MEMORY` | `"3Gi"` |
-| `APISERVER_MAX_INFLIGHT` | `"400"` |
-| `APISERVER_MAX_MUTATING_INFLIGHT` | `"200"` |
-| `CONTROLLER_MANAGER_CPU` | `"1000m"` |
-| `CONTROLLER_MANAGER_MEMORY` | `"2Gi"` |
-| `SCHEDULER_CPU` | `"500m"` |
-| `SCHEDULER_MEMORY` | `"1Gi"` |
+| `apiserver-cpu` | `"1500m"` |
+| `apiserver-memory` | `"3Gi"` |
+| `apiserver-max-inflight` | `"400"` |
+| `apiserver-max-mutating-inflight` | `"200"` |
+| `controller-manager-cpu` | `"1000m"` |
+| `controller-manager-memory` | `"2Gi"` |
+| `scheduler-cpu` | `"500m"` |
+| `scheduler-memory` | `"1Gi"` |
 | `etcd-cpu` | `"2000m"` |
 | `etcd-memory` | `"4Gi"` |
-| `CONTAINERD_MEMORY_MIN` | `"4G"` |
-| `CONTAINERD_GOMAXPROCS` | `"6"` |
-| `CONTAINERD_GOMEMLIMIT` | `"8GiB"` |
-| `CONTAINERD_MAX_CONCURRENT_DOWNLOADS` | `"30"` |
-| `KUBELET_MAX_PODS` | `"250"` |
-| `KUBELET_MAX_PARALLEL_IMAGE_PULLS` | `"10"` |
-| `COREDNS_REPLICAS` | `"2"` |
+| `containerd-memory-min` | `"4G"` |
+| `containerd-gomaxprocs` | `"6"` |
+| `containerd-gomemlimit` | `"8GiB"` |
+| `containerd-max-concurrent-downloads` | `"30"` |
+| `max-pods` | `"250"` |
+| `max-parallel-image-pulls` | `"10"` |
+| `coredns-replicas` | `"2"` |
 
 ## Usage
 
@@ -93,8 +93,7 @@ table to `params`. The StepAction does not detect machine size automatically.
 ## Migration from 0.1
 
 Version 0.2 keeps the existing 32-vCPU / 64-GiB tuning as its defaults. Existing
-callers can opt into 0.2 without changing those values. The kubelet parameters
-are now named `KUBELET_MAX_PODS` and `KUBELET_MAX_PARALLEL_IMAGE_PULLS`; callers
-that set the former `max-pods` or `max-parallel-image-pulls` parameters must
-update their names. `etcd-cpu` and `etcd-memory` are unchanged. See
+callers can opt into 0.2 without changing those values. It preserves the
+`max-pods`, `max-parallel-image-pulls`, `etcd-cpu`, and `etcd-memory` parameter
+names from v0.1. The additional tuning parameters use kebab-case. See
 [`MIGRATION.md`](MIGRATION.md) for the complete 24-vCPU / 48-GiB override list.

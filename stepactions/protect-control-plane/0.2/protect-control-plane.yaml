@@ -4,6 +4,7 @@ kind: StepAction
 metadata:
   name: protect-control-plane
   labels:
+    app.kubernetes.io/version: "0.2"
     upstream-usable: "true"
 spec:
   description: |
@@ -48,55 +49,68 @@ spec:
       type: string
       default: "8Gi"
       description: Memory request/limit for etcd.
-    - name: APISERVER_CPU
+    - name: apiserver-cpu
       type: string
       default: "2000m"
-    - name: APISERVER_MEMORY
+      description: CPU request and limit for the kube-apiserver container.
+    - name: apiserver-memory
       type: string
       default: "4Gi"
-    - name: APISERVER_MAX_INFLIGHT
+      description: Memory request and limit for the kube-apiserver container.
+    - name: apiserver-max-inflight
       type: string
       default: "800"
-    - name: APISERVER_MAX_MUTATING_INFLIGHT
+      description: Maximum non-mutating requests the API server handles at once.
+    - name: apiserver-max-mutating-inflight
       type: string
       default: "400"
-    - name: CONTROLLER_MANAGER_CPU
+      description: Maximum mutating requests the API server handles at once.
+    - name: controller-manager-cpu
       type: string
       default: "2000m"
-    - name: CONTROLLER_MANAGER_MEMORY
+      description: CPU request and limit for the kube-controller-manager container.
+    - name: controller-manager-memory
       type: string
       default: "4Gi"
-    - name: SCHEDULER_CPU
+      description: Memory request and limit for the kube-controller-manager container.
+    - name: scheduler-cpu
       type: string
       default: "2000m"
-    - name: SCHEDULER_MEMORY
+      description: CPU request and limit for the kube-scheduler container.
+    - name: scheduler-memory
       type: string
       default: "4Gi"
-    - name: CONTAINERD_MEMORY_MIN
+      description: Memory request and limit for the kube-scheduler container.
+    - name: containerd-memory-min
       type: string
       default: "8G"
-    - name: CONTAINERD_GOMAXPROCS
+      description: systemd MemoryMin reservation for containerd.
+    - name: containerd-gomaxprocs
       type: string
       default: "8"
-    - name: CONTAINERD_GOMEMLIMIT
+      description: GOMAXPROCS value for the containerd service.
+    - name: containerd-gomemlimit
       type: string
       default: "12GiB"
-    - name: CONTAINERD_MAX_CONCURRENT_DOWNLOADS
+      description: GOMEMLIMIT value for the containerd service.
+    - name: containerd-max-concurrent-downloads
       type: string
       default: "50"
-    - name: KUBELET_MAX_PODS
+      description: Maximum concurrent image downloads handled by containerd.
+    - name: max-pods
       type: string
       default: "350"
       description: |
         Maximum number of pods the kubelet will allow on the node.
-    - name: KUBELET_MAX_PARALLEL_IMAGE_PULLS
+    - name: max-parallel-image-pulls
       type: string
       default: "15"
       description: |
         Maximum number of image pulls the kubelet will perform in parallel.
-    - name: COREDNS_REPLICAS
+    - name: coredns-replicas
       type: string
       default: "3"
+      description: Number of CoreDNS replicas to run in kube-system.
     - name: kubeconfig-volume-name
       type: string
       description: |
@@ -118,50 +132,50 @@ spec:
     - name: ETCD_MEM
       value: "$(params.etcd-memory)"
     - name: APISERVER_CPU
-      value: "$(params.APISERVER_CPU)"
+      value: "$(params.apiserver-cpu)"
     - name: APISERVER_MEMORY
-      value: "$(params.APISERVER_MEMORY)"
+      value: "$(params.apiserver-memory)"
     - name: APISERVER_MAX_INFLIGHT
-      value: "$(params.APISERVER_MAX_INFLIGHT)"
+      value: "$(params.apiserver-max-inflight)"
     - name: APISERVER_MAX_MUTATING_INFLIGHT
-      value: "$(params.APISERVER_MAX_MUTATING_INFLIGHT)"
+      value: "$(params.apiserver-max-mutating-inflight)"
     - name: CONTROLLER_MANAGER_CPU
-      value: "$(params.CONTROLLER_MANAGER_CPU)"
+      value: "$(params.controller-manager-cpu)"
     - name: CONTROLLER_MANAGER_MEMORY
-      value: "$(params.CONTROLLER_MANAGER_MEMORY)"
+      value: "$(params.controller-manager-memory)"
     - name: SCHEDULER_CPU
-      value: "$(params.SCHEDULER_CPU)"
+      value: "$(params.scheduler-cpu)"
     - name: SCHEDULER_MEMORY
-      value: "$(params.SCHEDULER_MEMORY)"
+      value: "$(params.scheduler-memory)"
     - name: CONTAINERD_MEMORY_MIN
-      value: "$(params.CONTAINERD_MEMORY_MIN)"
+      value: "$(params.containerd-memory-min)"
     - name: CONTAINERD_GOMAXPROCS
-      value: "$(params.CONTAINERD_GOMAXPROCS)"
+      value: "$(params.containerd-gomaxprocs)"
     - name: CONTAINERD_GOMEMLIMIT
-      value: "$(params.CONTAINERD_GOMEMLIMIT)"
+      value: "$(params.containerd-gomemlimit)"
     - name: CONTAINERD_MAX_CONCURRENT_DOWNLOADS
-      value: "$(params.CONTAINERD_MAX_CONCURRENT_DOWNLOADS)"
+      value: "$(params.containerd-max-concurrent-downloads)"
     - name: KUBELET_MAX_PODS
-      value: "$(params.KUBELET_MAX_PODS)"
+      value: "$(params.max-pods)"
     - name: KUBELET_MAX_PARALLEL_IMAGE_PULLS
-      value: "$(params.KUBELET_MAX_PARALLEL_IMAGE_PULLS)"
+      value: "$(params.max-parallel-image-pulls)"
     - name: COREDNS_REPLICAS
-      value: "$(params.COREDNS_REPLICAS)"
+      value: "$(params.coredns-replicas)"
 
   script: |
     #!/usr/bin/env bash
     # Machine profiles:
     # 32 vCPU / 64 GB (default): use all default param values
     # 24 vCPU / 48 GB: override with:
-    #   APISERVER_CPU=1500m, APISERVER_MEMORY=3Gi
-    #   APISERVER_MAX_INFLIGHT=400, APISERVER_MAX_MUTATING_INFLIGHT=200
-    #   CONTROLLER_MANAGER_CPU=1000m, CONTROLLER_MANAGER_MEMORY=2Gi
-    #   SCHEDULER_CPU=500m, SCHEDULER_MEMORY=1Gi
-    #   ETCD_CPU=2000m, ETCD_MEMORY=4Gi
-    #   CONTAINERD_MEMORY_MIN=4G, CONTAINERD_GOMAXPROCS=6, CONTAINERD_GOMEMLIMIT=8GiB
-    #   CONTAINERD_MAX_CONCURRENT_DOWNLOADS=30
-    #   KUBELET_MAX_PODS=250, KUBELET_MAX_PARALLEL_IMAGE_PULLS=10
-    #   COREDNS_REPLICAS=2
+    #   apiserver-cpu=1500m, apiserver-memory=3Gi
+    #   apiserver-max-inflight=400, apiserver-max-mutating-inflight=200
+    #   controller-manager-cpu=1000m, controller-manager-memory=2Gi
+    #   scheduler-cpu=500m, scheduler-memory=1Gi
+    #   etcd-cpu=2000m, etcd-memory=4Gi
+    #   containerd-memory-min=4G, containerd-gomaxprocs=6, containerd-gomemlimit=8GiB
+    #   containerd-max-concurrent-downloads=30
+    #   max-pods=250, max-parallel-image-pulls=10
+    #   coredns-replicas=2
     set -o errexit -o nounset -o pipefail
 
     # ── Helpers ─────────────────────────────────────────────────────────
@@ -209,13 +223,18 @@ spec:
       fi
 
       info "Waiting for ${POD}..."
-      local i PHASE
+      local i PHASE="Pending"
       for i in $(seq 1 60); do
         PHASE=$(kubectl get pod "${POD}" -o jsonpath='{.status.phase}' 2>/dev/null || echo "Pending")
         [[ "${PHASE}" =~ ^(Succeeded|Failed)$ ]] && break
         sleep 1
       done
       echo "  Pod ${PHASE} after ${i}s"
+      if [[ "${PHASE}" == "Failed" ]]; then
+        fail "Node operation pod ${POD} failed"
+      elif [[ "${PHASE}" != "Succeeded" ]]; then
+        fail "Node operation pod ${POD} did not finish within 60s (last phase: ${PHASE})"
+      fi
       kubectl logs "${POD}" || true
       kubectl delete pod "${POD}" --force --grace-period=0 2>/dev/null || true
     }
@@ -223,29 +242,31 @@ spec:
     # Wait until a kube-system pod (by label) is 1/1 Running.
     wait_pod_ready() {
       local LABEL="$1" TIMEOUT="${2:-60}"
-      local i STATUS READY
+      local i STATUS READY START=$SECONDS
       for i in $(seq 1 "${TIMEOUT}"); do
         STATUS=$(kubectl get pods -n kube-system -l "${LABEL}" \
           -o jsonpath='{.items[0].status.phase}' 2>/dev/null || echo "Unknown")
         READY=$(kubectl get pods -n kube-system -l "${LABEL}" \
           -o jsonpath='{.items[0].status.containerStatuses[0].ready}' 2>/dev/null || echo "false")
         if [[ "${STATUS}" == "Running" && "${READY}" == "true" ]]; then
-          ok "${LABEL} ready (${i}s)"
+          ok "${LABEL} ready ($((SECONDS - START))s)"
           return 0
         fi
         sleep 2
       done
-      fail "${LABEL} not ready after ${TIMEOUT}s"
-      return 1
+      fail "${LABEL} not ready after $((SECONDS - START))s"
+      # Record the failure but let later hardening/readiness checks run. The
+      # StepAction reports the accumulated failure through STEP_EXIT at the end.
+      return 0
     }
 
     wait_api() {
-      local i
+      local i START=$SECONDS
       for i in $(seq 1 60); do
-        kubectl get nodes &>/dev/null && { ok "API reachable (${i}s)"; return 0; }
+        kubectl get nodes &>/dev/null && { ok "API reachable ($((SECONDS - START))s)"; return 0; }
         sleep 2
       done
-      fail "API unreachable after 60s"
+      fail "API unreachable after $((SECONDS - START))s"
     }
 
     # ── Gate ────────────────────────────────────────────────────────────
@@ -444,9 +465,16 @@ spec:
       fi
     }
 
-    # Idempotent resource helper: replace value in resources block.
+    # Idempotent resource helpers for the static-pod container resources.
     set_cpu()    { sed -i -E "s/(^[[:space:]]*cpu:[[:space:]]*)[0-9]+([.][0-9]+)?m?/\\1$1/" "$M"; }
-    set_mem_gi() { grep -q "memory:" "$M" || sed -i "/cpu: $1/a\\        memory: $2" "$M"; }
+    set_memory() {
+      local CPU="$1" MEMORY="$2"
+      if grep -q '^[[:space:]]*memory:' "$M"; then
+        sed -i -E "s/(^[[:space:]]*memory:[[:space:]]*)[^[:space:]]+/\\1${MEMORY}/" "$M"
+      else
+        sed -i "/cpu: ${CPU}/a\\        memory: ${MEMORY}" "$M"
+      fi
+    }
 
     case "$COMP" in
       scheduler)
@@ -456,7 +484,7 @@ spec:
           sed -i '/--leader-elect=true/a\    - --leader-elect-lease-duration=60s\n    - --leader-elect-renew-deadline=45s\n    - --leader-elect-retry-period=5s' "$M"
         fi
         set_cpu "${SCHEDULER_CPU}"
-        set_mem_gi "${SCHEDULER_CPU}" "${SCHEDULER_MEMORY}"
+        set_memory "${SCHEDULER_CPU}" "${SCHEDULER_MEMORY}"
         echo "DONE: scheduler qps=100 burst=200 lease=60s/45s cpu=${SCHEDULER_CPU} mem=${SCHEDULER_MEMORY}"
         ;;
       controller-manager)
@@ -466,7 +494,7 @@ spec:
           sed -i '/--leader-elect=true/a\    - --leader-elect-lease-duration=60s\n    - --leader-elect-renew-deadline=45s\n    - --leader-elect-retry-period=5s' "$M"
         fi
         set_cpu "${CONTROLLER_MANAGER_CPU}"
-        set_mem_gi "${CONTROLLER_MANAGER_CPU}" "${CONTROLLER_MANAGER_MEMORY}"
+        set_memory "${CONTROLLER_MANAGER_CPU}" "${CONTROLLER_MANAGER_MEMORY}"
         echo "DONE: controller-manager qps=100 burst=200 lease=60s/45s cpu=${CONTROLLER_MANAGER_CPU} mem=${CONTROLLER_MANAGER_MEMORY}"
         ;;
       apiserver)
@@ -478,8 +506,8 @@ spec:
         if ! grep -q "delete-collection-workers" "$M"; then
           sed -i '/--event-ttl/a\    - --delete-collection-workers=5' "$M"
         fi
-        if grep -q 'memory:.*[0-9]*Mi' "$M"; then sed -i "s/memory: [0-9]*Mi/memory: ${APISERVER_MEMORY}/g" "$M"; fi
-        if grep -q 'cpu:.*[0-9]*m' "$M";    then set_cpu "${APISERVER_CPU}"; fi
+        set_cpu "${APISERVER_CPU}"
+        set_memory "${APISERVER_CPU}" "${APISERVER_MEMORY}"
         echo "DONE: apiserver inflight=${APISERVER_MAX_INFLIGHT}/${APISERVER_MAX_MUTATING_INFLIGHT} event-ttl=30m del-workers=5 cpu=${APISERVER_CPU} mem=${APISERVER_MEMORY}"
         ;;
       etcd)
@@ -492,8 +520,8 @@ spec:
         # when etcd is I/O saturated by heavy E2E traffic.
         set_flag --heartbeat-interval 500 "--auto-compaction"
         set_flag --election-timeout   5000 "--heartbeat-interval"
-        if grep -q 'memory:.*[0-9]*Mi' "$M"; then sed -i "s/memory: [0-9]*Mi/memory: ${ETCD_MEM}/g" "$M"; fi
-        if grep -q 'cpu:.*[0-9]*m' "$M";    then sed -i "s/cpu: [0-9]*m/cpu: ${ETCD_CPU}/g" "$M"; fi
+        set_cpu "${ETCD_CPU}"
+        set_memory "${ETCD_CPU}" "${ETCD_MEM}"
         echo "DONE: etcd quota=8GB auto-compact=5m heartbeat=500ms election=5s mem=${ETCD_MEM} cpu=${ETCD_CPU}"
         ;;
       *) echo "ERROR: unknown component $COMP"; exit 1 ;;
@@ -541,10 +569,19 @@ spec:
     done
 
     section "Verifying API server responsiveness"
+    API_RESPONSIVE=false
+    API_START=$SECONDS
     for i in $(seq 1 20); do
-      kubectl get namespaces --request-timeout=5s &>/dev/null && { ok "API server responsive (${i}s)"; break; }
+      if kubectl get namespaces --request-timeout=5s &>/dev/null; then
+        ok "API server responsive ($((SECONDS - API_START))s)"
+        API_RESPONSIVE=true
+        break
+      fi
       sleep 3
     done
+    if [[ "${API_RESPONSIVE}" == "false" ]]; then
+      fail "API server unresponsive after $((SECONDS - API_START))s"
+    fi
 
     section "Verifying ServiceAccount controller"
     TEST_NS="cp-probe-$(date +%s)"
