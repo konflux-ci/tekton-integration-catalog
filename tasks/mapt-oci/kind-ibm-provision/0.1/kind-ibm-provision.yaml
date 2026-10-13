@@ -167,7 +167,7 @@ spec:
       onError: continue
       ref:
         resolver: git
-        params: [{name: url, value: $(params.catalog-url)}, {name: revision, value: $(params.catalog-revision)}, {name: pathInRepo, value: stepactions/protect-control-plane/0.2/protect-control-plane.yaml}]
+        params: [{name: url, value: $(params.catalog-url)}, {name: revision, value: $(params.catalog-revision)}, {name: pathInRepo, value: stepactions/protect-control-plane/0.1/protect-control-plane.yaml}]
       params:
         - {name: harden-control-plane, value: $(params.harden-control-plane)}
         - {name: kubeconfig-dir, value: /opt/cluster-info}

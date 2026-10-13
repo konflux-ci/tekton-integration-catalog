@@ -321,7 +321,7 @@ spec:
           - name: revision
             value: main
           - name: pathInRepo
-            value: stepactions/protect-control-plane/0.2/protect-control-plane.yaml
+            value: stepactions/protect-control-plane/0.1/protect-control-plane.yaml
       params:
         - name: harden-control-plane
           value: $(params.harden-control-plane)

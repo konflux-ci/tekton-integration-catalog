@@ -8,7 +8,7 @@ metadata:
     build.appstudio.redhat.com/target_branch: '{{target_branch}}'
     pipelinesascode.tekton.dev/cancel-in-progress: "true"
     pipelinesascode.tekton.dev/max-keep-runs: "3"
-    pipelinesascode.tekton.dev/on-cel-expression: event == "pull_request" && target_branch == "main" && ( "tasks/mapt-oci/kind-ibm-provision/***".pathChanged() || "tasks/mapt-oci/kind-ibm-deprovision/***".pathChanged() || "stepactions/kind-ibm-provisioner/***".pathChanged() || "stepactions/kind-ibm-destroy/***".pathChanged() || ".tekton/mapt-ibm-vsi-test-ssh-creds-pull-request.yaml".pathChanged() )
+    pipelinesascode.tekton.dev/on-cel-expression: event == "pull_request" && target_branch == "main" && ( "tasks/mapt-oci/kind-ibm-provision/***".pathChanged() || "tasks/mapt-oci/kind-ibm-deprovision/***".pathChanged() || "stepactions/kind-ibm-provisioner/***".pathChanged() || "stepactions/kind-ibm-destroy/***".pathChanged() || "stepactions/protect-control-plane/***".pathChanged() || ".tekton/mapt-ibm-vsi-test-ssh-creds-pull-request.yaml".pathChanged() )
   creationTimestamp: null
   labels:
     appstudio.openshift.io/application: mapt-ibm-vsi-test
@@ -64,7 +64,7 @@ spec:
           params:
             - {name: url, value: $(params.git-url)}
             - {name: revision, value: $(params.revision)}
-            - {name: pathInRepo, value: tasks/mapt-oci/kind-ibm-provision/0.2/kind-ibm-provision.yaml}
+            - {name: pathInRepo, value: tasks/mapt-oci/kind-ibm-provision/0.3/kind-ibm-provision.yaml}
         params:
           - {name: secret-ibmcloud-credentials, value: ibmcloud-mapt-credentials}
           - {name: cluster-access-secret-name, value: $(context.pipelineRun.uid)}
@@ -75,6 +75,24 @@ spec:
           - {name: region, value: us-south}
           - {name: zone, value: us-south-2}
           - {name: compute-sizes, value: cxf-24x48}
+          - {name: harden-control-plane, value: "true"}
+          - {name: apiserver-cpu, value: "1500m"}
+          - {name: apiserver-memory, value: "3Gi"}
+          - {name: apiserver-max-inflight, value: "400"}
+          - {name: apiserver-max-mutating-inflight, value: "200"}
+          - {name: controller-manager-cpu, value: "1000m"}
+          - {name: controller-manager-memory, value: "2Gi"}
+          - {name: scheduler-cpu, value: "500m"}
+          - {name: scheduler-memory, value: "1Gi"}
+          - {name: etcd-cpu, value: "2000m"}
+          - {name: etcd-memory, value: "4Gi"}
+          - {name: containerd-memory-min, value: "4G"}
+          - {name: containerd-gomaxprocs, value: "6"}
+          - {name: containerd-gomemlimit, value: "8GiB"}
+          - {name: containerd-max-concurrent-downloads, value: "30"}
+          - {name: max-pods, value: "250"}
+          - {name: max-parallel-image-pulls, value: "10"}
+          - {name: coredns-replicas, value: "2"}
           - {name: backed-url, value: s3://konflux-mapt-state/mapt/kind/$(tasks.generate-cluster-id.results.cluster-id)}
           # IBM Cloud tag values cannot contain '@'; owner abbreviates konflux-devprod@redhat.com.
           - {name: tags, value: owner=konflux-devprod,project=Konflux,created-by=integration-pipeline,component=tekton-integration-catalog,pipelinerun=$(context.pipelineRun.name)}
