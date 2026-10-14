@@ -129,7 +129,7 @@ spec:
       value: "$(params.node-name)"
     - name: ETCD_CPU
       value: "$(params.etcd-cpu)"
-    - name: ETCD_MEM
+    - name: ETCD_MEMORY
       value: "$(params.etcd-memory)"
     - name: APISERVER_CPU
       value: "$(params.apiserver-cpu)"
@@ -219,7 +219,7 @@ spec:
           }
         }"; then
         fail "Failed to create pod ${POD}"
-        return 1
+        return 0
       fi
 
       info "Waiting for ${POD}..."
@@ -294,7 +294,7 @@ spec:
     for PARAM in APISERVER_CPU CONTROLLER_MANAGER_CPU SCHEDULER_CPU ETCD_CPU; do
       validate_param "${PARAM}" "${!PARAM}" '^[0-9]+([.][0-9]+)?m?$'
     done
-    for PARAM in APISERVER_MEMORY CONTROLLER_MANAGER_MEMORY SCHEDULER_MEMORY ETCD_MEM; do
+    for PARAM in APISERVER_MEMORY CONTROLLER_MANAGER_MEMORY SCHEDULER_MEMORY ETCD_MEMORY; do
       validate_param "${PARAM}" "${!PARAM}" '^[0-9]+([.][0-9]+)?(Ki|Mi|Gi|Ti|Pi|Ei|K|M|G|T|P|E)$'
     done
     validate_param CONTAINERD_MEMORY_MIN "${CONTAINERD_MEMORY_MIN}" '^[0-9]+([.][0-9]+)?(K|M|G|T|P|Ki|Mi|Gi|Ti)?$'
@@ -452,7 +452,7 @@ spec:
     SCHEDULER_CPU="$8"
     SCHEDULER_MEMORY="$9"
     ETCD_CPU="${10}"
-    ETCD_MEM="${11}"
+    ETCD_MEMORY="${11}"
 
     manifest() { echo "/etc/kubernetes/manifests/kube-${COMP}.yaml"; }
     [[ "$COMP" == "etcd" ]] && manifest() { echo "/etc/kubernetes/manifests/etcd.yaml"; }
@@ -528,8 +528,8 @@ spec:
         set_flag --heartbeat-interval 500 "--auto-compaction-retention"
         set_flag --election-timeout   5000 "--heartbeat-interval"
         set_cpu "${ETCD_CPU}"
-        set_memory "${ETCD_CPU}" "${ETCD_MEM}"
-        echo "DONE: etcd quota=8GB auto-compact=5m heartbeat=500ms election=5s mem=${ETCD_MEM} cpu=${ETCD_CPU}"
+        set_memory "${ETCD_CPU}" "${ETCD_MEMORY}"
+        echo "DONE: etcd quota=8GB auto-compact=5m heartbeat=500ms election=5s mem=${ETCD_MEMORY} cpu=${ETCD_CPU}"
         ;;
       *) echo "ERROR: unknown component $COMP"; exit 1 ;;
     esac
@@ -548,7 +548,7 @@ spec:
         "${COMP}" "${APISERVER_CPU}" "${APISERVER_MEMORY}" \
         "${APISERVER_MAX_INFLIGHT}" "${APISERVER_MAX_MUTATING_INFLIGHT}" \
         "${CONTROLLER_MANAGER_CPU}" "${CONTROLLER_MANAGER_MEMORY}" \
-        "${SCHEDULER_CPU}" "${SCHEDULER_MEMORY}" "${ETCD_CPU}" "${ETCD_MEM}"
+        "${SCHEDULER_CPU}" "${SCHEDULER_MEMORY}" "${ETCD_CPU}" "${ETCD_MEMORY}"
       wait_api
       wait_pod_ready "${LABEL}" 60
     }
@@ -560,7 +560,7 @@ spec:
     info "Ensuring apiserver is fully stable before patching etcd..."
     wait_pod_ready "component=kube-apiserver" 20
 
-    patch_component etcd               "etcd                    (quota=8GB, heartbeat=500ms, ${ETCD_CPU}, ${ETCD_MEM})"
+    patch_component etcd               "etcd                    (quota=8GB, heartbeat=500ms, ${ETCD_CPU}, ${ETCD_MEMORY})"
 
     kubectl wait --for=condition=Ready node/"${NODE_NAME}" --timeout=120s 2>/dev/null || true
 
@@ -602,7 +602,9 @@ spec:
         fi
         sleep 3
       done
-      [[ "${SA_OK}" == "false" ]] && fail "default SA not created in ${TEST_NS} after $((SECONDS - SA_START))s"
+      if [[ "${SA_OK}" == "false" ]]; then
+        fail "default SA not created in ${TEST_NS} after $((SECONDS - SA_START))s"
+      fi
       kubectl delete namespace "${TEST_NS}" --wait=false 2>/dev/null || true
     else
       fail "Could not create probe namespace ${TEST_NS}; skipping ServiceAccount controller check"
@@ -625,7 +627,7 @@ spec:
     echo "  scheduler ......... qps=100  burst=200  cpu=${SCHEDULER_CPU}  mem=${SCHEDULER_MEMORY}"
     echo "  controller-manager  qps=100  burst=200  cpu=${CONTROLLER_MANAGER_CPU}  mem=${CONTROLLER_MANAGER_MEMORY}"
     echo "  apiserver ......... inflight=${APISERVER_MAX_INFLIGHT}/${APISERVER_MAX_MUTATING_INFLIGHT}  event-ttl=30m  cpu=${APISERVER_CPU}  mem=${APISERVER_MEMORY}"
-    echo "  etcd .............. quota=8GB  auto-compact=5m  heartbeat=500ms  election=5s  cpu=${ETCD_CPU}  mem=${ETCD_MEM}"
+    echo "  etcd .............. quota=8GB  auto-compact=5m  heartbeat=500ms  election=5s  cpu=${ETCD_CPU}  mem=${ETCD_MEMORY}"
     echo ""
     kubectl get pods -n kube-system -l tier=control-plane -o wide 2>/dev/null || \
       kubectl get pods -n kube-system | grep -E "apiserver|etcd|scheduler|controller-manager" || true
