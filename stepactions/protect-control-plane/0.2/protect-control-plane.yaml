@@ -413,7 +413,11 @@ spec:
     # ── 1b. Metrics-server + CoreDNS HA ─────────────────────────────
     section "Metrics-server & CoreDNS"
 
-    kubectl apply -f https://github.com/kubernetes-sigs/metrics-server/releases/latest/download/components.yaml
+    if kubectl apply -f https://github.com/kubernetes-sigs/metrics-server/releases/latest/download/components.yaml; then
+      ok "Metrics-server installed"
+    else
+      fail "Metrics-server installation failed; continuing with control-plane hardening"
+    fi
     kubectl patch deployment metrics-server -n kube-system --type=json \
       -p='[{"op":"add","path":"/spec/template/spec/containers/0/args/-","value":"--kubelet-insecure-tls"}]' 2>/dev/null || true
 
@@ -425,7 +429,7 @@ spec:
         {"op":"replace","path":"/spec/template/spec/containers/0/resources/requests/cpu","value":"200m"}
       ]' 2>/dev/null || true
     fi
-    ok "Metrics-server installed.  CoreDNS: ${COREDNS_REPLICAS} replicas, 512Mi."
+    ok "CoreDNS: ${COREDNS_REPLICAS} replicas, 512Mi."
 
     # ================================================================
     #  Phase 2 – Control-Plane Hardening
@@ -588,18 +592,21 @@ spec:
 
     section "Verifying ServiceAccount controller"
     TEST_NS="cp-probe-$(date +%s)"
-    kubectl create namespace "${TEST_NS}" --dry-run=client -o yaml | kubectl apply -f - 2>/dev/null
-    SA_OK=false
-    SA_START=$SECONDS
-    for i in $(seq 1 60); do
-      if kubectl get serviceaccount default -n "${TEST_NS}" &>/dev/null; then
-        ok "default SA created in ${TEST_NS} ($((SECONDS - SA_START))s) — SA controller is healthy"
-        SA_OK=true; break
-      fi
-      sleep 3
-    done
-    [[ "${SA_OK}" == "false" ]] && fail "default SA not created in ${TEST_NS} after $((SECONDS - SA_START))s"
-    kubectl delete namespace "${TEST_NS}" --wait=false 2>/dev/null || true
+    if kubectl create namespace "${TEST_NS}" --dry-run=client -o yaml | kubectl apply -f - 2>/dev/null; then
+      SA_OK=false
+      SA_START=$SECONDS
+      for i in $(seq 1 60); do
+        if kubectl get serviceaccount default -n "${TEST_NS}" &>/dev/null; then
+          ok "default SA created in ${TEST_NS} ($((SECONDS - SA_START))s) — SA controller is healthy"
+          SA_OK=true; break
+        fi
+        sleep 3
+      done
+      [[ "${SA_OK}" == "false" ]] && fail "default SA not created in ${TEST_NS} after $((SECONDS - SA_START))s"
+      kubectl delete namespace "${TEST_NS}" --wait=false 2>/dev/null || true
+    else
+      fail "Could not create probe namespace ${TEST_NS}; skipping ServiceAccount controller check"
+    fi
 
     section "Verifying node readiness"
     if kubectl wait --for=condition=Ready node/"${NODE_NAME}" --timeout=60s 2>/dev/null; then
@@ -621,7 +628,7 @@ spec:
     echo "  etcd .............. quota=8GB  auto-compact=5m  heartbeat=500ms  election=5s  cpu=${ETCD_CPU}  mem=${ETCD_MEM}"
     echo ""
     kubectl get pods -n kube-system -l tier=control-plane -o wide 2>/dev/null || \
-      kubectl get pods -n kube-system | grep -E "apiserver|etcd|scheduler|controller-manager"
+      kubectl get pods -n kube-system | grep -E "apiserver|etcd|scheduler|controller-manager" || true
     kubectl get node "${NODE_NAME}" 2>/dev/null || true
 
     exit ${STEP_EXIT}
