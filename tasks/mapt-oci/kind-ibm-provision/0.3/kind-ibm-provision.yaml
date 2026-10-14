@@ -107,11 +107,11 @@ spec:
     - name: apiserver-cpu
       type: string
       default: "2000m"
-      description: CPU request and limit for the kube-apiserver container.
+      description: CPU quantity applied to existing kube-apiserver resource fields; missing request or limit fields are not created.
     - name: apiserver-memory
       type: string
       default: "4Gi"
-      description: Memory request and limit for the kube-apiserver container.
+      description: Memory quantity applied to existing kube-apiserver resource fields; if no memory field exists, one is added, but missing request or limit fields are not guaranteed to be created.
     - name: apiserver-max-inflight
       type: string
       default: "800"
@@ -123,27 +123,27 @@ spec:
     - name: controller-manager-cpu
       type: string
       default: "2000m"
-      description: CPU request and limit for the kube-controller-manager container.
+      description: CPU quantity applied to existing kube-controller-manager resource fields; missing request or limit fields are not created.
     - name: controller-manager-memory
       type: string
       default: "4Gi"
-      description: Memory request and limit for the kube-controller-manager container.
+      description: Memory quantity applied to existing kube-controller-manager resource fields; if no memory field exists, one is added, but missing request or limit fields are not guaranteed to be created.
     - name: scheduler-cpu
       type: string
       default: "2000m"
-      description: CPU request and limit for the kube-scheduler container.
+      description: CPU quantity applied to existing kube-scheduler resource fields; missing request or limit fields are not created.
     - name: scheduler-memory
       type: string
       default: "4Gi"
-      description: Memory request and limit for the kube-scheduler container.
+      description: Memory quantity applied to existing kube-scheduler resource fields; if no memory field exists, one is added, but missing request or limit fields are not guaranteed to be created.
     - name: etcd-cpu
       type: string
       default: "3000m"
-      description: CPU request and limit for the etcd container.
+      description: CPU quantity applied to existing etcd resource fields; missing request or limit fields are not created.
     - name: etcd-memory
       type: string
       default: "8Gi"
-      description: Memory request and limit for the etcd container.
+      description: Memory quantity applied to existing etcd resource fields; if no memory field exists, one is added, but missing request or limit fields are not guaranteed to be created.
     - name: containerd-memory-min
       type: string
       default: "8G"

@@ -38,6 +38,7 @@ spec:
 
   params:
     - name: secret-aws-credentials
+      type: string
       description: |
         K8S secret holding the aws credentials. Secret should be accessible to this task.
 
@@ -53,6 +54,7 @@ spec:
           region: ${region}
           bucket: ${bucket}
     - name: id
+      type: string
       description: A unique identifier for this Kind environment
     - name: catalog-revision
       type: string
@@ -90,71 +92,84 @@ spec:
       description: |
         The UID of the PipelineRun or TaskRun that owns the resources. This ensures proper cleanup.
     - name: arch
+      type: string
+      default: 'x86_64'
       description: |
         The architecture of the instance to launch. Choose between `x86_64` or `arm64`.
-      default: 'x86_64'
     - name: cpus
+      type: string
+      default: '16'
       description: |
         The number of vCPUs to allocate to the virtual machine.
-      default: '16'
     - name: memory
+      type: string
+      default: '64'
       description: |
         The amount of memory (in GiB) to allocate to the virtual machine.
-      default: '64'
     - name: compute-sizes
+      type: string
+      default: ''
       description: |
         Comma-separated list of compute sizes, e.g.: `m5a.large,m6a.large` (takes presendence over `arch`, `cpus` and `memory`)
-      default: ''
     - name: nested-virt
+      type: string
+      default: 'false'
       description: |
         Enables nested virtualization if set to `true`. Useful for running Kind inside a VM.
-      default: 'false'
     - name: spot
+      type: string
+      default: 'true'
       description: |
         Use spot instances to potentially reduce costs. Set to `true` to enable.
-      default: 'true'
     - name: spot-increase-rate
+      type: string
+      default: '20'
       description: |
         Adds a percentage to the base spot price to improve chances of getting the instance.
-      default: '20'
     - name: spot-eviction-tolerance
+      type: string
+      default: 'lowest'
       description: |
         if spot is enable we can define the minimum tolerance level of eviction.
         Allowed value are: lowest, low, medium, high or highest
-      default: 'lowest'
     - name: version
+      type: string
+      default: 'v1.32'
       description: |
         The desired Kubernetes version for the Kind cluster. If left blank, the latest stable version will be used.
-      default: 'v1.32'
     - name: tags
-      description: AWS resource tags. Tags iac=mapt and k8s-type=kind are added automatically.
+      type: string
       default: ""
+      description: AWS resource tags. Tags iac=mapt and k8s-type=kind are added automatically.
     - name: debug
+      type: string
+      default: 'false'
       description: |
         Enables verbose logging and prints sensitive data like credentials.
         Only use this for debugging in secure environments.
-      default: 'false'
     - name: timeout
-      description: Auto-destroy timeout
+      type: string
       default: ""
+      description: Auto-destroy timeout
     - name: oci-ref
       type: string
       description: Full OCI artifact reference in a format "quay.io/org/repo:tag. It's used for storing logs from the Task's Steps
     - name: oci-credentials
       type: string
+      default: "konflux-test-infra"
       description: |
         The secret name containing credentials for container registry where the artifacts will be stored.
         The secret should contain `data.oci-storage-dockerconfigjson: <dockerconfigjson-content>`
-      default: "konflux-test-infra"
     - name: extra-port-mappings
       type: string
+      default: ""
       description: |
         Additional port mappings for the Kind cluster. Value should be a JSON array of objects with containerPort, hostPort, and protocol properties.
         Example: '[{\"containerPort\":30012,\"hostPort\":8180,\"protocol\":\"TCP\"}, {\"containerPort\":30013,\"hostPort\":8280,\"protocol\":\"TCP\"}]'
-      default: ""
 
     - name: harden-control-plane
       type: string
+      default: 'false'
       description: |
         Enable control-plane hardening for the Kind cluster.
         When set to `true`, the provisioned cluster's scheduler, controller-manager,
@@ -163,15 +178,14 @@ spec:
 
         Defaults are sized for 32 vCPUs / 64 GiB. Override the resource-tuning
         parameters for smaller profiles such as 24 vCPUs / 48 GiB.
-      default: 'false'
     - name: apiserver-cpu
       type: string
       default: "2000m"
-      description: CPU request and limit for the kube-apiserver container.
+      description: CPU quantity applied to existing kube-apiserver resource fields; missing request or limit fields are not created.
     - name: apiserver-memory
       type: string
       default: "4Gi"
-      description: Memory request and limit for the kube-apiserver container.
+      description: Memory quantity applied to existing kube-apiserver resource fields; if no memory field exists, one is added, but missing request or limit fields are not guaranteed to be created.
     - name: apiserver-max-inflight
       type: string
       default: "800"
@@ -183,27 +197,27 @@ spec:
     - name: controller-manager-cpu
       type: string
       default: "2000m"
-      description: CPU request and limit for the kube-controller-manager container.
+      description: CPU quantity applied to existing kube-controller-manager resource fields; missing request or limit fields are not created.
     - name: controller-manager-memory
       type: string
       default: "4Gi"
-      description: Memory request and limit for the kube-controller-manager container.
+      description: Memory quantity applied to existing kube-controller-manager resource fields; if no memory field exists, one is added, but missing request or limit fields are not guaranteed to be created.
     - name: scheduler-cpu
       type: string
       default: "2000m"
-      description: CPU request and limit for the kube-scheduler container.
+      description: CPU quantity applied to existing kube-scheduler resource fields; missing request or limit fields are not created.
     - name: scheduler-memory
       type: string
       default: "4Gi"
-      description: Memory request and limit for the kube-scheduler container.
+      description: Memory quantity applied to existing kube-scheduler resource fields; if no memory field exists, one is added, but missing request or limit fields are not guaranteed to be created.
     - name: etcd-cpu
       type: string
       default: "3000m"
-      description: CPU request and limit for etcd.
+      description: CPU quantity applied to existing etcd resource fields; missing request or limit fields are not created.
     - name: etcd-memory
       type: string
       default: "8Gi"
-      description: Memory request and limit for etcd.
+      description: Memory quantity applied to existing etcd resource fields; if no memory field exists, one is added, but missing request or limit fields are not guaranteed to be created.
     - name: containerd-memory-min
       type: string
       default: "8G"

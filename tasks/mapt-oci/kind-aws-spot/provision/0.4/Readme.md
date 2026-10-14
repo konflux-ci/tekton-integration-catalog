@@ -59,6 +59,23 @@ This task provisions a single-node Kubernetes cluster on AWS using Mapt. It outp
 | `oci-credentials`             | The secret name containing credentials for container registry where the artifacts will be stored. The secret should contain `data.oci-storage-dockerconfigjson: <dockerconfigjson-content>` | -    | ✅       |
 | `extra-port-mappings`             | Additional port mappings for the Kind cluster. Value should be a JSON array of objects with containerPort, hostPort, and protocol properties. Example: '[{\"containerPort\":30012,\"hostPort\":8180,\"protocol\":\"TCP\"}, {\"containerPort\":30013,\"hostPort\":8280,\"protocol\":\"TCP\"}]'  | `''`    | ❌       |
 | `harden-control-plane`       | Enable control-plane hardening (increased resource limits). | `false` | ❌       |
+| `apiserver-cpu` | kube-apiserver CPU quantity applied to existing resource fields; missing requests or limits are not created. | `2000m` | ❌ |
+| `apiserver-memory` | kube-apiserver memory quantity applied to existing fields; an entry is added only when none exists, without guaranteeing both requests and limits. | `4Gi` | ❌ |
+| `apiserver-max-inflight` | Maximum concurrent non-mutating API requests. | `800` | ❌ |
+| `apiserver-max-mutating-inflight` | Maximum concurrent mutating API requests. | `400` | ❌ |
+| `controller-manager-cpu` | kube-controller-manager CPU quantity applied to existing resource fields; missing requests or limits are not created. | `2000m` | ❌ |
+| `controller-manager-memory` | kube-controller-manager memory quantity applied to existing fields; an entry is added only when none exists, without guaranteeing both requests and limits. | `4Gi` | ❌ |
+| `scheduler-cpu` | kube-scheduler CPU quantity applied to existing resource fields; missing requests or limits are not created. | `2000m` | ❌ |
+| `scheduler-memory` | kube-scheduler memory quantity applied to existing fields; an entry is added only when none exists, without guaranteeing both requests and limits. | `4Gi` | ❌ |
+| `etcd-cpu` | etcd CPU quantity applied to existing resource fields; missing requests or limits are not created. | `3000m` | ❌ |
+| `etcd-memory` | etcd memory quantity applied to existing fields; an entry is added only when none exists, without guaranteeing both requests and limits. | `8Gi` | ❌ |
+| `containerd-memory-min` | containerd systemd memory reservation. | `8G` | ❌ |
+| `containerd-gomaxprocs` | containerd Go runtime parallelism. | `8` | ❌ |
+| `containerd-gomemlimit` | containerd Go runtime memory limit. | `12GiB` | ❌ |
+| `containerd-max-concurrent-downloads` | Maximum concurrent image downloads. | `50` | ❌ |
+| `max-pods` | Maximum pods allowed on the node. | `350` | ❌ |
+| `max-parallel-image-pulls` | Maximum concurrent kubelet image pulls. | `15` | ❌ |
+| `coredns-replicas` | Number of CoreDNS replicas. | `3` | ❌ |
 
 ---
 

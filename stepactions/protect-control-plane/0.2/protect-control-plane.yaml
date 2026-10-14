@@ -44,19 +44,19 @@ spec:
     - name: etcd-cpu
       type: string
       default: "3000m"
-      description: CPU request/limit for etcd.
+      description: CPU quantity applied to existing etcd resource fields; missing request or limit fields are not created.
     - name: etcd-memory
       type: string
       default: "8Gi"
-      description: Memory request/limit for etcd.
+      description: Memory quantity applied to existing etcd resource fields; if no memory field exists, one is added, but missing request or limit fields are not guaranteed to be created.
     - name: apiserver-cpu
       type: string
       default: "2000m"
-      description: CPU request and limit for the kube-apiserver container.
+      description: CPU quantity applied to existing kube-apiserver resource fields; missing request or limit fields are not created.
     - name: apiserver-memory
       type: string
       default: "4Gi"
-      description: Memory request and limit for the kube-apiserver container.
+      description: Memory quantity applied to existing kube-apiserver resource fields; if no memory field exists, one is added, but missing request or limit fields are not guaranteed to be created.
     - name: apiserver-max-inflight
       type: string
       default: "800"
@@ -68,19 +68,19 @@ spec:
     - name: controller-manager-cpu
       type: string
       default: "2000m"
-      description: CPU request and limit for the kube-controller-manager container.
+      description: CPU quantity applied to existing kube-controller-manager resource fields; missing request or limit fields are not created.
     - name: controller-manager-memory
       type: string
       default: "4Gi"
-      description: Memory request and limit for the kube-controller-manager container.
+      description: Memory quantity applied to existing kube-controller-manager resource fields; if no memory field exists, one is added, but missing request or limit fields are not guaranteed to be created.
     - name: scheduler-cpu
       type: string
       default: "2000m"
-      description: CPU request and limit for the kube-scheduler container.
+      description: CPU quantity applied to existing kube-scheduler resource fields; missing request or limit fields are not created.
     - name: scheduler-memory
       type: string
       default: "4Gi"
-      description: Memory request and limit for the kube-scheduler container.
+      description: Memory quantity applied to existing kube-scheduler resource fields; if no memory field exists, one is added, but missing request or limit fields are not guaranteed to be created.
     - name: containerd-memory-min
       type: string
       default: "8G"
@@ -277,8 +277,9 @@ spec:
 
     validate_param() {
       local NAME="$1" VALUE="$2" PATTERN="$3"
+      local EXPECTED="${4:-a numeric value or resource quantity}"
       if [[ ! "${VALUE}" =~ ${PATTERN} ]]; then
-        fail "Invalid value for ${NAME}; expected a numeric value or resource quantity."
+        fail "Invalid value for ${NAME}; expected ${EXPECTED}."
         exit 1
       fi
     }
@@ -298,6 +299,7 @@ spec:
     done
     validate_param CONTAINERD_MEMORY_MIN "${CONTAINERD_MEMORY_MIN}" '^[0-9]+([.][0-9]+)?(K|M|G|T|P|Ki|Mi|Gi|Ti)?$'
     validate_param CONTAINERD_GOMEMLIMIT "${CONTAINERD_GOMEMLIMIT}" '^[0-9]+(B|KiB|MiB|GiB|TiB)$'
+    validate_param NODE_NAME "${NODE_NAME}" '^[a-z0-9]([-a-z0-9]*[a-z0-9])?(\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*$' 'an RFC 1123 DNS subdomain'
 
     # ── Pre-flight checks ──────────────────────────────────────────────
     info "KUBECONFIG=${KUBECONFIG}"
@@ -465,7 +467,8 @@ spec:
       fi
     }
 
-    # Idempotent resource helpers for the static-pod container resources.
+    # Update existing CPU/memory fields; these helpers do not guarantee that
+    # both requests and limits exist in each static-pod manifest.
     set_cpu()    { sed -i -E "s/(^[[:space:]]*cpu:[[:space:]]*)[0-9]+([.][0-9]+)?m?/\\1$1/" "$M"; }
     set_memory() {
       local CPU="$1" MEMORY="$2"
@@ -518,7 +521,7 @@ spec:
         # Increase heartbeat/election timeouts to prevent "request timed out"
         # under burst workloads. Defaults (100ms/1000ms) are too aggressive
         # when etcd is I/O saturated by heavy E2E traffic.
-        set_flag --heartbeat-interval 500 "--auto-compaction"
+        set_flag --heartbeat-interval 500 "--auto-compaction-retention"
         set_flag --election-timeout   5000 "--heartbeat-interval"
         set_cpu "${ETCD_CPU}"
         set_memory "${ETCD_CPU}" "${ETCD_MEM}"
