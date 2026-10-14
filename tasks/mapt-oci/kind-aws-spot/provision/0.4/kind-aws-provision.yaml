@@ -58,15 +58,15 @@ spec:
       description: A unique identifier for this Kind environment
     - name: catalog-revision
       type: string
-      default: main
+      default: "main"
       description: Git revision from which nested StepActions are resolved.
     - name: catalog-url
       type: string
-      default: https://github.com/konflux-ci/tekton-integration-catalog.git
+      default: "https://github.com/konflux-ci/tekton-integration-catalog.git"
       description: Git repository URL from which nested StepActions are resolved.
     - name: cluster-access-secret-name
       type: string
-      default: $(context.pipelineRun.name)
+      default: "$(context.pipelineRun.name)"
       description: |
         (Optional) The name to assign to the Kubernetes Secret that will store
         the kubeconfig for the created cluster. If not specified, a name will be auto-generated.
@@ -79,7 +79,7 @@ spec:
         If left empty, no SSH credentials secret will be created.
     - name: ownerKind
       type: string
-      default: PipelineRun
+      default: "PipelineRun"
       description: |
         The type of Tekton resource (e.g., PipelineRun or TaskRun) that should own the kubeconfig Secret.
         Deleting this owner will also delete the Secret automatically.
@@ -93,48 +93,48 @@ spec:
         The UID of the PipelineRun or TaskRun that owns the resources. This ensures proper cleanup.
     - name: arch
       type: string
-      default: 'x86_64'
+      default: "x86_64"
       description: |
         The architecture of the instance to launch. Choose between `x86_64` or `arm64`.
     - name: cpus
       type: string
-      default: '16'
+      default: "16"
       description: |
         The number of vCPUs to allocate to the virtual machine.
     - name: memory
       type: string
-      default: '64'
+      default: "64"
       description: |
         The amount of memory (in GiB) to allocate to the virtual machine.
     - name: compute-sizes
       type: string
-      default: ''
+      default: ""
       description: |
         Comma-separated list of compute sizes, e.g.: `m5a.large,m6a.large` (takes presendence over `arch`, `cpus` and `memory`)
     - name: nested-virt
       type: string
-      default: 'false'
+      default: "false"
       description: |
         Enables nested virtualization if set to `true`. Useful for running Kind inside a VM.
     - name: spot
       type: string
-      default: 'true'
+      default: "true"
       description: |
         Use spot instances to potentially reduce costs. Set to `true` to enable.
     - name: spot-increase-rate
       type: string
-      default: '20'
+      default: "20"
       description: |
         Adds a percentage to the base spot price to improve chances of getting the instance.
     - name: spot-eviction-tolerance
       type: string
-      default: 'lowest'
+      default: "lowest"
       description: |
         if spot is enable we can define the minimum tolerance level of eviction.
         Allowed value are: lowest, low, medium, high or highest
     - name: version
       type: string
-      default: 'v1.32'
+      default: "v1.32"
       description: |
         The desired Kubernetes version for the Kind cluster. If left blank, the latest stable version will be used.
     - name: tags
@@ -143,7 +143,7 @@ spec:
       description: AWS resource tags. Tags iac=mapt and k8s-type=kind are added automatically.
     - name: debug
       type: string
-      default: 'false'
+      default: "false"
       description: |
         Enables verbose logging and prints sensitive data like credentials.
         Only use this for debugging in secure environments.
@@ -169,7 +169,7 @@ spec:
 
     - name: harden-control-plane
       type: string
-      default: 'false'
+      default: "false"
       description: |
         Enable control-plane hardening for the Kind cluster.
         When set to `true`, the provisioned cluster's scheduler, controller-manager,

@@ -269,12 +269,6 @@ spec:
       fail "API unreachable after $((SECONDS - START))s"
     }
 
-    # ── Gate ────────────────────────────────────────────────────────────
-    if [[ "${HARDEN}" != "true" ]]; then
-      info "Control-plane hardening is disabled (harden-control-plane=${HARDEN}). Skipping."
-      exit 0
-    fi
-
     validate_param() {
       local NAME="$1" VALUE="$2" PATTERN="$3"
       local EXPECTED="${4:-a numeric value or resource quantity}"
@@ -283,6 +277,12 @@ spec:
         exit 1
       fi
     }
+
+    # ── Gate ────────────────────────────────────────────────────────────
+    if [[ "${HARDEN}" != "true" ]]; then
+      info "Control-plane hardening is disabled (harden-control-plane=${HARDEN}). Skipping."
+      exit 0
+    fi
 
     # Validate the values before passing them to scripts executed on the node.
     # The strict formats also exclude shell metacharacters and line breaks.
@@ -481,7 +481,7 @@ spec:
 
     case "$COMP" in
       scheduler)
-        set_flag --kube-api-qps  100 "--leader-elect"
+        set_flag --kube-api-qps  100 "--leader-elect=true"
         set_flag --kube-api-burst 200 "--kube-api-qps"
         if ! grep -q "leader-elect-lease-duration" "$M"; then
           sed -i '/--leader-elect=true/a\    - --leader-elect-lease-duration=60s\n    - --leader-elect-renew-deadline=45s\n    - --leader-elect-retry-period=5s' "$M"
