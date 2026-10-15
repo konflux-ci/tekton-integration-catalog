@@ -95,6 +95,7 @@ spec:
           - {name: coredns-replicas, value: "2"}
           - {name: backed-url, value: s3://konflux-mapt-state/mapt/kind/$(tasks.generate-cluster-id.results.cluster-id)}
           # IBM Cloud tag values cannot contain '@'; owner abbreviates konflux-devprod@redhat.com.
+          # yamllint disable-line rule:commas
           - {name: tags, value: owner=konflux-devprod,project=Konflux,created-by=integration-pipeline,component=tekton-integration-catalog,pipelinerun=$(context.pipelineRun.name)}
           - {name: ownerKind, value: PipelineRun}
           - {name: ownerName, value: $(context.pipelineRun.name)}
