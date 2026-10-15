@@ -12,7 +12,7 @@ metadata:
     tekton.dev/tags: infrastructure, aws, kind
     tekton.dev/displayName: "Kind Cloud Single Node - Create"
     tekton.dev/platforms: "linux/amd64, linux/arm64"
-    mapt/version: "0.14.5"
+    mapt/version: "0.14.6"
 spec:
   description: |
     Creates a single-node Kubernetes cluster using Kind on AWS, powered by the Mapt CLI.
@@ -53,6 +53,7 @@ spec:
           secret-key: ${secret_key}
           region: ${region}
           bucket: ${bucket}
+          vpc-id: ${vpc_id}
     - name: id
       type: string
       description: A unique identifier for this Kind environment
