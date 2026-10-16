@@ -38,15 +38,19 @@ Run the script with the `--dry-run` or `-d` flag. This will list all resources i
 
 ### IBM Cloud VPC cleanup
 
-`delete-mapt-ibmcloud-resources.sh` removes IBM Cloud VPC resources carrying
-the `iac:mapt` and `k8s-type:kind` tags. The periodic sweep uses a 24-hour
-minimum age, matching the AWS cleanup threshold. It deletes VPC address prefixes
-only through matching old, mapt-tagged VPCs, then deletes eligible resource
-groups last. Sweep mode skips a group if its tagged VPC is too new or a tagged
-instance in the group is too new or still exists after deletion is requested.
-If an instance lacks MAPT tags, sweep includes it only when a tagged MAPT
-resource identifies its non-default resource group and the instance name
-matches that group.
+`delete-mapt-ibmcloud-resources.sh` identifies non-default per-instance
+resource groups from MAPT-tagged resources, then inventories the supported VPC
+resources in those groups, including resources without MAPT tags. The periodic
+sweep uses a 24-hour minimum age, matching the AWS cleanup threshold. If any
+inventoried VPC resource in a group is too new, the sweep defers that whole
+group. A MAPT-owned instance with `failed` status bypasses the age check for its
+group. Deletion proceeds in dependency order: instances, subnets, public
+gateways, floating IPs, security groups and keys, address prefixes, VPCs, then
+resource groups. The script waits for subnet and gateway deletion requests to
+finish before removing dependent resources. It leaves each VPC's default
+security group for VPC deletion. The initial plan summarizes eligible resources
+before deletion; the execution summary reports accepted and failed delete
+requests and groups protected during the run.
 
 Use `--region REGION` to select the IBM Cloud region; it defaults to `us-south`.
 
