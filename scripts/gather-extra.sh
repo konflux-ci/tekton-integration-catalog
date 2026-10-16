@@ -78,6 +78,7 @@ queue ${ARTIFACT_DIR}/applications_appstudio.json  oc --insecure-skip-tls-verify
 queue ${ARTIFACT_DIR}/buildpipelineselectors.json  oc --insecure-skip-tls-verify --request-timeout=5s get buildpipelineselectors.appstudio.redhat.com --all-namespaces -o json
 queue ${ARTIFACT_DIR}/componentdetectionqueries.json  oc --insecure-skip-tls-verify --request-timeout=5s get componentdetectionqueries.appstudio.redhat.com --all-namespaces -o json
 queue ${ARTIFACT_DIR}/components.json  oc --insecure-skip-tls-verify --request-timeout=5s get components.appstudio.redhat.com --all-namespaces -o json
+queue ${ARTIFACT_DIR}/components_konflux-ci.json  oc --insecure-skip-tls-verify --request-timeout=5s get components.konflux-ci.dev --all-namespaces -o json
 queue ${ARTIFACT_DIR}/deploymenttargetclaims.json  oc --insecure-skip-tls-verify --request-timeout=5s get deploymenttargetclaims.appstudio.redhat.com --all-namespaces -o json
 queue ${ARTIFACT_DIR}/deploymenttargetclasses.json  oc --insecure-skip-tls-verify --request-timeout=5s get deploymenttargetclasses.appstudio.redhat.com --all-namespaces -o json
 queue ${ARTIFACT_DIR}/deploymenttargets.json  oc --insecure-skip-tls-verify --request-timeout=5s get deploymenttargets.appstudio.redhat.com --all-namespaces -o json
@@ -99,6 +100,7 @@ queue ${ARTIFACT_DIR}/spiaccesstokens.json  oc --insecure-skip-tls-verify --requ
 queue ${ARTIFACT_DIR}/spifilecontentrequests.json  oc --insecure-skip-tls-verify --request-timeout=5s get spifilecontentrequests.appstudio.redhat.com --all-namespaces -o json
 queue ${ARTIFACT_DIR}/remotesecrets.json oc --insecure-skip-tls-verify --request-timeout=5s get remotesecrets.appstudio.redhat.com --all-namespaces -o json
 queue ${ARTIFACT_DIR}/imagerepositories.json  oc --insecure-skip-tls-verify --request-timeout=5s get imagerepositories.appstudio.redhat.com --all-namespaces -o json
+queue ${ARTIFACT_DIR}/imagerepositories_konflux-ci.json  oc --insecure-skip-tls-verify --request-timeout=5s get imagerepositories.konflux-ci.dev --all-namespaces -o json
 
 # JBS resources (jvm-build-service)
 queue ${ARTIFACT_DIR}/artifactbuilds.json  oc --insecure-skip-tls-verify --request-timeout=5s get artifactbuilds.jvmbuildservice.io --all-namespaces -o json
