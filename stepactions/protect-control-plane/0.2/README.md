@@ -1,9 +1,10 @@
 # protect-control-plane StepAction
 
-Configures a KinD node for burst E2E workloads. When enabled, it tunes
-containerd and kubelet settings, installs metrics-server, scales CoreDNS, and
-patches the Kubernetes control-plane components. Hardening is disabled by
-default; set `harden-control-plane` to `"true"` to apply the configuration.
+Configures a KinD node for burst E2E workloads. When enabled, it waits for
+cluster readiness, patches etcd first, then tunes the other control-plane
+components. It next restarts containerd and kubelet, waits for recovery, and
+configures metrics-server and CoreDNS. Hardening is disabled by default; set
+`harden-control-plane` to `"true"` to apply the configuration.
 
 ## Parameters
 
