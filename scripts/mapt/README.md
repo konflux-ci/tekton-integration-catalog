@@ -46,11 +46,12 @@ inventoried VPC resource in a group is too new, the sweep defers that whole
 group. A MAPT-owned instance with `failed` status bypasses the age check for its
 group. Deletion proceeds in dependency order: instances, subnets, public
 gateways, floating IPs, security groups and keys, address prefixes, VPCs, then
-resource groups. The script waits for subnet and gateway deletion requests to
-finish before removing dependent resources. It leaves each VPC's default
-security group for VPC deletion. The initial plan summarizes eligible resources
-before deletion; the execution summary reports accepted and failed delete
-requests and groups protected during the run.
+resource groups. In sweep mode, the script polls instance deletion every 30
+seconds for up to two minutes, and waits for subnet and gateway deletion
+requests to finish before removing dependent resources. It leaves each VPC's
+default security group for VPC deletion. The initial plan summarizes eligible
+resources before deletion; the execution summary reports accepted and failed
+delete requests and groups protected during the run.
 
 Use `--region REGION` to select the IBM Cloud region; it defaults to `us-south`.
 

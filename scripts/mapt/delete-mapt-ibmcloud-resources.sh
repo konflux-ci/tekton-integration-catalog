@@ -229,13 +229,15 @@ wait_for_resource_removal() {
   local list_command="$2"
   local submitted_map_name="$3"
   local pending_group_map_name="$4"
+  local poll_interval="${5:-5}"
+  local max_attempts="${6:-12}"
   local -n submitted_map="$submitted_map_name"
   local -n pending_group_map="$pending_group_map_name"
   local attempt current_resources current_ids id resource_group_id pending_count verification_failed=false
 
   [[ ${#submitted_map[@]} -gt 0 ]] || return 0
   echo "  Waiting for $resource_type deletion to propagate..."
-  for attempt in {1..12}; do
+  for ((attempt = 1; attempt <= max_attempts; attempt++)); do
     if ! current_resources=$(ibmcloud is "$list_command" --output json) ||
        ! current_ids=$(jq -er '[.[].id]' <<< "$current_resources"); then
       echo "  ERROR: failed to verify $resource_type deletion; protecting affected resource groups" >&2
@@ -264,7 +266,7 @@ wait_for_resource_removal() {
       fi
     done
     [[ "$pending_count" -eq 0 ]] && break
-    [[ "$attempt" -eq 12 ]] || sleep 5
+    [[ "$attempt" -eq "$max_attempts" ]] || sleep "$poll_interval"
   done
 
   if [[ "$verification_failed" == "false" ]]; then
@@ -559,7 +561,7 @@ fi
 ERRORS=0
 BLOCKED_RESOURCE_GROUP_IDS='[]'
 PROTECT_ALL_SWEEP_RESOURCES=false
-declare -A PROTECTED_RESOURCE_GROUP_IDS=() SUBMITTED_INSTANCE_GROUP_IDS=()
+declare -A PROTECTED_RESOURCE_GROUP_IDS=() SUBMITTED_INSTANCE_GROUP_IDS=() PENDING_INSTANCE_GROUP_IDS=()
 declare -A FAILED_INSTANCE_GROUP_IDS=()
 declare -A VPC_PREFIX_INVENTORIES=() VPC_PREFIX_INVENTORY_LOADED=()
 declare -A PROTECTED_RESOURCE_GROUP_REASONS=()
@@ -707,23 +709,14 @@ while IFS=$'\t' read -r id name created_at resource_group_id status; do
   fi
 done < <(echo "$MATCHING_INSTANCES" | jq -r '.[] | [.id, .name, .created_at, (.resource_group.id // .resource_group_id // ""), (.status // "")] | @tsv')
 
-# Wait for instance deletion to propagate before cleaning dependent resources
+# Wait for instance deletion to propagate before cleaning dependent resources.
+# Sweep mode polls immediately and then every 30 seconds for up to two minutes.
 if [[ "$INSTANCE_DELETE_COUNT" -gt 0 ]]; then
-  echo "  Waiting 30s for instance deletion to propagate..."
-  sleep 30
-  if [[ "$SWEEP" == "true" ]] && ! CURRENT_INSTANCE_IDS=$(ibmcloud is instances --output json | jq -er '[.[].id]'); then
-    echo "  ERROR: failed to verify instance deletion; protecting all sweep resources" >&2
-    PROTECT_ALL_SWEEP_RESOURCES=true
-    ERRORS=$((ERRORS + 1))
-  elif [[ "$SWEEP" == "true" ]]; then
-    for instance_id in "${!SUBMITTED_INSTANCE_GROUP_IDS[@]}"; do
-      if jq -e --arg id "$instance_id" 'index($id) != null' <<< "$CURRENT_INSTANCE_IDS" >/dev/null; then
-        resource_group_id="${SUBMITTED_INSTANCE_GROUP_IDS[$instance_id]}"
-        PROTECTED_RESOURCE_GROUP_IDS["$resource_group_id"]=1
-        echo "  Instance $instance_id is still present; protecting resource group $resource_group_id"
-        ERRORS=$((ERRORS + 1))
-      fi
-    done
+  if [[ "$SWEEP" == "true" ]]; then
+    wait_for_resource_removal "instance" "instances" SUBMITTED_INSTANCE_GROUP_IDS PENDING_INSTANCE_GROUP_IDS 30 5
+  else
+    echo "  Waiting 30s for instance deletion to propagate..."
+    sleep 30
   fi
 fi
 BLOCKED_RESOURCE_GROUP_IDS=$(printf '%s\n' "${!PROTECTED_RESOURCE_GROUP_IDS[@]}" | jq -Rsc 'split("\n") | map(select(length > 0))')
