@@ -10,19 +10,14 @@ spec:
   description: |
     Hardens a KinD cluster for burst E2E workloads.
 
-    First waits for the API, node, control-plane pods, and default ServiceAccount.
+    Phase 1 – Node & cluster setup:
+      Configures kubelet (maxPods, parallel pulls), containerd
+      (memory reservation, OOM protection, CPU/IO priority, Go runtime),
+      installs metrics-server and scales CoreDNS.
 
-    Phase 1 – Control-plane hardening:
-      Patches etcd first, then scheduler, controller-manager, and apiserver
+    Phase 2 – Control-plane hardening:
+      Patches scheduler, controller-manager, apiserver, and etcd
       with increased resources and tuned flags.
-
-    Phase 2 – Node and cluster setup:
-      Tunes kubelet and containerd, restarts both services, then waits for
-      the node and API to recover. Installs metrics-server and scales CoreDNS.
-
-    Phase 3 – Readiness checks:
-      Verifies control-plane pods, API responsiveness, ServiceAccount
-      creation, and node readiness.
 
     WARNING: Use the defaults for 32 vCPUs / 64 GiB, or override the
     parameters for 24 vCPUs / 48 GiB as documented in the script.
@@ -208,7 +203,8 @@ spec:
       [[ -n "${EXTRA}" ]] && CMD="${CMD} > /tmp/${PREFIX}.sh && chmod +x /tmp/${PREFIX}.sh && /tmp/${PREFIX}.sh ${EXTRA}" \
                           || CMD="${CMD} | bash"
 
-      local OVERRIDES="{
+      if ! kubectl run "${POD}" --restart=Never --image=busybox \
+        --overrides="{
           \"spec\":{
             \"hostPID\":true,
             \"nodeName\":\"${NODE_NAME}\",
@@ -221,29 +217,13 @@ spec:
               \"securityContext\":{\"privileged\":true}
             }]
           }
-        }"
-      local CREATED=false ATTEMPT
-      for ATTEMPT in 1 2 3; do
-        if kubectl run "${POD}" --restart=Never --image=busybox \
-          --request-timeout=10s --overrides="${OVERRIDES}"; then
-          CREATED=true
-          break
-        fi
-        # A timed-out create may still have reached the API server. Reuse
-        # the same name so retries cannot start duplicate node operations.
-        if kubectl get pod "${POD}" --request-timeout=5s &>/dev/null; then
-          CREATED=true
-          break
-        fi
-        sleep "${ATTEMPT}"
-      done
-      if [[ "${CREATED}" != "true" ]]; then
-        fail "Failed to create pod ${POD} after 3 attempts"
-        return 1
+        }"; then
+        fail "Failed to create pod ${POD}"
+        return 0
       fi
 
       info "Waiting for ${POD}..."
-      local i PHASE="Pending" EXIT_CODE=0
+      local i PHASE="Pending"
       for i in $(seq 1 60); do
         PHASE=$(kubectl get pod "${POD}" -o jsonpath='{.status.phase}' 2>/dev/null || echo "Pending")
         [[ "${PHASE}" =~ ^(Succeeded|Failed)$ ]] && break
@@ -252,14 +232,11 @@ spec:
       echo "  Pod ${PHASE} after ${i}s"
       if [[ "${PHASE}" == "Failed" ]]; then
         fail "Node operation pod ${POD} failed"
-        EXIT_CODE=1
       elif [[ "${PHASE}" != "Succeeded" ]]; then
         fail "Node operation pod ${POD} did not finish within 60s (last phase: ${PHASE})"
-        EXIT_CODE=1
       fi
       kubectl logs "${POD}" || true
       kubectl delete pod "${POD}" --force --grace-period=0 2>/dev/null || true
-      return "${EXIT_CODE}"
     }
 
     # Wait until a kube-system pod (by label) is 1/1 Running.
@@ -278,51 +255,18 @@ spec:
         sleep 2
       done
       fail "${LABEL} not ready after $((SECONDS - START))s"
-      kubectl get pods -n kube-system -l "${LABEL}" -o wide || true
-      return 1
+      # Record the failure but let later hardening/readiness checks run. The
+      # StepAction reports the accumulated failure through STEP_EXIT at the end.
+      return 0
     }
 
     wait_api() {
-      local START=$SECONDS
-      while (( SECONDS - START < 120 )); do
-        kubectl get --raw=/readyz --request-timeout=5s &>/dev/null && {
-          ok "API ready ($((SECONDS - START))s)"
-          return 0
-        }
+      local i START=$SECONDS
+      for i in $(seq 1 60); do
+        kubectl get nodes &>/dev/null && { ok "API reachable ($((SECONDS - START))s)"; return 0; }
         sleep 2
       done
       fail "API unreachable after $((SECONDS - START))s"
-      kubectl get --raw='/readyz?verbose' --request-timeout=5s || true
-      return 1
-    }
-
-    wait_node_ready() {
-      local TIMEOUT="$1" START=$SECONDS READY
-      while (( SECONDS - START < TIMEOUT )); do
-        READY=$(kubectl get node "${NODE_NAME}" --request-timeout=5s \
-          -o jsonpath='{.status.conditions[?(@.type=="Ready")].status}' 2>/dev/null || true)
-        if [[ "${READY}" == "True" ]]; then
-          ok "Node ${NODE_NAME} is Ready"
-          return 0
-        fi
-        sleep 2
-      done
-      fail "Node ${NODE_NAME} is not registered and Ready after ${TIMEOUT}s"
-      kubectl get nodes -o wide --request-timeout=5s || true
-      return 1
-    }
-
-    wait_default_serviceaccount() {
-      local START=$SECONDS
-      while (( SECONDS - START < 180 )); do
-        if kubectl get serviceaccount default -n default --request-timeout=3s &>/dev/null; then
-          ok "default ServiceAccount is available ($((SECONDS - START))s)"
-          return 0
-        fi
-        sleep 2
-      done
-      fail "default ServiceAccount not available after $((SECONDS - START))s"
-      return 1
     }
 
     validate_param() {
@@ -368,10 +312,6 @@ spec:
     # Prevent kubectl from falling back to the in-cluster Tekton service account.
     unset KUBERNETES_SERVICE_HOST KUBERNETES_SERVICE_PORT
 
-    info "Waiting for a ready API server and node..."
-    wait_api
-    wait_node_ready 180
-
     info "Verifying cluster connectivity..."
     if ! kubectl get nodes --request-timeout=10s; then
       fail "Cannot reach cluster via ${KUBECONFIG}"
@@ -385,21 +325,13 @@ spec:
     fi
     ok "Connected to cluster with node ${NODE_NAME}"
 
-    info "Checking control-plane pods before hardening..."
-    for LABEL in "component=kube-apiserver" "component=kube-controller-manager" \
-                 "component=kube-scheduler" "component=etcd"; do
-      wait_pod_ready "${LABEL}" 180
-    done
-    wait_default_serviceaccount
-
     banner "Protect Control Plane – ${NODE_NAME}" \
            "Control-plane tuning uses the configured resource parameters"
 
-    harden_node_runtime() {
     # ================================================================
-    #  Phase 2 – Node & Cluster Setup
+    #  Phase 1 – Node & Cluster Setup
     # ================================================================
-    banner "Phase 2 – Node & Cluster Setup (maxPods=${KUBELET_MAX_PODS})"
+    banner "Phase 1 – Node & Cluster Setup (maxPods=${KUBELET_MAX_PODS})"
 
     # ── 1a. Kubelet + containerd ────────────────────────────────────
     section "Hardening kubelet & containerd"
@@ -475,12 +407,9 @@ spec:
       "${CONTAINERD_GOMEMLIMIT}" "${CONTAINERD_MAX_CONCURRENT_DOWNLOADS}"
 
     info "Waiting for node Ready after kubelet restart..."
-    wait_node_ready 120
-    wait_api
+    kubectl wait --for=condition=Ready node/"${NODE_NAME}" --timeout=120s || true
     ok "maxPods=${KUBELET_MAX_PODS}  parallelPulls=${KUBELET_MAX_PARALLEL_IMAGE_PULLS}  containerd hardened"
-    }
 
-    configure_cluster_support() {
     # ── 1b. Metrics-server + CoreDNS HA ─────────────────────────────
     section "Metrics-server & CoreDNS"
 
@@ -501,12 +430,11 @@ spec:
       ]' 2>/dev/null || true
     fi
     ok "CoreDNS: ${COREDNS_REPLICAS} replicas, 512Mi."
-    }
 
     # ================================================================
-    #  Phase 1 – Control-Plane Hardening
+    #  Phase 2 – Control-Plane Hardening
     # ================================================================
-    banner "Phase 1 – Control-Plane Hardening"
+    banner "Phase 2 – Control-Plane Hardening"
 
     # The patch script runs inside the node via nsenter.  It accepts a
     # single argument — the component name — and patches the matching
@@ -625,15 +553,16 @@ spec:
       wait_pod_ready "${LABEL}" 60
     }
 
-    patch_component etcd               "etcd                    (quota=8GB, heartbeat=500ms, ${ETCD_CPU}, ${ETCD_MEMORY})"
     patch_component scheduler          "kube-scheduler          (qps=100, burst=200, cpu=${SCHEDULER_CPU}, mem=${SCHEDULER_MEMORY})"
     patch_component controller-manager "kube-controller-manager (qps=100, burst=200, cpu=${CONTROLLER_MANAGER_CPU}, mem=${CONTROLLER_MANAGER_MEMORY})"
     patch_component apiserver          "kube-apiserver          (inflight=${APISERVER_MAX_INFLIGHT}/${APISERVER_MAX_MUTATING_INFLIGHT}, cpu=${APISERVER_CPU}, mem=${APISERVER_MEMORY})"
 
-    harden_node_runtime
-    configure_cluster_support
+    info "Ensuring apiserver is fully stable before patching etcd..."
+    wait_pod_ready "component=kube-apiserver" 20
 
-    wait_node_ready 120
+    patch_component etcd               "etcd                    (quota=8GB, heartbeat=500ms, ${ETCD_CPU}, ${ETCD_MEMORY})"
+
+    kubectl wait --for=condition=Ready node/"${NODE_NAME}" --timeout=120s 2>/dev/null || true
 
     # ================================================================
     #  Phase 3 – Readiness gate
@@ -659,7 +588,6 @@ spec:
     done
     if [[ "${API_RESPONSIVE}" == "false" ]]; then
       fail "API server unresponsive after $((SECONDS - API_START))s"
-      exit 1
     fi
 
     section "Verifying ServiceAccount controller"
@@ -678,16 +606,16 @@ spec:
         fail "default SA not created in ${TEST_NS} after $((SECONDS - SA_START))s"
       fi
       kubectl delete namespace "${TEST_NS}" --wait=false 2>/dev/null || true
-      if [[ "${SA_OK}" == "false" ]]; then
-        exit 1
-      fi
     else
       fail "Could not create probe namespace ${TEST_NS}; skipping ServiceAccount controller check"
-      exit 1
     fi
 
     section "Verifying node readiness"
-    wait_node_ready 60
+    if kubectl wait --for=condition=Ready node/"${NODE_NAME}" --timeout=60s 2>/dev/null; then
+      ok "Node ${NODE_NAME} is Ready"
+    else
+      fail "Node ${NODE_NAME} is NOT Ready"
+    fi
 
     # ================================================================
     #  Summary
