@@ -20,6 +20,13 @@ These scripts perform **irreversible delete operations**. Run them in `--dry-run
 3.  **`jq`:** The command-line JSON processor is required for parsing complex AWS CLI output.
 4.  **`date`:** A version of the `date` utility capable of parsing ISO 8601 timestamps (e.g., GNU `date`, common on Linux/macOS).
 
+#### IBM Cloud cleanup
+
+- **`bash`:** Required to run the cleanup script.
+- **IBM Cloud CLI:** Install Resource Manager support and the `vpc-infrastructure` plugin.
+- **`jq` and GNU `date`:** Required for parsing IBM Cloud output and resource timestamps (`date -d`).
+- **`IBMCLOUD_API_KEY`:** Required, with permission to search, list, and delete MAPT resources in the target region.
+
 ---
 
 ## Usage
@@ -55,9 +62,7 @@ delete requests and groups protected during the run.
 
 Use `--region REGION` to select the IBM Cloud region; it defaults to `us-south`.
 
-Prerequisites are the IBM Cloud CLI with the `vpc-infrastructure` plugin,
-`jq`, and `IBMCLOUD_API_KEY` with permission to list and delete the tagged
-resources in the target region.
+Sweep mode requires `--age-hours HOURS`; the script exits if it is omitted.
 
 ```bash
 ./delete-mapt-ibmcloud-resources.sh --sweep --age-hours 24 --dry-run
