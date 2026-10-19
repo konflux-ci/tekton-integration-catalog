@@ -297,13 +297,19 @@ spec:
     }
 
     wait_node_ready() {
-      local TIMEOUT="$1"
-      if ! kubectl wait --for=condition=Ready "node/${NODE_NAME}" --timeout="${TIMEOUT}s"; then
-        fail "Node ${NODE_NAME} is not Ready after ${TIMEOUT}s"
-        kubectl get node "${NODE_NAME}" -o wide || true
-        return 1
-      fi
-      ok "Node ${NODE_NAME} is Ready"
+      local TIMEOUT="$1" START=$SECONDS READY
+      while (( SECONDS - START < TIMEOUT )); do
+        READY=$(kubectl get node "${NODE_NAME}" --request-timeout=5s \
+          -o jsonpath='{.status.conditions[?(@.type=="Ready")].status}' 2>/dev/null || true)
+        if [[ "${READY}" == "True" ]]; then
+          ok "Node ${NODE_NAME} is Ready"
+          return 0
+        fi
+        sleep 2
+      done
+      fail "Node ${NODE_NAME} is not registered and Ready after ${TIMEOUT}s"
+      kubectl get nodes -o wide --request-timeout=5s || true
+      return 1
     }
 
     wait_default_serviceaccount() {
@@ -362,6 +368,10 @@ spec:
     # Prevent kubectl from falling back to the in-cluster Tekton service account.
     unset KUBERNETES_SERVICE_HOST KUBERNETES_SERVICE_PORT
 
+    info "Waiting for a ready API server and node..."
+    wait_api
+    wait_node_ready 180
+
     info "Verifying cluster connectivity..."
     if ! kubectl get nodes --request-timeout=10s; then
       fail "Cannot reach cluster via ${KUBECONFIG}"
@@ -375,9 +385,6 @@ spec:
     fi
     ok "Connected to cluster with node ${NODE_NAME}"
 
-    info "Waiting for a ready API server, node, and default ServiceAccount..."
-    wait_api
-    wait_node_ready 180
     info "Checking control-plane pods before hardening..."
     for LABEL in "component=kube-apiserver" "component=kube-controller-manager" \
                  "component=kube-scheduler" "component=etcd"; do
