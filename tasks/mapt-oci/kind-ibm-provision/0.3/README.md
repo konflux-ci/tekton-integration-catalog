@@ -23,10 +23,12 @@ and 64. See [MIGRATION.md](MIGRATION.md) when upgrading.
 The standard mapt tags are always applied:
 `iac=mapt`, `k8s-type=kind`, and `cluster-name=<id>`.
 
-When `harden-control-plane` is `true`, the Task forwards control-plane tuning
-parameters to the [protect-control-plane StepAction](../../../../stepactions/protect-control-plane/0.2/README.md).
-Their defaults retain the 32-vCPU / 64-GiB profile. For the default
-`cxf-24x48` machine, set the documented 24-vCPU / 48-GiB overrides.
+When `harden-control-plane` is `true`, the Task uses the
+[protect-control-plane 0.3 StepAction](../../../../stepactions/protect-control-plane/0.3/README.md).
+Its defaults retain the 32-vCPU / 64-GiB profile. For the default `cxf-24x48`
+machine, set the documented 24-vCPU / 48-GiB overrides. Required hardening and
+readiness failures are surfaced as a TaskRun failure after diagnostics and
+cleanup steps run.
 
 ## Parameters
 
@@ -85,4 +87,4 @@ in the linked StepAction README.
 | `coredns-replicas` | `3` | Number of CoreDNS replicas. |
 
 For the 24-vCPU / 48-GiB tuning overrides, see the
-[StepAction README](../../../../stepactions/protect-control-plane/0.2/README.md).
+[StepAction README](../../../../stepactions/protect-control-plane/0.3/README.md).
