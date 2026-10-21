@@ -159,7 +159,7 @@ Versions are **directory-based**: `tasks/<name>/0.1/`, `tasks/<name>/0.2/`, etc.
 - **API version**: Prefer `tekton.dev/v1`; legacy tasks may use `v1beta1`
 - **Labels**: `app.kubernetes.io/version`, `upstream-usable`, `tekton.dev/tags: konflux`
 - **Annotations**: `tekton.dev/pipelines.minVersion`
-- **Images**: Pin production images by digest; `latest` ok for dev/utils. `quay.io/redhat-developer/mapt`: use `tag@sha256:...` format (e.g. `:v0.14.6@sha256:...`)
+- **Images**: Pin production images by digest; `latest` ok for dev/utils. `quay.io/redhat-developer/mapt`: version tags accepted (tracks frequent upstream releases; prefer `tag@sha256:...` when practical)
 
 ### Konflux Integration Patterns
 
@@ -171,7 +171,7 @@ Versions are **directory-based**: `tasks/<name>/0.1/`, `tasks/<name>/0.2/`, etc.
 ### Security
 
 - Never embed secrets in task YAML; use Kubernetes Secrets mounted as volumes or environment variables
-- Pin production images by digest (e.g. `image@sha256:...`); `quay.io/redhat-developer/mapt` uses `tag@sha256:...` format (see **Images** under Task YAML Conventions)
+- Pin production images by digest (e.g. `image@sha256:...`); `quay.io/redhat-developer/mapt`: version tags accepted (see **Images** under Task YAML Conventions)
 - Tasks running as `runAsUser: 0` should be flagged in review
 - Validate inputs in bash scripts (`set -o errexit -o nounset -o pipefail`)
 
