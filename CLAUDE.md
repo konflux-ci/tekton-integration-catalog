@@ -58,18 +58,19 @@ kubectl apply -f tasks/my-task/0.1/my-task.yaml --dry-run=server
 3. Add the `upstream-usable` label (`"true"` if generally reusable, `"false"` if internal-only)
 4. Add functional tests under `tests/` (see Test section)
 5. Ensure YAML passes `yamllint` and `kubectl apply --dry-run=server`
-6. For version bumps (0.2+), add a `MIGRATION.md` documenting behavioral changes, parameter differences, and any pre-migration verification steps. See existing examples in `tasks/test-metadata/0.4/MIGRATION.md` or `stepactions/protect-control-plane/0.3/MIGRATION.md`.
+6. For version bumps (0.2+), add a `MIGRATION.md` documenting what changed, why, and how callers should prepare for the upgrade. See existing examples in `tasks/test-metadata/0.4/MIGRATION.md` or `stepactions/protect-control-plane/0.3/MIGRATION.md`.
 
 ### Adding a StepAction
 
 1. Create `stepactions/<name>/<version>/<name>.yaml` following the [Tekton StepAction spec](https://tekton.dev/docs/pipelines/stepactions/)
 2. Add a `README.md` with usage examples
-3. For version bumps (0.2+), add a `MIGRATION.md` documenting changes from the previous version
+3. For version bumps (0.2+), add a `MIGRATION.md` documenting what changed, why, and how callers should prepare for the upgrade
 
 ### Adding a Pipeline / PipelineRun
 
 1. Create under `pipelines/<name>/<version>/` or `pipelineruns/<name>/<version>/`
 2. Add a `README.md` documenting the flow and required parameters
+3. For version bumps (0.2+), add a `MIGRATION.md` documenting what changed, why, and how callers should prepare for the upgrade
 
 ### CI Gates (GitHub Actions)
 
@@ -154,7 +155,7 @@ The test runner creates a namespace `{task-name}-{version-with-hyphens}`, applie
 
 ### Versioning
 
-Versions are **directory-based**: `tasks/<name>/0.1/`, `tasks/<name>/0.2/`, etc. Multiple versions coexist. Create a new version when the interface changes (params, workspaces, results), behavior is not backward-compatible, or a critical fix requires a different implementation. Never modify an existing version's interface. Each new version directory (0.2+) should include a `MIGRATION.md` that explains what changed, why, and how callers should prepare for the upgrade.
+Versions are **directory-based**: `tasks/<name>/0.1/`, `tasks/<name>/0.2/`, etc. Multiple versions coexist. Create a new version when the interface changes (params, workspaces, results), behavior is not backward-compatible, or a critical fix requires a different implementation. Never modify an existing version's interface. Each new version directory (0.2+) should include a `MIGRATION.md` documenting what changed, why, and how callers should prepare for the upgrade.
 
 ### Task YAML Conventions
 

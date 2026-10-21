@@ -15,14 +15,14 @@ Konflux PipelineRun (PAC trigger) -> `test-metadata` (extracts SNAPSHOT, git inf
 ## Adding a Task
 
 1. Create `tasks/<category>/<name>/<version>/<name>.yaml` (Tekton `v1` Task spec)
-2. Add `README.md` in the same directory (and `MIGRATION.md` for versions >= 0.2 documenting changes from the previous version)
+2. Add `README.md` (and `MIGRATION.md` for 0.2+ versions) in the same directory
 3. Set labels: `upstream-usable: "true"|"false"`, `app.kubernetes.io/version`, `tekton.dev/tags: konflux`
 4. Add `tests/test-<name>-pass.yaml` (optionally `test-<name>-fail.yaml` with `test/assert-task-failure` annotation)
 5. Verify: `yamllint .` and `kubectl apply -f <task>.yaml --dry-run=server`
 
 ## Versioning
 
-Directory-based: `0.1/`, `0.2/`, etc. New version when interface changes (params, workspaces, results) or behavior is not backward-compatible. Never modify an existing version's interface.
+Directory-based: `0.1/`, `0.2/`, etc. New version when interface changes (params, workspaces, results) or behavior is not backward-compatible. Never modify an existing version's interface. New version directories (0.2+) should include `MIGRATION.md`.
 
 ## Test Framework
 
