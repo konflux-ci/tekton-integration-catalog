@@ -54,6 +54,6 @@ Tests are Tekton Pipelines in `tasks/<...>/<version>/tests/test-*.yaml`. Positiv
 - Include both positive (valid input succeeds) and negative (invalid input fails correctly) test cases
 - Tests share a namespace and PVC per task — each test pipeline must use a unique data path (e.g. `test-repo-pass`, `test-repo-fail`)
 - Never embed secrets, tokens, or credentials in task YAML or test fixtures — use Kubernetes Secrets
-- Pin production images by digest (`latest` ok for dev/utils); bash must use `set -o errexit -o nounset -o pipefail`
+- Pin production images by digest (`latest` ok for dev/utils; version tags ok for `mapt`); bash must use `set -o errexit -o nounset -o pipefail`
 - Tasks producing outputs must declare `results`; tasks using `runAsUser: 0` require PR justification
 - Templated CI files (`<TEMPLATED FILE!>`) come from `konflux-ci/task-repo-shared-ci` — fix upstream
