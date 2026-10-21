@@ -1,0 +1,751 @@
+---
+apiVersion: tekton.dev/v1alpha1
+kind: StepAction
+metadata:
+  name: protect-control-plane
+  labels:
+    app.kubernetes.io/version: "0.3"
+    upstream-usable: "true"
+spec:
+  description: |
+    Hardens a KinD cluster for burst E2E workloads.
+
+    First waits for the API, node, control-plane pods, and default ServiceAccount.
+
+    Phase 1 – Control-plane hardening:
+      Patches etcd first, then scheduler, controller-manager, and apiserver
+      with increased resources and tuned flags.
+
+    Phase 2 – Node and cluster setup:
+      Tunes kubelet and containerd, restarts both services, then waits for
+      the node and API to recover. Installs metrics-server and scales CoreDNS.
+
+    Phase 3 – Readiness checks:
+      Verifies control-plane pods, API responsiveness, ServiceAccount
+      creation, and node readiness.
+
+    Required hardening and readiness failures return a non-zero exit code.
+    Use version 0.2 to retain its prior best-effort failure behavior.
+
+    WARNING: Use the defaults for 32 vCPUs / 64 GiB, or override the
+    parameters for 24 vCPUs / 48 GiB as documented in the script.
+
+  image: registry.redhat.io/openshift4/ose-cli:4.13@sha256:e70eb2be867f1236b19f5cbfeb8e0625737ce0ec1369e32a4f9f146aaaf68d49
+
+  params:
+    - name: harden-control-plane
+      type: string
+      default: "false"
+      description: |
+        Set to `true` to enable control-plane hardening and cluster setup.
+        When `false` (default), the step exits immediately without changes.
+    - name: kubeconfig-dir
+      type: string
+      default: "/opt/cluster-info"
+      description: |
+        Path to the directory containing the `kubeconfig` file for the target cluster.
+    - name: node-name
+      type: string
+      default: "kind-mapt-control-plane"
+      description: |
+        Name of the KinD control-plane node to patch.
+    - name: etcd-cpu
+      type: string
+      default: "3000m"
+      description: CPU quantity applied to existing etcd resource fields; missing request or limit fields are not created.
+    - name: etcd-memory
+      type: string
+      default: "8Gi"
+      description: Memory quantity applied to existing etcd resource fields; if no memory field exists, one is added, but missing request or limit fields are not guaranteed to be created.
+    - name: apiserver-cpu
+      type: string
+      default: "2000m"
+      description: CPU quantity applied to existing kube-apiserver resource fields; missing request or limit fields are not created.
+    - name: apiserver-memory
+      type: string
+      default: "4Gi"
+      description: Memory quantity applied to existing kube-apiserver resource fields; if no memory field exists, one is added, but missing request or limit fields are not guaranteed to be created.
+    - name: apiserver-max-inflight
+      type: string
+      default: "800"
+      description: Maximum non-mutating requests the API server handles at once.
+    - name: apiserver-max-mutating-inflight
+      type: string
+      default: "400"
+      description: Maximum mutating requests the API server handles at once.
+    - name: controller-manager-cpu
+      type: string
+      default: "2000m"
+      description: CPU quantity applied to existing kube-controller-manager resource fields; missing request or limit fields are not created.
+    - name: controller-manager-memory
+      type: string
+      default: "4Gi"
+      description: Memory quantity applied to existing kube-controller-manager resource fields; if no memory field exists, one is added, but missing request or limit fields are not guaranteed to be created.
+    - name: scheduler-cpu
+      type: string
+      default: "2000m"
+      description: CPU quantity applied to existing kube-scheduler resource fields; missing request or limit fields are not created.
+    - name: scheduler-memory
+      type: string
+      default: "4Gi"
+      description: Memory quantity applied to existing kube-scheduler resource fields; if no memory field exists, one is added, but missing request or limit fields are not guaranteed to be created.
+    - name: containerd-memory-min
+      type: string
+      default: "8G"
+      description: systemd MemoryMin reservation for containerd.
+    - name: containerd-gomaxprocs
+      type: string
+      default: "8"
+      description: GOMAXPROCS value for the containerd service.
+    - name: containerd-gomemlimit
+      type: string
+      default: "12GiB"
+      description: GOMEMLIMIT value for the containerd service.
+    - name: containerd-max-concurrent-downloads
+      type: string
+      default: "50"
+      description: Maximum concurrent image downloads handled by containerd.
+    - name: max-pods
+      type: string
+      default: "350"
+      description: |
+        Maximum number of pods the kubelet will allow on the node.
+    - name: max-parallel-image-pulls
+      type: string
+      default: "15"
+      description: |
+        Maximum number of image pulls the kubelet will perform in parallel.
+    - name: coredns-replicas
+      type: string
+      default: "3"
+      description: Number of CoreDNS replicas to run in kube-system.
+    - name: kubeconfig-volume-name
+      type: string
+      description: |
+        Name of the volume (defined in the parent Task) that contains the `kubeconfig` file.
+
+  volumeMounts:
+    - name: $(params.kubeconfig-volume-name)
+      mountPath: $(params.kubeconfig-dir)
+
+  env:
+    - name: KUBECONFIG
+      value: "$(params.kubeconfig-dir)/kubeconfig"
+    - name: HARDEN
+      value: "$(params.harden-control-plane)"
+    - name: NODE_NAME
+      value: "$(params.node-name)"
+    - name: ETCD_CPU
+      value: "$(params.etcd-cpu)"
+    - name: ETCD_MEMORY
+      value: "$(params.etcd-memory)"
+    - name: APISERVER_CPU
+      value: "$(params.apiserver-cpu)"
+    - name: APISERVER_MEMORY
+      value: "$(params.apiserver-memory)"
+    - name: APISERVER_MAX_INFLIGHT
+      value: "$(params.apiserver-max-inflight)"
+    - name: APISERVER_MAX_MUTATING_INFLIGHT
+      value: "$(params.apiserver-max-mutating-inflight)"
+    - name: CONTROLLER_MANAGER_CPU
+      value: "$(params.controller-manager-cpu)"
+    - name: CONTROLLER_MANAGER_MEMORY
+      value: "$(params.controller-manager-memory)"
+    - name: SCHEDULER_CPU
+      value: "$(params.scheduler-cpu)"
+    - name: SCHEDULER_MEMORY
+      value: "$(params.scheduler-memory)"
+    - name: CONTAINERD_MEMORY_MIN
+      value: "$(params.containerd-memory-min)"
+    - name: CONTAINERD_GOMAXPROCS
+      value: "$(params.containerd-gomaxprocs)"
+    - name: CONTAINERD_GOMEMLIMIT
+      value: "$(params.containerd-gomemlimit)"
+    - name: CONTAINERD_MAX_CONCURRENT_DOWNLOADS
+      value: "$(params.containerd-max-concurrent-downloads)"
+    - name: KUBELET_MAX_PODS
+      value: "$(params.max-pods)"
+    - name: KUBELET_MAX_PARALLEL_IMAGE_PULLS
+      value: "$(params.max-parallel-image-pulls)"
+    - name: COREDNS_REPLICAS
+      value: "$(params.coredns-replicas)"
+
+  script: |
+    #!/usr/bin/env bash
+    # Machine profiles:
+    # 32 vCPU / 64 GB (default): use all default param values
+    # 24 vCPU / 48 GB: override with:
+    #   apiserver-cpu=1500m, apiserver-memory=3Gi
+    #   apiserver-max-inflight=400, apiserver-max-mutating-inflight=200
+    #   controller-manager-cpu=1000m, controller-manager-memory=2Gi
+    #   scheduler-cpu=500m, scheduler-memory=1Gi
+    #   etcd-cpu=2000m, etcd-memory=4Gi
+    #   containerd-memory-min=4G, containerd-gomaxprocs=6, containerd-gomemlimit=8GiB
+    #   containerd-max-concurrent-downloads=30
+    #   max-pods=250, max-parallel-image-pulls=10
+    #   coredns-replicas=2
+    set -o errexit -o nounset -o pipefail
+
+    # ── Helpers ─────────────────────────────────────────────────────────
+    STEP_EXIT=0
+
+    banner()  { printf '\n%s\n  %s\n%s\n\n' "$(hr)" "$*" "$(hr)"; }
+    hr()      { printf '%.0s─' {1..60}; }
+    info()    { echo "[info]  $*"; }
+    ok()      { echo "  [ok]  $*"; }
+    fail()    { echo "  [!!]  $*"; STEP_EXIT=1; }
+    section() { echo ""; echo "── $* ──"; }
+
+    # Run a script on the KinD node via nsenter (privileged busybox pod).
+    #   $1  pod-name prefix   $2  base64-encoded script
+    #   remaining arguments are passed to the script as data
+    run_on_node() {
+      local PREFIX="$1" ENCODED="$2" EXTRA=""
+      shift 2
+      if (($#)); then
+        printf -v EXTRA '%q ' "$@"
+      fi
+      local INVOCATION_ID POD
+      INVOCATION_ID=$(tr -d '-' </proc/sys/kernel/random/uuid)
+      POD="${PREFIX}-${INVOCATION_ID}"
+      local CMD="echo ${ENCODED} | base64 -d"
+      [[ -n "${EXTRA}" ]] && CMD="${CMD} > /tmp/${PREFIX}.sh && chmod +x /tmp/${PREFIX}.sh && /tmp/${PREFIX}.sh ${EXTRA}" \
+                          || CMD="${CMD} | bash"
+
+      local OVERRIDES="{
+          \"spec\":{
+            \"hostPID\":true,
+            \"nodeName\":\"${NODE_NAME}\",
+            \"containers\":[{
+              \"name\":\"run\",
+              \"image\":\"busybox\",
+              \"command\":[\"nsenter\",\"--target\",\"1\",
+                \"--mount\",\"--uts\",\"--ipc\",\"--net\",\"--pid\",\"--\",
+                \"bash\",\"-c\",\"${CMD}\"],
+              \"securityContext\":{\"privileged\":true}
+            }]
+          }
+        }"
+      local CREATED=false ATTEMPT POD_INFO POD_OWNER
+      for ATTEMPT in 1 2 3; do
+        if kubectl run "${POD}" --restart=Never --image=busybox \
+          --labels="hardening-invocation=${INVOCATION_ID}" \
+          --request-timeout=10s --overrides="${OVERRIDES}"; then
+          CREATED=true
+          break
+        fi
+        # A timed-out create may still reach the API server. Only adopt a
+        # visible pod when its label proves it belongs to this invocation.
+        if ! POD_INFO=$(kubectl get pod "${POD}" --ignore-not-found \
+          --request-timeout=5s \
+          -o jsonpath='{.metadata.name}{"|"}{.metadata.labels.hardening-invocation}' 2>/dev/null); then
+          break
+        fi
+        if [[ -n "${POD_INFO}" ]]; then
+          POD_OWNER="${POD_INFO#*|}"
+          if [[ "${POD_OWNER}" == "${INVOCATION_ID}" ]]; then
+            CREATED=true
+          else
+            fail "Pod ${POD} exists but belongs to another invocation"
+          fi
+          break
+        fi
+        sleep "${ATTEMPT}"
+      done
+      if [[ "${CREATED}" != "true" ]]; then
+        info "Reconciling possible late creation of pod ${POD}..."
+        local RECONCILE_START=$SECONDS
+        while (( SECONDS - RECONCILE_START < 30 )); do
+          if POD_INFO=$(kubectl get pod "${POD}" --ignore-not-found \
+            --request-timeout=5s \
+            -o jsonpath='{.metadata.name}{"|"}{.metadata.labels.hardening-invocation}' 2>/dev/null) &&
+            [[ -n "${POD_INFO}" ]]; then
+            POD_OWNER="${POD_INFO#*|}"
+            if [[ "${POD_OWNER}" == "${INVOCATION_ID}" ]]; then
+              info "Found late pod ${POD}; deleting it before failure"
+              kubectl delete pod "${POD}" --grace-period=0 --wait=true --timeout=10s || true
+            fi
+          fi
+          sleep 2
+        done
+        if ! kubectl delete pod "${POD}" --ignore-not-found \
+          -l "hardening-invocation=${INVOCATION_ID}" \
+          --grace-period=0 --wait=true --timeout=10s; then
+          fail "Could not confirm cleanup of possible late pod ${POD}"
+          return 1
+        fi
+        fail "Failed to create pod ${POD} after 3 attempts"
+        return 1
+      fi
+
+      info "Waiting for ${POD}..."
+      local i PHASE="Pending" EXIT_CODE=0
+      for i in $(seq 1 60); do
+        PHASE=$(kubectl get pod "${POD}" -o jsonpath='{.status.phase}' 2>/dev/null || echo "Pending")
+        [[ "${PHASE}" =~ ^(Succeeded|Failed)$ ]] && break
+        sleep 1
+      done
+      echo "  Pod ${PHASE} after ${i}s"
+      if [[ "${PHASE}" == "Failed" ]]; then
+        fail "Node operation pod ${POD} failed"
+        EXIT_CODE=1
+      elif [[ "${PHASE}" != "Succeeded" ]]; then
+        fail "Node operation pod ${POD} did not finish within 60s (last phase: ${PHASE})"
+        EXIT_CODE=1
+      fi
+      kubectl logs "${POD}" || true
+      kubectl delete pod "${POD}" --force --grace-period=0 2>/dev/null || true
+      return "${EXIT_CODE}"
+    }
+
+    # Wait until a kube-system pod (by label) is 1/1 Running.
+    wait_pod_ready() {
+      local LABEL="$1" TIMEOUT="${2:-60}"
+      local STATUS READY START=$SECONDS ELAPSED REMAINING SLEEP_FOR
+      while (( SECONDS - START < TIMEOUT )); do
+        STATUS=$(kubectl get pods -n kube-system -l "${LABEL}" \
+          -o jsonpath='{.items[0].status.phase}' 2>/dev/null || echo "Unknown")
+        READY=$(kubectl get pods -n kube-system -l "${LABEL}" \
+          -o jsonpath='{.items[0].status.containerStatuses[0].ready}' 2>/dev/null || echo "false")
+        ELAPSED=$((SECONDS - START))
+        if (( ELAPSED < TIMEOUT )) &&
+          [[ "${STATUS}" == "Running" && "${READY}" == "true" ]]; then
+          ok "${LABEL} ready ($((SECONDS - START))s)"
+          return 0
+        fi
+        REMAINING=$((TIMEOUT - ELAPSED))
+        if (( REMAINING <= 0 )); then
+          break
+        fi
+        SLEEP_FOR=$((REMAINING < 2 ? REMAINING : 2))
+        sleep "${SLEEP_FOR}"
+      done
+      fail "${LABEL} not ready after $((SECONDS - START))s"
+      kubectl get pods -n kube-system -l "${LABEL}" -o wide || true
+      return 1
+    }
+
+    wait_api() {
+      local START=$SECONDS
+      while (( SECONDS - START < 120 )); do
+        kubectl get --raw=/readyz --request-timeout=5s &>/dev/null && {
+          ok "API ready ($((SECONDS - START))s)"
+          return 0
+        }
+        sleep 2
+      done
+      fail "API unreachable after $((SECONDS - START))s"
+      kubectl get --raw='/readyz?verbose' --request-timeout=5s || true
+      return 1
+    }
+
+    wait_node_ready() {
+      local TIMEOUT="$1" START=$SECONDS READY
+      while (( SECONDS - START < TIMEOUT )); do
+        READY=$(kubectl get node "${NODE_NAME}" --request-timeout=5s \
+          -o jsonpath='{.status.conditions[?(@.type=="Ready")].status}' 2>/dev/null || true)
+        if [[ "${READY}" == "True" ]]; then
+          ok "Node ${NODE_NAME} is Ready"
+          return 0
+        fi
+        sleep 2
+      done
+      fail "Node ${NODE_NAME} is not registered and Ready after ${TIMEOUT}s"
+      kubectl get nodes -o wide --request-timeout=5s || true
+      return 1
+    }
+
+    wait_default_serviceaccount() {
+      local START=$SECONDS
+      while (( SECONDS - START < 180 )); do
+        if kubectl get serviceaccount default -n default --request-timeout=3s &>/dev/null; then
+          ok "default ServiceAccount is available ($((SECONDS - START))s)"
+          return 0
+        fi
+        sleep 2
+      done
+      fail "default ServiceAccount not available after $((SECONDS - START))s"
+      return 1
+    }
+
+    validate_param() {
+      local NAME="$1" VALUE="$2" PATTERN="$3"
+      local EXPECTED="${4:-a numeric value or resource quantity}"
+      if [[ ! "${VALUE}" =~ ${PATTERN} ]]; then
+        fail "Invalid value for ${NAME}; expected ${EXPECTED}."
+        exit 1
+      fi
+    }
+
+    # ── Gate ────────────────────────────────────────────────────────────
+    if [[ "${HARDEN}" != "true" ]]; then
+      info "Control-plane hardening is disabled (harden-control-plane=${HARDEN}). Skipping."
+      exit 0
+    fi
+
+    # Validate the values before passing them to scripts executed on the node.
+    # The strict formats also exclude shell metacharacters and line breaks.
+    for PARAM in APISERVER_MAX_INFLIGHT APISERVER_MAX_MUTATING_INFLIGHT \
+                 CONTAINERD_GOMAXPROCS CONTAINERD_MAX_CONCURRENT_DOWNLOADS \
+                 KUBELET_MAX_PODS KUBELET_MAX_PARALLEL_IMAGE_PULLS COREDNS_REPLICAS; do
+      validate_param "${PARAM}" "${!PARAM}" '^[0-9]+$'
+    done
+    for PARAM in APISERVER_CPU CONTROLLER_MANAGER_CPU SCHEDULER_CPU ETCD_CPU; do
+      validate_param "${PARAM}" "${!PARAM}" '^[0-9]+([.][0-9]+)?m?$'
+    done
+    for PARAM in APISERVER_MEMORY CONTROLLER_MANAGER_MEMORY SCHEDULER_MEMORY ETCD_MEMORY; do
+      validate_param "${PARAM}" "${!PARAM}" '^[0-9]+([.][0-9]+)?(Ki|Mi|Gi|Ti|Pi|Ei|K|M|G|T|P|E)$'
+    done
+    validate_param CONTAINERD_MEMORY_MIN "${CONTAINERD_MEMORY_MIN}" '^[0-9]+([.][0-9]+)?(K|M|G|T|P|Ki|Mi|Gi|Ti)?$'
+    validate_param CONTAINERD_GOMEMLIMIT "${CONTAINERD_GOMEMLIMIT}" '^[0-9]+(B|KiB|MiB|GiB|TiB)$'
+    validate_param NODE_NAME "${NODE_NAME}" '^[a-z0-9]([-a-z0-9]*[a-z0-9])?(\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*$' 'an RFC 1123 DNS subdomain'
+
+    # ── Pre-flight checks ──────────────────────────────────────────────
+    info "KUBECONFIG=${KUBECONFIG}"
+
+    if [[ ! -f "${KUBECONFIG}" ]]; then
+      fail "Kubeconfig not found at ${KUBECONFIG}. The provisioner step may have failed."
+      exit 1
+    fi
+
+    # Prevent kubectl from falling back to the in-cluster Tekton service account.
+    unset KUBERNETES_SERVICE_HOST KUBERNETES_SERVICE_PORT
+
+    info "Waiting for a ready API server and node..."
+    wait_api
+    wait_node_ready 180
+
+    info "Verifying cluster connectivity..."
+    if ! kubectl get nodes --request-timeout=10s; then
+      fail "Cannot reach cluster via ${KUBECONFIG}"
+      exit 1
+    fi
+
+    if ! kubectl get node "${NODE_NAME}" --request-timeout=10s &>/dev/null; then
+      fail "Node '${NODE_NAME}' not found — KUBECONFIG may point to the wrong cluster."
+      kubectl get nodes || true
+      exit 1
+    fi
+    ok "Connected to cluster with node ${NODE_NAME}"
+
+    info "Checking control-plane pods before hardening..."
+    for LABEL in "component=kube-apiserver" "component=kube-controller-manager" \
+                 "component=kube-scheduler" "component=etcd"; do
+      wait_pod_ready "${LABEL}" 180
+    done
+    wait_default_serviceaccount
+
+    banner "Protect Control Plane – ${NODE_NAME}" \
+           "Control-plane tuning uses the configured resource parameters"
+
+    harden_node_runtime() {
+    # ================================================================
+    #  Phase 2 – Node & Cluster Setup
+    # ================================================================
+    banner "Phase 2 – Node & Cluster Setup (maxPods=${KUBELET_MAX_PODS})"
+
+    # ── 2a. Kubelet + containerd ────────────────────────────────────
+    section "Hardening kubelet & containerd"
+
+    NODE_SCRIPT=$(cat <<'INNER'
+    #!/bin/bash
+    set -o errexit -o nounset -o pipefail
+    KUBELET_MAX_PODS="$1"
+    KUBELET_MAX_PARALLEL_IMAGE_PULLS="$2"
+    CONTAINERD_MEMORY_MIN="$3"
+    CONTAINERD_GOMAXPROCS="$4"
+    CONTAINERD_GOMEMLIMIT="$5"
+    CONTAINERD_MAX_CONCURRENT_DOWNLOADS="$6"
+    CFG="/var/lib/kubelet/config.yaml"
+
+    patch_or_append() { grep -q "^$1:" "$CFG" && sed -i "s/^$1:.*/$1: $2/" "$CFG" || echo "$1: $2" >> "$CFG"; }
+
+    patch_or_append maxPods              "${KUBELET_MAX_PODS}"
+    patch_or_append serializeImagePulls  false
+    patch_or_append maxParallelImagePulls "${KUBELET_MAX_PARALLEL_IMAGE_PULLS}"
+
+    mkdir -p /etc/systemd/system/containerd.service.d
+    cat > /etc/systemd/system/containerd.service.d/override.conf <<EOF
+    [Service]
+    LimitNOFILE=1048576
+    LimitMEMLOCK=infinity
+    TasksMax=infinity
+    MemoryMin=${CONTAINERD_MEMORY_MIN}
+    OOMScoreAdjust=-999
+    CPUWeight=1000
+    IOWeight=1000
+    Restart=always
+    RestartSec=2
+    Environment=GOMAXPROCS=${CONTAINERD_GOMAXPROCS}
+    Environment=GOMEMLIMIT=${CONTAINERD_GOMEMLIMIT}
+    EOF
+
+    # Tune containerd for high concurrency to prevent socket connection resets
+    CTRD_CFG="/etc/containerd/config.toml"
+    if [ -f "$CTRD_CFG" ]; then
+      # Increase max concurrent downloads
+      if grep -q 'max_concurrent_downloads' "$CTRD_CFG"; then
+        sed -i "s/max_concurrent_downloads.*/max_concurrent_downloads = ${CONTAINERD_MAX_CONCURRENT_DOWNLOADS}/" "$CTRD_CFG"
+      else
+        sed -i "/\[plugins.\"io.containerd.grpc.v1.cri\"\]/a\    max_concurrent_downloads = ${CONTAINERD_MAX_CONCURRENT_DOWNLOADS}" "$CTRD_CFG"
+      fi
+      # Increase max recv/send message sizes for gRPC
+      if ! grep -q 'max_recv_message_size' "$CTRD_CFG"; then
+        sed -i '/\[grpc\]/a\  max_recv_message_size = 67108864\n  max_send_message_size = 67108864' "$CTRD_CFG" 2>/dev/null || true
+      fi
+    fi
+
+    systemctl daemon-reload
+    systemctl restart containerd
+    # Wait for containerd to stabilize before restarting kubelet
+    for ATTEMPT in 1 2 3 4 5 6 7 8 9 10; do
+      if crictl info 1>/dev/null 2>/dev/null; then
+        echo "containerd healthy after attempt ${ATTEMPT}"
+        break
+      fi
+      sleep 1
+    done
+    systemctl restart kubelet
+    echo "DONE: kubelet + containerd hardened"
+    INNER
+    )
+
+    ENCODED_NODE=$(echo "$NODE_SCRIPT" | base64 | tr -d '\n')
+
+    run_on_node "setup-node" "${ENCODED_NODE}" \
+      "${KUBELET_MAX_PODS}" "${KUBELET_MAX_PARALLEL_IMAGE_PULLS}" \
+      "${CONTAINERD_MEMORY_MIN}" "${CONTAINERD_GOMAXPROCS}" \
+      "${CONTAINERD_GOMEMLIMIT}" "${CONTAINERD_MAX_CONCURRENT_DOWNLOADS}"
+
+    info "Waiting for node Ready after kubelet restart..."
+    wait_node_ready 120
+    wait_api
+    ok "maxPods=${KUBELET_MAX_PODS}  parallelPulls=${KUBELET_MAX_PARALLEL_IMAGE_PULLS}  containerd hardened"
+    }
+
+    configure_cluster_support() {
+    # ── 2b. Metrics-server + CoreDNS HA ─────────────────────────────
+    section "Metrics-server & CoreDNS"
+
+    if kubectl apply -f https://github.com/kubernetes-sigs/metrics-server/releases/latest/download/components.yaml; then
+      ok "Metrics-server installed"
+    else
+      fail "Metrics-server installation failed; continuing with remaining cluster setup"
+    fi
+    kubectl patch deployment metrics-server -n kube-system --type=json \
+      -p='[{"op":"add","path":"/spec/template/spec/containers/0/args/-","value":"--kubelet-insecure-tls"}]' 2>/dev/null || true
+
+    if kubectl get deployment coredns -n kube-system &>/dev/null; then
+      kubectl scale deployment coredns -n kube-system --replicas="${COREDNS_REPLICAS}" 2>/dev/null || true
+      kubectl patch deployment coredns -n kube-system --type=json -p='[
+        {"op":"replace","path":"/spec/template/spec/containers/0/resources/limits/memory","value":"512Mi"},
+        {"op":"replace","path":"/spec/template/spec/containers/0/resources/requests/memory","value":"128Mi"},
+        {"op":"replace","path":"/spec/template/spec/containers/0/resources/requests/cpu","value":"200m"}
+      ]' 2>/dev/null || true
+    fi
+    ok "CoreDNS: ${COREDNS_REPLICAS} replicas, 512Mi."
+    }
+
+    # ================================================================
+    #  Phase 1 – Control-Plane Hardening
+    # ================================================================
+    banner "Phase 1 – Control-Plane Hardening"
+
+    # The patch script runs inside the node via nsenter.  It accepts a
+    # single argument — the component name — and patches the matching
+    # static-pod manifest under /etc/kubernetes/manifests/.
+    PATCH_SCRIPT=$(cat <<'PATCH'
+    #!/bin/bash
+    set -o errexit -o nounset -o pipefail
+    COMP="$1"
+    APISERVER_CPU="$2"
+    APISERVER_MEMORY="$3"
+    APISERVER_MAX_INFLIGHT="$4"
+    APISERVER_MAX_MUTATING_INFLIGHT="$5"
+    CONTROLLER_MANAGER_CPU="$6"
+    CONTROLLER_MANAGER_MEMORY="$7"
+    SCHEDULER_CPU="$8"
+    SCHEDULER_MEMORY="$9"
+    ETCD_CPU="${10}"
+    ETCD_MEMORY="${11}"
+
+    manifest() { echo "/etc/kubernetes/manifests/kube-${COMP}.yaml"; }
+    [[ "$COMP" == "etcd" ]] && manifest() { echo "/etc/kubernetes/manifests/etcd.yaml"; }
+
+    M="$(manifest)"
+    [[ ! -f "$M" ]] && { echo "SKIP: $M not found"; exit 0; }
+
+    # Idempotent flag helper: add flag after anchor if not present, else update value.
+    # Uses 'grep -F' with '--' to prevent flags like --kube-api-qps being parsed as grep options.
+    set_flag() {
+      local FLAG="$1" VAL="$2" ANCHOR="$3"
+      if grep -qF -- "$FLAG" "$M"; then
+        sed -i "s|${FLAG}=[^ ]*|${FLAG}=${VAL}|" "$M"
+      else
+        sed -i "/${ANCHOR}/a\\    - ${FLAG}=${VAL}" "$M"
+      fi
+    }
+
+    # Update existing CPU/memory fields; these helpers do not guarantee that
+    # both requests and limits exist in each static-pod manifest.
+    set_cpu()    { sed -i -E "s/(^[[:space:]]*cpu:[[:space:]]*)[0-9]+([.][0-9]+)?m?/\\1$1/" "$M"; }
+    set_memory() {
+      local CPU="$1" MEMORY="$2"
+      if grep -q '^[[:space:]]*memory:' "$M"; then
+        sed -i -E "s/(^[[:space:]]*memory:[[:space:]]*)[^[:space:]]+/\\1${MEMORY}/" "$M"
+      else
+        sed -i "/cpu: ${CPU}/a\\        memory: ${MEMORY}" "$M"
+      fi
+    }
+
+    case "$COMP" in
+      scheduler)
+        set_flag --kube-api-qps  100 "--leader-elect=true"
+        set_flag --kube-api-burst 200 "--kube-api-qps"
+        if ! grep -q "leader-elect-lease-duration" "$M"; then
+          sed -i '/--leader-elect=true/a\    - --leader-elect-lease-duration=60s\n    - --leader-elect-renew-deadline=45s\n    - --leader-elect-retry-period=5s' "$M"
+        fi
+        set_cpu "${SCHEDULER_CPU}"
+        set_memory "${SCHEDULER_CPU}" "${SCHEDULER_MEMORY}"
+        echo "DONE: scheduler qps=100 burst=200 lease=60s/45s cpu=${SCHEDULER_CPU} mem=${SCHEDULER_MEMORY}"
+        ;;
+      controller-manager)
+        set_flag --kube-api-qps  100 "--leader-elect=true"
+        set_flag --kube-api-burst 200 "--kube-api-qps"
+        if ! grep -q "leader-elect-lease-duration" "$M"; then
+          sed -i '/--leader-elect=true/a\    - --leader-elect-lease-duration=60s\n    - --leader-elect-renew-deadline=45s\n    - --leader-elect-retry-period=5s' "$M"
+        fi
+        set_cpu "${CONTROLLER_MANAGER_CPU}"
+        set_memory "${CONTROLLER_MANAGER_CPU}" "${CONTROLLER_MANAGER_MEMORY}"
+        echo "DONE: controller-manager qps=100 burst=200 lease=60s/45s cpu=${CONTROLLER_MANAGER_CPU} mem=${CONTROLLER_MANAGER_MEMORY}"
+        ;;
+      apiserver)
+        set_flag --max-requests-inflight         "${APISERVER_MAX_INFLIGHT}" "--etcd-servers"
+        set_flag --max-mutating-requests-inflight "${APISERVER_MAX_MUTATING_INFLIGHT}" "--max-requests-inflight"
+        if ! grep -q "event-ttl" "$M"; then
+          sed -i '/--max-mutating-requests-inflight/a\    - --event-ttl=30m0s' "$M"
+        fi
+        if ! grep -q "delete-collection-workers" "$M"; then
+          sed -i '/--event-ttl/a\    - --delete-collection-workers=5' "$M"
+        fi
+        set_cpu "${APISERVER_CPU}"
+        set_memory "${APISERVER_CPU}" "${APISERVER_MEMORY}"
+        echo "DONE: apiserver inflight=${APISERVER_MAX_INFLIGHT}/${APISERVER_MAX_MUTATING_INFLIGHT} event-ttl=30m del-workers=5 cpu=${APISERVER_CPU} mem=${APISERVER_MEMORY}"
+        ;;
+      etcd)
+        set_flag --quota-backend-bytes 8589934592 "--data-dir"
+        if ! grep -q "auto-compaction" "$M"; then
+          sed -i '/--quota-backend-bytes/a\    - --auto-compaction-mode=periodic\n    - --auto-compaction-retention=5m' "$M"
+        fi
+        # Increase heartbeat/election timeouts to prevent "request timed out"
+        # under burst workloads. Defaults (100ms/1000ms) are too aggressive
+        # when etcd is I/O saturated by heavy E2E traffic.
+        set_flag --heartbeat-interval 500 "--auto-compaction-retention"
+        set_flag --election-timeout   5000 "--heartbeat-interval"
+        set_cpu "${ETCD_CPU}"
+        set_memory "${ETCD_CPU}" "${ETCD_MEMORY}"
+        echo "DONE: etcd quota=8GB auto-compact=5m heartbeat=500ms election=5s mem=${ETCD_MEMORY} cpu=${ETCD_CPU}"
+        ;;
+      *) echo "ERROR: unknown component $COMP"; exit 1 ;;
+    esac
+    PATCH
+    )
+
+    ENCODED_PATCH=$(echo "$PATCH_SCRIPT" | base64 | tr -d '\n')
+
+    patch_component() {
+      local COMP="$1" DISPLAY="$2"
+      local LABEL="component=kube-${COMP}"
+      [[ "$COMP" == "etcd" ]] && LABEL="component=etcd"
+
+      section "Patching ${DISPLAY}"
+      run_on_node "cp-patch-${COMP}" "${ENCODED_PATCH}" \
+        "${COMP}" "${APISERVER_CPU}" "${APISERVER_MEMORY}" \
+        "${APISERVER_MAX_INFLIGHT}" "${APISERVER_MAX_MUTATING_INFLIGHT}" \
+        "${CONTROLLER_MANAGER_CPU}" "${CONTROLLER_MANAGER_MEMORY}" \
+        "${SCHEDULER_CPU}" "${SCHEDULER_MEMORY}" "${ETCD_CPU}" "${ETCD_MEMORY}"
+      wait_api
+      wait_pod_ready "${LABEL}" 60
+    }
+
+    patch_component etcd               "etcd                    (quota=8GB, heartbeat=500ms, ${ETCD_CPU}, ${ETCD_MEMORY})"
+    patch_component scheduler          "kube-scheduler          (qps=100, burst=200, cpu=${SCHEDULER_CPU}, mem=${SCHEDULER_MEMORY})"
+    patch_component controller-manager "kube-controller-manager (qps=100, burst=200, cpu=${CONTROLLER_MANAGER_CPU}, mem=${CONTROLLER_MANAGER_MEMORY})"
+    patch_component apiserver          "kube-apiserver          (inflight=${APISERVER_MAX_INFLIGHT}/${APISERVER_MAX_MUTATING_INFLIGHT}, cpu=${APISERVER_CPU}, mem=${APISERVER_MEMORY})"
+
+    harden_node_runtime
+    configure_cluster_support
+
+    wait_node_ready 120
+
+    # ================================================================
+    #  Phase 3 – Readiness gate
+    # ================================================================
+    banner "Phase 3 – Control-Plane Readiness Gate"
+
+    section "Verifying all control-plane pods"
+    for LABEL in "component=kube-apiserver" "component=kube-controller-manager" \
+                 "component=kube-scheduler" "component=etcd"; do
+      wait_pod_ready "${LABEL}" 180
+    done
+
+    section "Verifying API server responsiveness"
+    API_RESPONSIVE=false
+    API_START=$SECONDS
+    for i in $(seq 1 20); do
+      if kubectl get namespaces --request-timeout=5s &>/dev/null; then
+        ok "API server responsive ($((SECONDS - API_START))s)"
+        API_RESPONSIVE=true
+        break
+      fi
+      sleep 3
+    done
+    if [[ "${API_RESPONSIVE}" == "false" ]]; then
+      fail "API server unresponsive after $((SECONDS - API_START))s"
+      exit 1
+    fi
+
+    section "Verifying ServiceAccount controller"
+    TEST_NS="cp-probe-$(date +%s)"
+    if kubectl create namespace "${TEST_NS}" --dry-run=client -o yaml | kubectl apply -f - 2>/dev/null; then
+      SA_OK=false
+      SA_START=$SECONDS
+      for i in $(seq 1 60); do
+        if kubectl get serviceaccount default -n "${TEST_NS}" &>/dev/null; then
+          ok "default SA created in ${TEST_NS} ($((SECONDS - SA_START))s) — SA controller is healthy"
+          SA_OK=true; break
+        fi
+        sleep 3
+      done
+      if [[ "${SA_OK}" == "false" ]]; then
+        fail "default SA not created in ${TEST_NS} after $((SECONDS - SA_START))s"
+      fi
+      kubectl delete namespace "${TEST_NS}" --wait=false 2>/dev/null || true
+      if [[ "${SA_OK}" == "false" ]]; then
+        exit 1
+      fi
+    else
+      fail "Could not create probe namespace ${TEST_NS}; skipping ServiceAccount controller check"
+      exit 1
+    fi
+
+    section "Verifying node readiness"
+    wait_node_ready 60
+
+    # ================================================================
+    #  Summary
+    # ================================================================
+    banner "Cluster Ready"
+    echo "  kubelet ........... maxPods=${KUBELET_MAX_PODS}  parallelPulls=${KUBELET_MAX_PARALLEL_IMAGE_PULLS}"
+    echo "  containerd ........ MemoryMin=${CONTAINERD_MEMORY_MIN}  OOM=-999  CPU/IO=max  GOMAXPROCS=${CONTAINERD_GOMAXPROCS}"
+    echo "  CoreDNS ........... ${COREDNS_REPLICAS} replicas, 512Mi"
+    echo "  scheduler ......... qps=100  burst=200  cpu=${SCHEDULER_CPU}  mem=${SCHEDULER_MEMORY}"
+    echo "  controller-manager  qps=100  burst=200  cpu=${CONTROLLER_MANAGER_CPU}  mem=${CONTROLLER_MANAGER_MEMORY}"
+    echo "  apiserver ......... inflight=${APISERVER_MAX_INFLIGHT}/${APISERVER_MAX_MUTATING_INFLIGHT}  event-ttl=30m  cpu=${APISERVER_CPU}  mem=${APISERVER_MEMORY}"
+    echo "  etcd .............. quota=8GB  auto-compact=5m  heartbeat=500ms  election=5s  cpu=${ETCD_CPU}  mem=${ETCD_MEMORY}"
+    echo ""
+    kubectl get pods -n kube-system -l tier=control-plane -o wide 2>/dev/null || \
+      kubectl get pods -n kube-system | grep -E "apiserver|etcd|scheduler|controller-manager" || true
+    kubectl get node "${NODE_NAME}" 2>/dev/null || true
+
+    exit ${STEP_EXIT}
