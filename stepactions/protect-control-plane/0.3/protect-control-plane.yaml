@@ -301,17 +301,24 @@ spec:
     # Wait until a kube-system pod (by label) is 1/1 Running.
     wait_pod_ready() {
       local LABEL="$1" TIMEOUT="${2:-60}"
-      local i STATUS READY START=$SECONDS
-      for i in $(seq 1 "${TIMEOUT}"); do
+      local STATUS READY START=$SECONDS ELAPSED REMAINING SLEEP_FOR
+      while (( SECONDS - START < TIMEOUT )); do
         STATUS=$(kubectl get pods -n kube-system -l "${LABEL}" \
           -o jsonpath='{.items[0].status.phase}' 2>/dev/null || echo "Unknown")
         READY=$(kubectl get pods -n kube-system -l "${LABEL}" \
           -o jsonpath='{.items[0].status.containerStatuses[0].ready}' 2>/dev/null || echo "false")
-        if [[ "${STATUS}" == "Running" && "${READY}" == "true" ]]; then
+        ELAPSED=$((SECONDS - START))
+        if (( ELAPSED < TIMEOUT )) &&
+          [[ "${STATUS}" == "Running" && "${READY}" == "true" ]]; then
           ok "${LABEL} ready ($((SECONDS - START))s)"
           return 0
         fi
-        sleep 2
+        REMAINING=$((TIMEOUT - ELAPSED))
+        if (( REMAINING <= 0 )); then
+          break
+        fi
+        SLEEP_FOR=$((REMAINING < 2 ? REMAINING : 2))
+        sleep "${SLEEP_FOR}"
       done
       fail "${LABEL} not ready after $((SECONDS - START))s"
       kubectl get pods -n kube-system -l "${LABEL}" -o wide || true
