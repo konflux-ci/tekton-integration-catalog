@@ -34,7 +34,7 @@ Konflux PipelineRun (PAC trigger) -> `test-metadata` task (extracts SNAPSHOT, gi
 | `quay.io/konflux-ci/tekton-integration-catalog/utils:latest` | ROSA provision, export-logs |
 | `quay.io/konflux-ci/konflux-test:latest` | Bundle stepactions |
 | `registry.redhat.io/openshift4/ose-cli:4.13` | mapt flows, protect-control-plane |
-| `quay.io/redhat-developer/mapt:*` | mapt provision/deprovision |
+| `quay.io/redhat-developer/mapt:<version>` | mapt provision/deprovision |
 | `ghcr.io/hadolint/hadolint:v2.14.0-debian` | Dockerfile linting |
 
 ## Build
@@ -159,7 +159,7 @@ Versions are **directory-based**: `tasks/<name>/0.1/`, `tasks/<name>/0.2/`, etc.
 - **API version**: Prefer `tekton.dev/v1`; legacy tasks may use `v1beta1`
 - **Labels**: `app.kubernetes.io/version`, `upstream-usable`, `tekton.dev/tags: konflux`
 - **Annotations**: `tekton.dev/pipelines.minVersion`
-- **Images**: Use pinned digests for production images; `latest` acceptable for dev/utils images
+- **Images**: Pin production images by digest; `latest` ok for dev/utils. `quay.io/redhat-developer/mapt`: version tags accepted (tracks frequent upstream releases; prefer `tag@sha256:...` when practical)
 
 ### Konflux Integration Patterns
 
@@ -171,7 +171,7 @@ Versions are **directory-based**: `tasks/<name>/0.1/`, `tasks/<name>/0.2/`, etc.
 ### Security
 
 - Never embed secrets in task YAML; use Kubernetes Secrets mounted as volumes or environment variables
-- Pin production images by digest (e.g. `image@sha256:...`)
+- Pin production images by digest (e.g. `image@sha256:...`); `quay.io/redhat-developer/mapt`: version tags accepted (see **Images** under Task YAML Conventions)
 - Tasks running as `runAsUser: 0` should be flagged in review
 - Validate inputs in bash scripts (`set -o errexit -o nounset -o pipefail`)
 
