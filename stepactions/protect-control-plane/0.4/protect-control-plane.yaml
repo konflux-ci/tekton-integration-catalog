@@ -412,24 +412,24 @@ spec:
         if POD_INFO=$(kubectl get pods -n kube-system -l "${LABEL}" \
           --request-timeout="$(request_budget "${REMAINING}")" \
           -o go-template='{{range .items}}{{.status.phase}}|{{range .status.containerStatuses}}{{.ready}}{{end}}|{{index .metadata.annotations "kubernetes.io/config.hash"}}|{{.metadata.uid}}{{"\n"}}{{end}}' 2>&1); then
-          IFS='|' read -r STATUS READY HASH POD_UID <<< "${POD_INFO}"
-          LAST_STATE="phase=${STATUS:-absent}, ready=${READY:-false}, hash=${HASH:-none}, uid=${POD_UID:-none}"
-          NEW_IDENTITY=true
-          if [[ -n "${OLD_HASH}" && "${OLD_HASH}" != '<no value>' && -n "${HASH:-}" && "${HASH}" != '<no value>' ]]; then
-            [[ "${HASH}" == "${OLD_HASH}" ]] && NEW_IDENTITY=false
-          elif [[ -n "${OLD_UID}" && "${POD_UID:-}" == "${OLD_UID}" ]]; then
-            NEW_IDENTITY=false
-          fi
+          while IFS='|' read -r STATUS READY HASH POD_UID; do
+            LAST_STATE="phase=${STATUS:-absent}, ready=${READY:-false}, hash=${HASH:-none}, uid=${POD_UID:-none}"
+            NEW_IDENTITY=true
+            if [[ -n "${OLD_HASH}" && "${OLD_HASH}" != '<no value>' && -n "${HASH:-}" && "${HASH}" != '<no value>' ]]; then
+              [[ "${HASH}" == "${OLD_HASH}" ]] && NEW_IDENTITY=false
+            elif [[ -n "${OLD_UID}" && "${POD_UID:-}" == "${OLD_UID}" ]]; then
+              NEW_IDENTITY=false
+            fi
+            if (( SECONDS - START < TIMEOUT )) &&
+              [[ "${NEW_IDENTITY}" == true && "${STATUS:-}" == "Running" && "${READY:-}" == "true" ]]; then
+              ok "${LABEL} ready ($((SECONDS - START))s)"
+              return 0
+            fi
+          done <<< "${POD_INFO}"
         else
           LAST_ERROR="${POD_INFO}"
-          NEW_IDENTITY=false
         fi
         ELAPSED=$((SECONDS - START))
-        if (( ELAPSED < TIMEOUT )) &&
-          [[ "${NEW_IDENTITY}" == true && "${STATUS:-}" == "Running" && "${READY:-}" == "true" ]]; then
-          ok "${LABEL} ready ($((SECONDS - START))s)"
-          return 0
-        fi
         REMAINING=$((TIMEOUT - ELAPSED))
         if (( REMAINING <= 0 )); then
           break
@@ -838,6 +838,7 @@ spec:
     fi
     ok "CoreDNS: ${COREDNS_REPLICAS} replicas, 512Mi."
     }
+    # --- configure_cluster_support-end ---
 
     # ================================================================
     #  Phase 1 – Control-Plane Hardening

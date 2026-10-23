@@ -268,7 +268,7 @@ class RecoveryTests(unittest.TestCase):
         self.assertIn("did not renew its Lease", result.stdout)
 
     def test_support_failures_are_fatal(self):
-        support = SCRIPT.split("configure_cluster_support() {", 1)[1].split("\n}\n\n# ================================================================\n#  Phase 1", 1)[0]
+        support = SCRIPT.split("configure_cluster_support() {", 1)[1].split("# --- configure_cluster_support-end ---", 1)[0]
         for mode, expected in (
             ("fetch_fail", "installation failed"),
             ("image_entry_fail", "image entry missing or ambiguous"),
@@ -317,7 +317,7 @@ class RecoveryTests(unittest.TestCase):
                   }
                   configure_cluster_support
                 '''
-                result = run_bash(HELPERS + "configure_cluster_support() {" + support + "\n}\n" + mock, {"MODE": mode})
+                result = run_bash(HELPERS + "configure_cluster_support() {" + support + mock, {"MODE": mode})
                 self.assertNotEqual(result.returncode, 0)
                 self.assertIn(expected, result.stdout, result.stdout + result.stderr)
                 self.assertNotIn("Cluster Ready", result.stdout)
