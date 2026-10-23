@@ -33,7 +33,8 @@ Konflux PipelineRun (PAC trigger) -> `test-metadata` task (extracts SNAPSHOT, gi
 | `quay.io/konflux-qe-incubator/konflux-qe-tools:latest` | test-metadata, PR comment, ROSA deprovision, linters |
 | `quay.io/konflux-ci/tekton-integration-catalog/utils:latest` | ROSA provision, export-logs |
 | `quay.io/konflux-ci/konflux-test:latest` | Bundle stepactions |
-| `registry.redhat.io/openshift4/ose-cli:4.13` | mapt flows, protect-control-plane |
+| `registry.redhat.io/openshift4/ose-cli:4.13` | mapt flows, protect-control-plane 0.3 |
+| `docker.io/alpine/k8s` | protect-control-plane 0.4 |
 | `quay.io/redhat-developer/mapt:*` | mapt provision/deprovision |
 | `ghcr.io/hadolint/hadolint:v2.14.0-debian` | Dockerfile linting |
 

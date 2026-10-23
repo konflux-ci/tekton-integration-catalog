@@ -12,7 +12,7 @@ import yaml
 
 STEP = pathlib.Path(__file__).resolve().parents[1] / "protect-control-plane.yaml"
 SCRIPT = yaml.safe_load(STEP.read_text())["spec"]["script"]
-HELPERS = "STEP_EXIT=0\n" + SCRIPT.split("STEP_EXIT=0\n", 1)[1].split("# ── Gate", 1)[0]
+HELPERS = SCRIPT.split("# --- helpers-begin ---\n", 1)[1].split("# --- helpers-end ---", 1)[0]
 
 
 def embedded(name, marker):

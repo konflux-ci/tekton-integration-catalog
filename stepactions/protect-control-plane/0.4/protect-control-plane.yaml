@@ -195,7 +195,7 @@ spec:
     # The IBM Task mounts /var/log-dir for its OCI diagnostic artifact.
     # Append here while retaining the normal Tekton step log.
     if [[ -d /var/log-dir ]]; then
-      HARDENING_LOG="${LOG_FILENAME:-/var/log-dir/kind-ibm-provision.log}"
+      HARDENING_LOG="${LOG_FILENAME:-/var/log-dir/protect-control-plane.log}"
       : >> "${HARDENING_LOG}"
       exec 3>&1
       exec 4>&2
@@ -205,7 +205,7 @@ spec:
       trap 'STEP_STATUS=$?; exec 1>&3 2>&4; wait "$TEE_PID" || STEP_STATUS=1; exit "$STEP_STATUS"' EXIT
     fi
 
-    # ── Helpers ─────────────────────────────────────────────────────────
+    # --- helpers-begin ---
     STEP_EXIT=0
 
     banner()  { printf '\n%s\n  %s\n%s\n\n' "$(hr)" "$*" "$(hr)"; }
@@ -218,6 +218,7 @@ spec:
     # Bound each request by the time left in its enclosing wait.
     request_budget() {
       local REMAINING=$1
+      if (( REMAINING < 1 )); then REMAINING=1; fi
       (( REMAINING < 5 )) && echo "${REMAINING}s" || echo 5s
     }
 
@@ -327,7 +328,7 @@ spec:
       done
       if [[ "${CREATED}" != "true" ]]; then
         info "Reconciling possible late creation of pod ${POD}..."
-        local RECONCILE_START=$SECONDS REMAINING
+        local RECONCILE_START=$SECONDS REMAINING LATE_POD_CLEANED=false
         while (( SECONDS - RECONCILE_START < 30 )); do
           REMAINING=$((30 - (SECONDS - RECONCILE_START)))
           if POD_INFO=$(kubectl get pod "${POD}" --ignore-not-found \
@@ -341,6 +342,8 @@ spec:
             fi
             info "Found late pod ${POD}; deleting it before failure"
             cleanup_node_pod "${POD}" "${INVOCATION_ID}" || return 1
+            LATE_POD_CLEANED=true
+            # Another timed-out create attempt may still produce this pod.
           elif [[ -n "${POD_INFO}" ]]; then
             LAST_ERROR="${POD_INFO}"
           fi
@@ -354,8 +357,13 @@ spec:
         fi
         if [[ -n "${POD_INFO}" ]]; then
           cleanup_node_pod "${POD}" "${INVOCATION_ID}" || return 1
+          LATE_POD_CLEANED=true
         fi
-        fail "Pod ${POD} cleanup unconfirmed after failed create: no pod observed within 30s, but late creation remains possible; last error: ${LAST_ERROR}"
+        if [[ "${LATE_POD_CLEANED}" == true ]]; then
+          fail "Failed to create pod ${POD}; late-created pod cleaned, but another delayed create remains possible; last error: ${LAST_ERROR}"
+        else
+          fail "Pod ${POD} cleanup unconfirmed after failed create: no pod observed within 30s, but late creation remains possible; last error: ${LAST_ERROR}"
+        fi
         return 1
       fi
 
@@ -403,7 +411,7 @@ spec:
         REMAINING=$((TIMEOUT - (SECONDS - START)))
         if POD_INFO=$(kubectl get pods -n kube-system -l "${LABEL}" \
           --request-timeout="$(request_budget "${REMAINING}")" \
-          -o go-template='{{range .items}}{{.status.phase}}|{{range .status.containerStatuses}}{{.ready}}{{end}}|{{index .metadata.annotations "kubernetes.io/config.hash"}}|{{.metadata.uid}}{{end}}' 2>&1); then
+          -o go-template='{{range .items}}{{.status.phase}}|{{range .status.containerStatuses}}{{.ready}}{{end}}|{{index .metadata.annotations "kubernetes.io/config.hash"}}|{{.metadata.uid}}{{"\n"}}{{end}}' 2>&1); then
           IFS='|' read -r STATUS READY HASH POD_UID <<< "${POD_INFO}"
           LAST_STATE="phase=${STATUS:-absent}, ready=${READY:-false}, hash=${HASH:-none}, uid=${POD_UID:-none}"
           NEW_IDENTITY=true
@@ -528,6 +536,7 @@ spec:
       fi
     }
 
+    # --- helpers-end ---
     # ── Gate ────────────────────────────────────────────────────────────
     if [[ "${HARDEN}" != "true" ]]; then
       info "Control-plane hardening is disabled (harden-control-plane=${HARDEN}). Skipping."
@@ -964,7 +973,7 @@ spec:
 
       section "Patching ${DISPLAY}"
       if ! OLD_INFO=$(kubectl get pods -n kube-system -l "${LABEL}" --request-timeout=5s \
-        -o go-template='{{range .items}}{{.status.phase}}|{{range .status.containerStatuses}}{{.ready}}{{end}}|{{index .metadata.annotations "kubernetes.io/config.hash"}}|{{.metadata.uid}}{{end}}' 2>&1); then
+        -o go-template='{{range .items}}{{.status.phase}}|{{range .status.containerStatuses}}{{.ready}}{{end}}|{{index .metadata.annotations "kubernetes.io/config.hash"}}|{{.metadata.uid}}{{"\n"}}{{end}}' 2>&1); then
         fail "Cannot snapshot ${COMP} mirror pod: ${OLD_INFO}"
         return 1
       fi

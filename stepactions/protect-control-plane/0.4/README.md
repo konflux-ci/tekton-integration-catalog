@@ -107,7 +107,7 @@ The pinned CLI image contains Bash and kubectl v1.37.0, which is within the
 supported client skew for Kubernetes v1.36 and v1.37. Other requested versions
 fail before hardening starts. When `/var/log-dir` is mounted, hardening output
 is also appended to `LOG_FILENAME` (default:
-`/var/log-dir/kind-ibm-provision.log`) for the Task's OCI artifact. The IBM
+`/var/log-dir/protect-control-plane.log`) for the Task's OCI artifact. The IBM
 Task sets a filename containing its TaskRun UID to avoid collisions when an
 OCI artifact tag is reused. See
 [`MIGRATION.md`](MIGRATION.md) for upgrade guidance.
