@@ -401,12 +401,14 @@ spec:
       return "${EXIT_CODE}"
     }
 
-    # Wait until a kube-system pod (by label) is Running and Ready. For a
-    # changed manifest, require a different mirror-pod identity first.
+    # Wait until a kube-system pod (by label) is Running and Ready. Retain its
+    # identity for callers that need a snapshot. For a changed manifest,
+    # require a different mirror-pod identity first.
     wait_pod_ready() {
       local LABEL="$1" TIMEOUT="${2:-60}" OLD_HASH="${3:-}" OLD_UID="${4:-}"
       local STATUS READY HASH POD_UID POD_INFO START=$SECONDS ELAPSED REMAINING SLEEP_FOR
       local LAST_STATE="not observed" LAST_ERROR="none" NEW_IDENTITY
+      READY_POD_SNAPSHOT=""
       while (( SECONDS - START < TIMEOUT )); do
         REMAINING=$((TIMEOUT - (SECONDS - START)))
         if POD_INFO=$(kubectl get pods -n kube-system -l "${LABEL}" \
@@ -421,7 +423,8 @@ spec:
               NEW_IDENTITY=false
             fi
             if (( SECONDS - START < TIMEOUT )) &&
-              [[ "${NEW_IDENTITY}" == true && "${STATUS:-}" == "Running" && "${READY:-}" == "true" ]]; then
+              [[ "${NEW_IDENTITY}" == true && "${STATUS:-}" == "Running" && "${READY:-}" == "true" && -n "${POD_UID:-}" ]]; then
+              READY_POD_SNAPSHOT="${STATUS}|${READY}|${HASH}|${POD_UID}"
               ok "${LABEL} ready ($((SECONDS - START))s)"
               return 0
             fi
@@ -973,14 +976,12 @@ spec:
       [[ "$COMP" == "etcd" ]] && LABEL="component=etcd"
 
       section "Patching ${DISPLAY}"
-      if ! OLD_INFO=$(kubectl get pods -n kube-system -l "${LABEL}" --request-timeout=5s \
-        -o go-template='{{range .items}}{{.status.phase}}|{{range .status.containerStatuses}}{{.ready}}{{end}}|{{index .metadata.annotations "kubernetes.io/config.hash"}}|{{.metadata.uid}}{{"\n"}}{{end}}' 2>&1); then
-        fail "Cannot snapshot ${COMP} mirror pod: ${OLD_INFO}"
-        return 1
-      fi
+      info "Waiting for a Ready ${COMP} mirror pod before patching..."
+      wait_pod_ready "${LABEL}" 120
+      OLD_INFO="${READY_POD_SNAPSHOT}"
       IFS='|' read -r OLD_PHASE OLD_READY OLD_HASH OLD_UID <<< "${OLD_INFO}"
-      if [[ -z "${OLD_UID:-}" || "${OLD_PHASE:-}" != Running || "${OLD_READY:-}" != true ]]; then
-        fail "Cannot snapshot a Ready ${COMP} mirror pod (${OLD_INFO})"
+      if [[ "${OLD_PHASE}" != Running || "${OLD_READY}" != true || -z "${OLD_UID}" ]]; then
+        fail "Invalid Ready ${COMP} mirror pod snapshot (${OLD_INFO})"
         return 1
       fi
       run_on_node "cp-patch-${COMP}" "${ENCODED_PATCH}" \
