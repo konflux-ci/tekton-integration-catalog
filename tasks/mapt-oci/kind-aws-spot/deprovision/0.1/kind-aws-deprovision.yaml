@@ -40,6 +40,7 @@ spec:
     - name: credentials-volume
       secret:
         secretName: $(params.cluster-access-secret)
+        optional: true
 
   stepTemplate:
     env:
