@@ -138,6 +138,7 @@ The task produces the following results, combining both individual outputs (from
 ### Prefetch Functionality
 - **Always Enabled**: Prefetch functionality is always active
 - **OCI Artifact Integration**: Downloads and processes cosign attestations
+- **SLSA Version Agnostic**: Reads both SLSA v0.2 (`buildConfig.tasks`) and v1.0 (`buildDefinition.resolvedDependencies`) attestation formats
 - **Cachi2 Integration**: Extracts Cachi2 artifacts from build phase
 - **Dual Artifacts**: Both CACHI2_ARTIFACT and SOURCE_ARTIFACT are extracted
 - **Graceful Handling**: Empty artifacts return empty strings with appropriate warnings
@@ -150,7 +151,7 @@ The task produces the following results, combining both individual outputs (from
 
 ### Instrumented Container Image Detection (v0.4)
 - **Code Coverage Support**: Automatically detects instrumented images built with coverage enabled
-- **Build Attestation Parsing**: Analyzes cosign attestation data to find build tasks with ENABLE_COVERAGE=true
+- **Build Attestation Parsing**: Analyzes cosign attestation data (SLSA v0.2 or v1.0) to find build tasks with ENABLE_COVERAGE=true
 - **Image Reference Extraction**: Extracts IMAGE_REF from build tasks that produce instrumented images
 - **Graceful Handling**: Returns empty strings when no instrumented image is found
 - **Multiple Format Support**: Handles images with tags, digests, or both
