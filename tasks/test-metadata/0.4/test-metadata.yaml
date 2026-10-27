@@ -191,15 +191,38 @@ spec:
         # Handle prefetch functionality (always enabled)
         cosign download attestation "$COMPONENT_CONTAINER_IMAGE" > cosign_metadata.json 2>/dev/null || echo "{}" > cosign_metadata.json
 
+        # Flatten attestation tasks into one [{name, results, invocation}] shape so the
+        # extractions below don't care which SLSA predicate version produced them.
+        PREDICATE_TYPE="$(jq -r '.payload | @base64d | fromjson | .predicateType' cosign_metadata.json 2>/dev/null || echo "")"
+
+        if [[ "$PREDICATE_TYPE" == "https://slsa.dev/provenance/v1" ]]; then
+          # v1.0 nests each task as a base64-encoded TaskRun under resolvedDependencies[],
+          # named by its "tekton.dev/pipelineTask" label instead of a plain .name.
+          jq -c '
+            [.payload | @base64d | fromjson | .predicate.buildDefinition.resolvedDependencies[] |
+            select(.name == "pipelineTask") | .content | @base64d | fromjson |
+            {
+              name: .metadata.labels["tekton.dev/pipelineTask"],
+              results: (.status.results // []),
+              invocation: {parameters: {BUILD_ARGS: ((.spec.params[]? | select(.name == "BUILD_ARGS") | .value) // [])}}
+            }]' \
+            cosign_metadata.json > normalized_tasks.json 2>/dev/null || echo "[]" > normalized_tasks.json
+        elif [[ "$PREDICATE_TYPE" == "https://slsa.dev/provenance/v0.2" ]]; then
+          # v0.2 already has tasks in this shape under buildConfig.tasks[].
+          jq -c '.payload | @base64d | fromjson | .predicate.buildConfig.tasks' \
+            cosign_metadata.json > normalized_tasks.json 2>/dev/null || echo "[]" > normalized_tasks.json
+        else
+          echo "[WARN] Unsupported attestation predicateType: $PREDICATE_TYPE"
+          echo "[]" > normalized_tasks.json
+        fi
+
         CACHI2_SOURCE_ARTIFACT="$(jq -r \
-          '.payload | @base64d | fromjson | .predicate.buildConfig.tasks[] |
-          select(.name == "prefetch-dependencies") | .results[] | select(.name == "CACHI2_ARTIFACT") | .value' \
-          cosign_metadata.json 2>/dev/null || echo "")"
+          '.[] | select(.name == "prefetch-dependencies") | .results[] | select(.name == "CACHI2_ARTIFACT") | .value' \
+          normalized_tasks.json 2>/dev/null || echo "")"
 
         SOURCE_ARTIFACT="$(jq -r \
-          '.payload | @base64d | fromjson | .predicate.buildConfig.tasks[] |
-          select(.name == "prefetch-dependencies") | .results[] | select(.name == "SOURCE_ARTIFACT") | .value' \
-          cosign_metadata.json 2>/dev/null || echo "")"
+          '.[] | select(.name == "prefetch-dependencies") | .results[] | select(.name == "SOURCE_ARTIFACT") | .value' \
+          normalized_tasks.json 2>/dev/null || echo "")"
 
         # Check artifact status
         if [[ -z "$CACHI2_SOURCE_ARTIFACT" || "$CACHI2_SOURCE_ARTIFACT" == "null" ]]; then
@@ -254,11 +277,11 @@ spec:
         # Extract instrumented container image information
         # Look for a build task with ENABLE_COVERAGE=true in BUILD_ARGS
         INSTRUMENTED_IMAGE="$(jq -r '
-          .payload | @base64d | fromjson | .predicate.buildConfig.tasks[] |
+          .[] |
           select(.name | ascii_downcase | contains("build")) |
           select(.invocation.parameters.BUILD_ARGS // [] | any(. == "ENABLE_COVERAGE=true")) |
           .results[] | select(.name == "IMAGE_REF") | .value' \
-          cosign_metadata.json 2>/dev/null | head -n 1 || echo "")"
+          normalized_tasks.json 2>/dev/null | head -n 1 || echo "")"
 
         if [[ -z "$INSTRUMENTED_IMAGE" || "$INSTRUMENTED_IMAGE" == "null" ]]; then
           echo "[INFO] Instrumented image: not found"
