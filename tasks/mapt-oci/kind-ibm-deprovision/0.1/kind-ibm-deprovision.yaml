@@ -12,7 +12,7 @@ metadata:
     tekton.dev/tags: infrastructure, ibm, kind
     tekton.dev/displayName: Kind Cloud Single Node - Destroy
     tekton.dev/platforms: "linux/amd64, linux/arm64"
-    mapt/version: "0.14.5"
+    mapt/version: "0.14.6"
 spec:
   description: Destroys a Kind cluster on IBM Cloud using its shared mapt state backend.
   volumes:

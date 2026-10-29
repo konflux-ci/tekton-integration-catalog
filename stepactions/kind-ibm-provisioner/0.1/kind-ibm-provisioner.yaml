@@ -12,10 +12,10 @@ metadata:
     tekton.dev/tags: infrastructure, ibm, kind
     tekton.dev/displayName: "Kind on IBM Cloud - Provision"
     tekton.dev/platforms: "linux/amd64, linux/arm64"
-    mapt/version: "0.14.5"
+    mapt/version: "0.14.6"
 spec:
   description: Provisions a Kind cluster on IBM Cloud using mapt and writes connection details to a shared volume.
-  image: quay.io/redhat-developer/mapt:v0.14.5
+  image: quay.io/redhat-developer/mapt:v0.14.6@sha256:71d0af27c12773f193ce2552fe2e567396e4363cc8de4193d186d5436e56a7b1
   params:
     - name: ibm-credentials-volume
       type: string
