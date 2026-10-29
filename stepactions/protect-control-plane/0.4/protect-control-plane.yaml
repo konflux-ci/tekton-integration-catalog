@@ -13,7 +13,7 @@ spec:
     First waits for the API, node, control-plane pods, and default ServiceAccount.
 
     Phase 1 – Control-plane hardening:
-      Patches etcd first, then scheduler, controller-manager, and apiserver
+      Patches etcd first, then apiserver, controller-manager, and scheduler
       with increased resources and tuned flags.
 
     Phase 2 – Node and cluster setup:
@@ -391,8 +391,23 @@ spec:
         fail "Node operation pod ${POD} did not finish within 100s (last phase: ${PHASE}; last error: ${LAST_ERROR})"
         EXIT_CODE=1
       fi
-      if LAST_NODE_OUTPUT=$(kubectl logs "${POD}" --request-timeout=10s 2>&1); then
-        echo "${LAST_NODE_OUTPUT}"
+      local LOG_START=$SECONDS LOG_CAPTURED=false
+      while (( SECONDS - LOG_START < 60 )); do
+        REMAINING=$((60 - (SECONDS - LOG_START)))
+        if LAST_NODE_OUTPUT=$(kubectl logs "${POD}" \
+          --request-timeout="$(request_budget "${REMAINING}")" 2>&1); then
+          LOG_CAPTURED=true
+          break
+        fi
+        REMAINING=$((60 - (SECONDS - LOG_START)))
+        (( REMAINING > 0 )) && sleep "$((REMAINING < 2 ? REMAINING : 2))"
+      done
+      if [[ "${LOG_CAPTURED}" == true ]]; then
+        if [[ -d /var/log-dir ]]; then
+          printf '%s\n' "${LAST_NODE_OUTPUT}" > "/var/log-dir/${POD}.log" ||
+            info "Could not save ${POD} log to /var/log-dir"
+        fi
+        printf '%s\n' "${LAST_NODE_OUTPUT}"
       else
         fail "Could not read logs for ${POD}: ${LAST_NODE_OUTPUT}"
         EXIT_CODE=1
@@ -1007,10 +1022,11 @@ spec:
       wait_api
     }
 
+    # Tune storage and API capacity before increasing controller/scheduler request rates.
     patch_component etcd               "etcd                    (quota=8GB, heartbeat=500ms, ${ETCD_CPU}, ${ETCD_MEMORY})"
-    patch_component scheduler          "kube-scheduler          (qps=100, burst=200, cpu=${SCHEDULER_CPU}, mem=${SCHEDULER_MEMORY})"
-    patch_component controller-manager "kube-controller-manager (qps=100, burst=200, cpu=${CONTROLLER_MANAGER_CPU}, mem=${CONTROLLER_MANAGER_MEMORY})"
     patch_component apiserver          "kube-apiserver          (inflight=${APISERVER_MAX_INFLIGHT}/${APISERVER_MAX_MUTATING_INFLIGHT}, cpu=${APISERVER_CPU}, mem=${APISERVER_MEMORY})"
+    patch_component controller-manager "kube-controller-manager (qps=100, burst=200, cpu=${CONTROLLER_MANAGER_CPU}, mem=${CONTROLLER_MANAGER_MEMORY})"
+    patch_component scheduler          "kube-scheduler          (qps=100, burst=200, cpu=${SCHEDULER_CPU}, mem=${SCHEDULER_MEMORY})"
 
     harden_node_runtime
     configure_cluster_support
