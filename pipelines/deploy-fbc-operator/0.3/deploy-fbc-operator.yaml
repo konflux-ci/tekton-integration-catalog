@@ -539,7 +539,7 @@ spec:
           - name: url
             value: https://github.com/openshift/konflux-tasks
           - name: revision
-            value: 9751a2028f2b3b88e4204d5c42de8eda4ebb466f
+            value: ec115dd419bc7c675cb8d9d5b320df33c2c79274
           - name: pathInRepo
             value: tasks/provision-ephemeral-cluster/0.1/provision-ephemeral-cluster.yaml
       params:
