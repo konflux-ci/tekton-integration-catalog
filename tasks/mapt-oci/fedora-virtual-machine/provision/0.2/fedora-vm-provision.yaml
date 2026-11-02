@@ -61,6 +61,8 @@ spec:
         (Optional) Once the target is provisioned the config to connect is addded to a secret
         check resutls. If this param is set the secret will be created with the name set
         otherwise if left empty, no secret will be created.
+        When set, it must be a DNS-1123 subdomain and `ownerName` / `ownerUid` must be
+        set as well; any other value fails the task.
     # ownership
     - name: ownerKind
       type: string
@@ -76,6 +78,8 @@ spec:
         (Optional) The name of the resource that should own the generated Secret.
         This should either be passed the value of `$(context.pipelineRun.name)`
         or `$(context.taskRun.name)` depending on the value of `ownerKind`.
+        Required, and must be a DNS-1123 subdomain, when `host-access-secret-name`
+        is set.
     - name: ownerUid
       type: string
       default: ""
@@ -83,6 +87,7 @@ spec:
         (Optional) The uid of the resource that should own the generated Secret.
         This should either be passed the value of `$(context.pipelineRun.uid)`
         or `$(context.taskRun.uid)` depending on the value of `ownerKind`.
+        Required when `host-access-secret-name` is set.
     # VM type params
     - name: arch
       description: Architecture for the machine. Allowed x86_64 or arm64 (default "x86_64")
@@ -146,11 +151,13 @@ spec:
       description: |
         Maximum time in seconds to wait for the SSH host public key of the machine to
         become available. Set to `0` to skip the host key scan entirely.
+        Must be a nonnegative decimal integer of at most 9 digits; any other value
+        fails the task.
       default: "120"
     # cleanup params
     - name: timeout
-      description: Auto-destroy timeout
-      default: "''"
+      description: Auto-destroy timeout. Empty means no auto-destroy.
+      default: ""
   results:
     - name: host-access-secret
       description: |
@@ -177,9 +184,47 @@ spec:
     - name: provisioner
       image: quay.io/redhat-developer/mapt:v0.14.5@sha256:a80035e53b855f3f54c95e7b2b000a88da95110d1e5fb65388b2d4ab8621181a
       imagePullPolicy: Always
+      # Params are passed through the environment rather than interpolated into
+      # the script. Tekton substitutes $(params.*) as plain text before bash
+      # parses the script, so interpolating them inline would let a param value
+      # containing shell metacharacters execute arbitrary commands.
       env:
         - name: HOME
           value: /opt/mapt/run
+        - name: PARAM_ID
+          value: $(params.id)
+        - name: PARAM_ARCH
+          value: $(params.arch)
+        - name: PARAM_CPUS
+          value: $(params.cpus)
+        - name: PARAM_MEMORY
+          value: $(params.memory)
+        - name: PARAM_COMPUTE_FAMILIES
+          value: $(params.compute-families)
+        - name: PARAM_COMPUTE_SIZES
+          value: $(params.compute-sizes)
+        - name: PARAM_GPU_MANUFACTURER
+          value: $(params.gpu-manufacturer)
+        - name: PARAM_GPUS
+          value: $(params.gpus)
+        - name: PARAM_NESTED_VIRT
+          value: $(params.nested-virt)
+        - name: PARAM_SPOT
+          value: $(params.spot)
+        - name: PARAM_SPOT_EVICTION_TOLERANCE
+          value: $(params.spot-eviction-tolerance)
+        - name: PARAM_SPOT_EXCLUDED_REGIONS
+          value: $(params.spot-excluded-regions)
+        - name: PARAM_SPOT_INCREASE_RATE
+          value: $(params.spot-increase-rate)
+        - name: PARAM_VERSION
+          value: $(params.version)
+        - name: PARAM_TAGS
+          value: $(params.tags)
+        - name: PARAM_DEBUG
+          value: $(params.debug)
+        - name: PARAM_TIMEOUT
+          value: $(params.timeout)
       volumeMounts:
         - name: aws-credentials
           mountPath: /opt/aws-credentials
@@ -210,7 +255,7 @@ spec:
         BUCKET=$(cat /opt/aws-credentials/bucket)
 
         # If debug add verbosity and print masked credentials
-        if [[ "$(params.debug)" == "true" ]]; then
+        if [[ "${PARAM_DEBUG}" == "true" ]]; then
           echo "AWS_ACCESS_KEY_ID=$(mask_credential "$AWS_ACCESS_KEY_ID")"
           echo "AWS_SECRET_ACCESS_KEY=$(mask_credential "$AWS_SECRET_ACCESS_KEY")"
           echo "AWS_DEFAULT_REGION=$AWS_DEFAULT_REGION"
@@ -218,49 +263,53 @@ spec:
           set -xeuo pipefail
         fi
 
-        # Run mapt
-        cmd="mapt aws fedora create "
-        cmd+="--project-name mapt-fedora-$(params.id) "
-        cmd+="--backed-url s3://${BUCKET}/mapt/fedora/$(params.id) "
-        cmd+="--conn-details-output /opt/host-info "
-        cmd+="--tags '$(params.tags)' "
+        # Run mapt. The command is built as an array and executed directly, so
+        # every param stays a single argument and is never re-parsed by the shell.
+        cmd=(mapt aws fedora create
+          --project-name "mapt-fedora-${PARAM_ID}"
+          --backed-url "s3://${BUCKET}/mapt/fedora/${PARAM_ID}"
+          --conn-details-output /opt/host-info
+          --tags "${PARAM_TAGS}"
+        )
 
-        if [[ "$(params.debug)" == "true" ]]; then
-          cmd+="--debug "
+        if [[ "${PARAM_DEBUG}" == "true" ]]; then
+          cmd+=(--debug)
         fi
 
-        if [[ "$(params.compute-sizes)" != "" ]]; then
-          cmd+="--compute-sizes '$(params.compute-sizes)' "
+        if [[ "${PARAM_COMPUTE_SIZES}" != "" ]]; then
+          cmd+=(--compute-sizes "${PARAM_COMPUTE_SIZES}")
         else
-          if [[ "$(params.compute-families)" != "" ]]; then
-            cmd+="--compute-families '$(params.compute-families)' "
+          if [[ "${PARAM_COMPUTE_FAMILIES}" != "" ]]; then
+            cmd+=(--compute-families "${PARAM_COMPUTE_FAMILIES}")
           fi
 
-          cmd+="--cpus '$(params.cpus)' "
-          cmd+="--memory '$(params.memory)' "
-          cmd+="--gpus '$(params.gpus)' "
-          cmd+="--gpu-manufacturer '$(params.gpu-manufacturer)' "
+          cmd+=(--cpus "${PARAM_CPUS}")
+          cmd+=(--memory "${PARAM_MEMORY}")
+          cmd+=(--gpus "${PARAM_GPUS}")
+          cmd+=(--gpu-manufacturer "${PARAM_GPU_MANUFACTURER}")
         fi
 
-        if [[ "$(params.nested-virt)" == "true" ]]; then
-          cmd+="--nested-virt "
+        if [[ "${PARAM_NESTED_VIRT}" == "true" ]]; then
+          cmd+=(--nested-virt)
         fi
 
-        cmd+="--arch '$(params.arch)' "
-        cmd+="--version '$(params.version)' "
+        cmd+=(--arch "${PARAM_ARCH}")
+        cmd+=(--version "${PARAM_VERSION}")
 
-        if [[ "$(params.spot)" == "true" ]]; then
-          cmd+="--spot "
-          cmd+="--spot-increase-rate '$(params.spot-increase-rate)' "
-          cmd+="--spot-eviction-tolerance '$(params.spot-eviction-tolerance)' "
-          cmd+="--spot-excluded-regions '$(params.spot-excluded-regions)' "
+        if [[ "${PARAM_SPOT}" == "true" ]]; then
+          cmd+=(--spot)
+          cmd+=(--spot-increase-rate "${PARAM_SPOT_INCREASE_RATE}")
+          cmd+=(--spot-eviction-tolerance "${PARAM_SPOT_EVICTION_TOLERANCE}")
+          cmd+=(--spot-excluded-regions "${PARAM_SPOT_EXCLUDED_REGIONS}")
         fi
 
-        if [[ $(params.timeout) != "" ]]; then
-          cmd+="--timeout $(params.timeout) "
+        # `''` is accepted as "unset" too: it was the 0.1 default, where the value
+        # was interpolated into an eval'd string and the shell stripped the quotes.
+        if [[ "${PARAM_TIMEOUT}" != "" && "${PARAM_TIMEOUT}" != "''" ]]; then
+          cmd+=(--timeout "${PARAM_TIMEOUT}")
         fi
 
-        eval "${cmd}"
+        "${cmd[@]}"
 
       computeResources:
         requests:
@@ -272,6 +321,11 @@ spec:
 
     - name: scan-host-public-key
       image: quay.io/konflux-qe-incubator/konflux-qe-tools:latest
+      env:
+        - name: SCAN_TIMEOUT
+          value: $(params.host-key-scan-timeout)
+        - name: SECRET_NAME
+          value: $(params.host-access-secret-name)
       volumeMounts:
         - name: host-info
           mountPath: /opt/host-info
@@ -285,10 +339,24 @@ spec:
         # so the secret creation step can read it unconditionally.
         : > "${HOST_KEY_PATH}"
 
+        # Validate before any arithmetic evaluation: bash arithmetic contexts
+        # expand nested command substitutions, so only plain decimal digits are
+        # accepted here.
+        if [[ ! "${SCAN_TIMEOUT}" =~ ^[0-9]{1,9}$ ]]; then
+          echo "[ERROR] host-key-scan-timeout must be a nonnegative integer (max 9 digits)." >&2
+          exit 1
+        fi
+        # Normalize, so values such as 0120 or 00 are base-10 and not octal.
+        SCAN_TIMEOUT=$((10#${SCAN_TIMEOUT}))
 
-        SCAN_TIMEOUT="$(params.host-key-scan-timeout)"
-        if [[ "${SCAN_TIMEOUT}" == "0" ]]; then
+        if (( SCAN_TIMEOUT == 0 )); then
           echo "[INFO] host-key-scan-timeout is 0, skipping the SSH host key scan."
+          exit 0
+        fi
+
+        # Nothing consumes the key when no secret is created, so do not spend the scan timeout on it.
+        if [[ -z "${SECRET_NAME}" ]]; then
+          echo "[INFO] No host credentials secret requested, skipping the SSH host key scan."
           exit 0
         fi
 
@@ -299,18 +367,24 @@ spec:
         fi
 
         INTERVAL=10
-        START=${SECONDS}
+        KEYSCAN_TIMEOUT=10
+        # Everything is clamped against this deadline, so neither an in-flight
+        # ssh-keyscan nor the sleep between attempts can overshoot SCAN_TIMEOUT.
+        DEADLINE=$(( SECONDS + SCAN_TIMEOUT ))
         HOST_KEY=""
         while true; do
-          if HOST_KEY="$(ssh-keyscan -T 10 -t rsa,ecdsa,ed25519 "${HOST}" 2>/dev/null)" && [[ -n "${HOST_KEY}" ]]; then
+          REMAINING=$(( DEADLINE - SECONDS ))
+          (( REMAINING > 0 )) || break
+          ATTEMPT_TIMEOUT=$(( REMAINING < KEYSCAN_TIMEOUT ? REMAINING : KEYSCAN_TIMEOUT ))
+          if HOST_KEY="$(ssh-keyscan -T "${ATTEMPT_TIMEOUT}" -t rsa,ecdsa,ed25519 "${HOST}" 2>/dev/null)" && [[ -n "${HOST_KEY}" ]]; then
             break
           fi
           HOST_KEY=""
-          if (( SECONDS - START >= SCAN_TIMEOUT )); then
-            break
-          fi
-          echo "[INFO] SSH host key for ${HOST} is not available yet, retrying in ${INTERVAL}s ..."
-          sleep "${INTERVAL}"
+          REMAINING=$(( DEADLINE - SECONDS ))
+          (( REMAINING > 0 )) || break
+          NEXT_INTERVAL=$(( REMAINING < INTERVAL ? REMAINING : INTERVAL ))
+          echo "[INFO] SSH host key for ${HOST} is not available yet, retrying in ${NEXT_INTERVAL}s ..."
+          sleep "${NEXT_INTERVAL}"
         done
 
         if [[ -z "${HOST_KEY}" ]]; then
@@ -342,39 +416,65 @@ spec:
           value: $(params.ownerName)
         - name: OWNER_UID
           value: $(params.ownerUid)
+        - name: SECRET_NAME
+          value: $(params.host-access-secret-name)
       volumeMounts:
         - name: host-info
           mountPath: /opt/host-info
       workingDir: /opt/host-info
       script: |
         #!/bin/bash
-        set -eo pipefail
+        set -euo pipefail
 
-        SECRET_NAME=$(params.host-access-secret-name)
         if [[ "${SECRET_NAME}" == "" ]]; then
           echo "[INFO] No host credentials secret requested, skipping."
           echo -n "" | tee "$(results.host-access-secret.path)"
           exit 0
         fi
 
-        cat <<EOF | oc create -f -
-        apiVersion: v1
-        kind: Secret
-        metadata:
-          name: ${SECRET_NAME}
-          namespace: ${NAMESPACE}
-          ownerReferences:
-          - apiVersion: tekton.dev/v1
-            kind: ${OWNER_KIND}
-            name: ${OWNER_NAME}
-            uid: ${OWNER_UID}
-        type: Opaque
-        data:
-          host: $(base64 -w0 < <(tr -d '\n' < /opt/host-info/host))
-          username: $(base64 -w0 < <(tr -d '\n' < /opt/host-info/username))
-          id_rsa: $(base64 -w0 < /opt/host-info/id_rsa)
-          host-public-key: "$(base64 -w0 < /opt/host-info/host-public-key)"
-        EOF
+        # Every value that reaches the manifest below is either passed to oc as
+        # a single argv element or checked against the Kubernetes grammar here,
+        # so none of them can alter the structure of the created object.
+        # The secret name is validated rather than just quoted, because a value
+        # starting with a dash would otherwise be consumed as an oc flag.
+        if [[ ! "${SECRET_NAME}" =~ ^[a-z0-9]([-a-z0-9.]*[a-z0-9])?$ || ${#SECRET_NAME} -gt 253 ]]; then
+          echo "[ERROR] host-access-secret-name must be a DNS-1123 subdomain, got '${SECRET_NAME}'." >&2
+          exit 1
+        fi
+        if [[ ! "${OWNER_KIND}" =~ ^(PipelineRun|TaskRun)$ ]]; then
+          echo "[ERROR] ownerKind must be either PipelineRun or TaskRun, got '${OWNER_KIND}'." >&2
+          exit 1
+        fi
+        if [[ ! "${OWNER_NAME}" =~ ^[a-z0-9]([-a-z0-9.]*[a-z0-9])?$ || ${#OWNER_NAME} -gt 253 ]]; then
+          echo "[ERROR] ownerName must be a DNS-1123 subdomain naming the owning ${OWNER_KIND}." >&2
+          echo "[ERROR] Pass \$(context.pipelineRun.name) or \$(context.taskRun.name) to it." >&2
+          exit 1
+        fi
+        if [[ ! "${OWNER_UID}" =~ ^[a-zA-Z0-9-]{1,64}$ ]]; then
+          echo "[ERROR] ownerUid must be the UID of the owning ${OWNER_KIND}." >&2
+          echo "[ERROR] Pass \$(context.pipelineRun.uid) or \$(context.taskRun.uid) to it." >&2
+          exit 1
+        fi
+
+        OWNER_PATCH="$(printf \
+          '{"metadata":{"ownerReferences":[{"apiVersion":"tekton.dev/v1","kind":"%s","name":"%s","uid":"%s"}]}}' \
+          "${OWNER_KIND}" "${OWNER_NAME}" "${OWNER_UID}")"
+
+        # `oc create secret generic` encodes the names and the payload itself,
+        # so nothing read from the provisioner output or from a param is ever
+        # parsed as YAML. The owner reference is merged client-side (--local)
+        # so the Secret still reaches the cluster in a single create, and never
+        # exists unowned.
+        oc create secret generic "${SECRET_NAME}" \
+          --namespace "${NAMESPACE}" \
+          --type=Opaque \
+          --from-literal=host="$(tr -d '\n' < /opt/host-info/host)" \
+          --from-literal=username="$(tr -d '\n' < /opt/host-info/username)" \
+          --from-file=id_rsa=/opt/host-info/id_rsa \
+          --from-file=host-public-key=/opt/host-info/host-public-key \
+          --dry-run=client -o json \
+          | oc patch -f - --local --type=merge -o json -p "${OWNER_PATCH}" \
+          | oc create -f -
 
         echo "[INFO] Successfully created secret: ${SECRET_NAME}"
         echo -n "${SECRET_NAME}" | tee "$(results.host-access-secret.path)"
