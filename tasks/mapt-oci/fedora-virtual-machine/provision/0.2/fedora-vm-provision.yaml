@@ -4,7 +4,7 @@ kind: Task
 metadata:
   name: fedora-vm-provision
   labels:
-    app.kubernetes.io/version: "0.1"
+    app.kubernetes.io/version: "0.2"
     upstream-usable: "true"
   annotations:
     tekton.dev/pipelines.minVersion: "0.44.x"
@@ -23,6 +23,8 @@ spec:
       - Custom CPU, memory, and architecture configurations
       - Automatic virtual machine removal via timeout
       - Securely exposes the credentials as a Kubernetes Secret
+      - Adds the SSH host public key of the machine to that Secret, so consuming
+        tasks can populate `known_hosts` instead of disabling host key checking
 
   volumes:
     - name: aws-credentials
@@ -140,6 +142,11 @@ spec:
         The parameter is intended to add verbosity on the task execution and also print masked credentials
         (showing first and last character with *** in the middle) on stdout to help with debugging
       default: "false"
+    - name: host-key-scan-timeout
+      description: |
+        Maximum time in seconds to wait for the SSH host public key of the machine to
+        become available. Set to `0` to skip the host key scan entirely.
+      default: "120"
     # cleanup params
     - name: timeout
       description: Auto-destroy timeout
@@ -159,6 +166,13 @@ spec:
             host: ${host}
             username: ${username}
             id_rsa: ${id_rsa}
+            host-public-key: ${host_public_key}
+
+        `host-public-key` holds the SSH host public key(s) of the machine in
+        `known_hosts` format (one line per key type, as returned by `ssh-keyscan`),
+        so consumers can verify the host instead of running ssh with
+        `StrictHostKeyChecking=no`. It is empty when the key could not be retrieved
+        within `host-key-scan-timeout` seconds.
   steps:
     - name: provisioner
       image: quay.io/redhat-developer/mapt:v0.14.5@sha256:a80035e53b855f3f54c95e7b2b000a88da95110d1e5fb65388b2d4ab8621181a
@@ -256,6 +270,67 @@ spec:
           memory: "2Gi"
           cpu: "300m"
 
+    - name: scan-host-public-key
+      image: quay.io/konflux-qe-incubator/konflux-qe-tools:latest
+      volumeMounts:
+        - name: host-info
+          mountPath: /opt/host-info
+      script: |
+        #!/bin/bash
+
+        set -euo pipefail
+
+        HOST_KEY_PATH=/opt/host-info/host-public-key
+        # Always materialize the file, even when the scan is skipped or fails,
+        # so the secret creation step can read it unconditionally.
+        : > "${HOST_KEY_PATH}"
+
+
+        SCAN_TIMEOUT="$(params.host-key-scan-timeout)"
+        if [[ "${SCAN_TIMEOUT}" == "0" ]]; then
+          echo "[INFO] host-key-scan-timeout is 0, skipping the SSH host key scan."
+          exit 0
+        fi
+
+        HOST="$(tr -d '\n' < /opt/host-info/host)"
+        if [[ -z "${HOST}" ]]; then
+          echo "[WARNING] No host address available, leaving the host-public-key empty."
+          exit 0
+        fi
+
+        INTERVAL=10
+        START=${SECONDS}
+        HOST_KEY=""
+        while true; do
+          if HOST_KEY="$(ssh-keyscan -T 10 -t rsa,ecdsa,ed25519 "${HOST}" 2>/dev/null)" && [[ -n "${HOST_KEY}" ]]; then
+            break
+          fi
+          HOST_KEY=""
+          if (( SECONDS - START >= SCAN_TIMEOUT )); then
+            break
+          fi
+          echo "[INFO] SSH host key for ${HOST} is not available yet, retrying in ${INTERVAL}s ..."
+          sleep "${INTERVAL}"
+        done
+
+        if [[ -z "${HOST_KEY}" ]]; then
+          echo "[WARNING] Could not retrieve the SSH host key of ${HOST} within ${SCAN_TIMEOUT}s."
+          echo "[WARNING] The host-public-key entry of the secret will be left empty."
+          exit 0
+        fi
+
+        echo "[INFO] SSH host public key(s) for ${HOST}:"
+        echo "${HOST_KEY}"
+        printf '%s\n' "${HOST_KEY}" > "${HOST_KEY_PATH}"
+
+      computeResources:
+        requests:
+          memory: "32Mi"
+          cpu: "10m"
+        limits:
+          memory: "64Mi"
+          cpu: "20m"
+
     - name: create-host-info-secret
       image: registry.redhat.io/openshift4/ose-cli:4.13@sha256:e70eb2be867f1236b19f5cbfeb8e0625737ce0ec1369e32a4f9f146aaaf68d49
       env:
@@ -298,6 +373,7 @@ spec:
           host: $(base64 -w0 < <(tr -d '\n' < /opt/host-info/host))
           username: $(base64 -w0 < <(tr -d '\n' < /opt/host-info/username))
           id_rsa: $(base64 -w0 < /opt/host-info/id_rsa)
+          host-public-key: "$(base64 -w0 < /opt/host-info/host-public-key)"
         EOF
 
         echo "[INFO] Successfully created secret: ${SECRET_NAME}"
