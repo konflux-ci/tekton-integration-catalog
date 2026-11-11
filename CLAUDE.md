@@ -158,8 +158,8 @@ Versions are **directory-based**: `tasks/<name>/0.1/`, `tasks/<name>/0.2/`, etc.
 ### Task YAML Conventions
 
 - **API version**: Prefer `tekton.dev/v1`; legacy tasks may use `v1beta1`
-- **Labels**: `app.kubernetes.io/version`, `upstream-usable`, `tekton.dev/tags: konflux`
-- **Annotations**: `tekton.dev/pipelines.minVersion`
+- **Labels**: `app.kubernetes.io/version`, `upstream-usable`
+- **Annotations**: `tekton.dev/pipelines.minVersion`, `tekton.dev/tags: konflux`, `tekton.dev/categories`
 - **Images**: Use pinned digests for production images; `latest` acceptable for dev/utils images
 
 ### Konflux Integration Patterns
