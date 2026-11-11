@@ -16,7 +16,7 @@ Checklist for pull requests to the tekton-integration-catalog. Every item must p
 - [ ] YAML passes `yamllint .` locally
 - [ ] `kubectl apply -f <file> --dry-run=server` succeeds (if cluster available)
 - [ ] `README.md` exists in the task/stepaction version directory
-- [ ] Labels set: `app.kubernetes.io/version`, `upstream-usable`, `tekton.dev/tags: konflux`
+- [ ] Labels set: `app.kubernetes.io/version`, `upstream-usable`; Annotations set: `tekton.dev/tags: konflux`, `tekton.dev/pipelines.minVersion`
 - [ ] Production images pinned by digest (not `:latest`)
 - [ ] Bash scripts use `set -o errexit -o nounset -o pipefail`
 - [ ] No secrets or credentials embedded in YAML
