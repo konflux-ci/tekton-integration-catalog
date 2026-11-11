@@ -16,7 +16,7 @@ Konflux PipelineRun (PAC trigger) -> `test-metadata` (extracts SNAPSHOT, git inf
 
 1. Create `tasks/<category>/<name>/<version>/<name>.yaml` (Tekton `v1` Task spec)
 2. Add `README.md` in the same directory
-3. Set labels: `upstream-usable: "true"|"false"`, `app.kubernetes.io/version`; set annotations: `tekton.dev/tags: konflux`
+3. Set labels: `upstream-usable: "true"|"false"`, `app.kubernetes.io/version`; set annotations: `tekton.dev/pipelines.minVersion`, `tekton.dev/tags: konflux`, `tekton.dev/categories`
 4. Add `tests/test-<name>-pass.yaml` (optionally `test-<name>-fail.yaml` with `test/assert-task-failure` annotation)
 5. Verify: `yamllint .` and `kubectl apply -f <task>.yaml --dry-run=server`
 
