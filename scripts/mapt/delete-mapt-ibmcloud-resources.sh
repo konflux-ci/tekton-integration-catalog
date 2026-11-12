@@ -451,11 +451,13 @@ print_sweep_group_inventory() {
     while IFS= read -r resource_group_id; do
         [[ -z "$resource_group_id" ]] && continue
         local group_name
+        local component_tags
         group_name=$(jq -r --arg id "$resource_group_id" '.[] | select(.id == $id) | .name' <<< "$RESOURCE_GROUPS")
+        component_tags=$(jq -r --arg id "$resource_group_id" '(.[$id] // []) | join(", ")' <<< "$RESOURCE_GROUP_COMPONENT_TAGS")
         if [[ -n "${PROTECTED_RESOURCE_GROUP_REASONS[$resource_group_id]:-}" ]]; then
-            printf '  Resource group: %s (%s; deferred: %s)\n' "${group_name:-unknown}" "$resource_group_id" "${PROTECTED_RESOURCE_GROUP_REASONS[$resource_group_id]}"
+            printf '  Resource group: %s (%s; %s; deferred: %s)\n' "${group_name:-unknown}" "$resource_group_id" "${component_tags:-component tag not found}" "${PROTECTED_RESOURCE_GROUP_REASONS[$resource_group_id]}"
         else
-            printf '  Resource group: %s (%s)\n' "${group_name:-unknown}" "$resource_group_id"
+            printf '  Resource group: %s (%s; %s)\n' "${group_name:-unknown}" "$resource_group_id" "${component_tags:-component tag not found}"
         fi
         print_group_resources instance "$resource_group_id" "$RAW_INSTANCES"
         print_group_resources subnet "$resource_group_id" "$RAW_SUBNETS"
@@ -519,6 +521,7 @@ fi
 RESOURCE_TAG_QUERY='family:is AND tags:"iac:mapt" AND tags:"k8s-type:kind"'
 RESOURCE_SEARCH_OFFSET=0
 TAGGED_RESOURCE_IDS='[]'
+RESOURCE_GROUP_COMPONENT_TAGS='{}'
 while true; do
     RESOURCE_SEARCH_ARGS=(resource search "$RESOURCE_TAG_QUERY" --limit 1000 --output JSON)
     if [[ "$RESOURCE_SEARCH_OFFSET" -gt 0 ]]; then
@@ -546,7 +549,31 @@ while true; do
         echo "ERROR: failed to parse IBM Cloud resource search results" >&2
         exit 2
     fi
+    if ! PAGE_RESOURCE_COMPONENT_TAGS=$(jq -ce --arg tag_filter "$TAG_FILTER" '
+        reduce (
+            .items[] | select(
+                (.tags // []) as $tags |
+                ($tag_filter | split(",")) | all(. as $tag | $tags | any(. == $tag))
+            )
+        ) as $item
+        ({};
+            ($item.resource_group_id // $item.doc.resource_group.id // "") as $group_id |
+            ($item.tags | map(select(type == "string" and startswith("component:")))) as $components |
+            if ($group_id | type) == "string" and ($group_id | length) > 0 and ($components | length) > 0 then
+                .[$group_id] = ((.[$group_id] // []) + $components | unique)
+            else
+                .
+            end
+        )
+    ' <<< "$TAGGED_RESOURCES"); then
+        echo "ERROR: failed to parse IBM Cloud component tags" >&2
+        exit 2
+    fi
     TAGGED_RESOURCE_IDS=$(jq -cn --argjson all "$TAGGED_RESOURCE_IDS" --argjson page "$PAGE_RESOURCE_IDS" '$all + $page | unique')
+    RESOURCE_GROUP_COMPONENT_TAGS=$(jq -cn --argjson all "$RESOURCE_GROUP_COMPONENT_TAGS" --argjson page "$PAGE_RESOURCE_COMPONENT_TAGS" '
+        reduce (($all | to_entries[]) , ($page | to_entries[])) as $entry
+            ({}; .[$entry.key] = ((.[$entry.key] // []) + $entry.value | unique))
+    ')
     if [[ "$RESOURCE_SEARCH_COUNT" -lt 1000 ]]; then
         break
     fi
@@ -560,6 +587,8 @@ if [[ "$SWEEP" == "false" ]]; then
     TARGET_RESOURCE_GROUP_ID=$(echo "$RESOURCE_GROUPS" | jq -r --arg name "$PROJECT_NAME" '
         .[] | select(.name == $name and (.default // false | not)) | .id
     ' | head -n 1)
+    TARGET_COMPONENT_TAGS=$(jq -r --arg id "$TARGET_RESOURCE_GROUP_ID" '(.[$id] // []) | join(", ")' <<< "$RESOURCE_GROUP_COMPONENT_TAGS")
+    echo "Component tag(s): ${TARGET_COMPONENT_TAGS:-not found}"
 fi
 
 ERRORS=0

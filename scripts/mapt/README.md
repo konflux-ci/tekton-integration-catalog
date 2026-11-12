@@ -58,7 +58,8 @@ seconds for up to two minutes, and waits for subnet and gateway deletion
 requests to finish before removing dependent resources. It leaves each VPC's
 default security group for VPC deletion. The initial plan summarizes eligible
 resources before deletion; the execution summary reports accepted and failed
-delete requests and groups protected during the run.
+delete requests and groups protected during the run. Output includes each
+resource group's `component:<repo>` tag when IBM Global Search returns it.
 
 Use `--region REGION` to select the IBM Cloud region; it defaults to `us-south`.
 
