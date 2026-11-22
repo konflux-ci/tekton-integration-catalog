@@ -59,6 +59,6 @@ Mirrors the existing pattern used for other Konflux fleets in `pco-aws-konflux-t
 
 | Fleet | Script | Periodic |
 |-------|--------|----------|
-| MAPT / kind | `scripts/mapt/delete-mapt-clusters.sh` | `periodic-ci-konflux-ci-e2e-tests-main-mapt-clusters-resources-cleanup` |
+| MAPT / kind (AWS + IBM Cloud) | `scripts/mapt/delete-mapt-clusters.sh`, `scripts/mapt/delete-mapt-ibmcloud-resources.sh` | `periodic-ci-konflux-ci-e2e-tests-main-mapt-clusters-resources-cleanup` |
 | ROSA HCP (`kx-*`) | `scripts/rosa/delete-rosa-clusters.sh` | `periodic-ci-konflux-ci-e2e-tests-main-rosa-old-clusters-cleanup` |
 | IPI (`ci-op-*`) | `scripts/ipi/delete-ipi-clusters.sh` | `periodic-ci-konflux-ci-e2e-tests-main-ipi-clusters-cleanup` |
